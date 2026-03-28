@@ -1,0 +1,78 @@
+<div class="saga-list-container">
+  <div class="header">
+    <h1>Saga Dashboard</h1>
+    <div class="filters">
+      <mat-form-field appearance="outline">
+        <mat-label>Filter by Status</mat-label>
+        <mat-select [(value)]="selectedStatus" (selectionChange)="onFilterChange()">
+          <mat-option value="">All</mat-option>
+          <ng-container *ngFor="let s of statusOptions">
+            <mat-option *ngIf="s !== ''" [value]="s">{{ s }}</mat-option>
+          </ng-container>
+        </mat-select>
+      </mat-form-field>
+    </div>
+  </div>
+
+  <mat-progress-bar *ngIf="loading" mode="indeterminate"></mat-progress-bar>
+
+  <!-- Error Banner -->
+  <div class="error-banner" *ngIf="errorMessage">
+    <mat-icon>error</mat-icon>
+    <span>{{ errorMessage }}</span>
+    <button mat-icon-button (click)="errorMessage = ''">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <table mat-table [dataSource]="sagas" class="saga-table">
+
+    <ng-container matColumnDef="sagaId">
+      <th mat-header-cell *matHeaderCellDef>Saga ID</th>
+      <td mat-cell *matCellDef="let saga">{{ saga.sagaId | slice:0:8 }}...</td>
+    </ng-container>
+
+    <ng-container matColumnDef="status">
+      <th mat-header-cell *matHeaderCellDef>Status</th>
+      <td mat-cell *matCellDef="let saga">
+        <span class="status-badge" [ngClass]="'status-' + saga.status.toLowerCase()">
+          {{ saga.status }}
+        </span>
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="workflowType">
+      <th mat-header-cell *matHeaderCellDef>Workflow</th>
+      <td mat-cell *matCellDef="let saga">{{ saga.workflowType }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="startTime">
+      <th mat-header-cell *matHeaderCellDef>Start Time</th>
+      <td mat-cell *matCellDef="let saga">{{ saga.startTime | date:'medium' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="durationMs">
+      <th mat-header-cell *matHeaderCellDef>Duration</th>
+      <td mat-cell *matCellDef="let saga">
+        {{ saga.durationMs ? (saga.durationMs + ' ms') : 'In progress' }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="eventCount">
+      <th mat-header-cell *matHeaderCellDef>Events</th>
+      <td mat-cell *matCellDef="let saga">{{ saga.eventCount }}</td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns;"
+        class="clickable-row"
+        (click)="onRowClick(row)"></tr>
+  </table>
+
+  <mat-paginator
+    [length]="totalElements"
+    [pageSize]="pageSize"
+    [pageSizeOptions]="[10, 20, 50]"
+    (page)="onPageChange($event)">
+  </mat-paginator>
+</div>

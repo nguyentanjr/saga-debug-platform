@@ -1,0 +1,53 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: jdbc:postgresql://${ORDER_DB_HOST:localhost}:${ORDER_DB_PORT:5432}/order_db
+    username: ${ORDER_DB_USERNAME:demo}
+    password: ${ORDER_DB_PASSWORD:demo}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: order-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.type.mapping: >-
+          paymentCompletedEvent:com.example.saga.events.PaymentCompletedEvent,
+          paymentFailedEvent:com.example.saga.events.PaymentFailedEvent,
+          inventoryReservedEvent:com.example.saga.events.InventoryReservedEvent,
+          inventoryFailedEvent:com.example.saga.events.InventoryFailedEvent,
+          paymentRefundedEvent:com.example.saga.events.PaymentRefundedEvent
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.type.mapping: >-
+          orderCreatedEvent:com.example.saga.events.OrderCreatedEvent,
+          refundPaymentCommand:com.example.saga.events.RefundPaymentCommand
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

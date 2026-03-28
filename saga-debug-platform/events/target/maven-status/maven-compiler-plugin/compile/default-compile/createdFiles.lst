@@ -1,0 +1,5 @@
+com\example\events\messaging\event\InventoryReservedEvent.class
+com\example\events\messaging\event\PaymentCompletedEvent.class
+com\example\events\messaging\event\OrderCreatedEvent.class
+com\example\events\messaging\event\InventoryFailedEvent.class
+com\example\events\messaging\event\PaymentFailedEvent.class

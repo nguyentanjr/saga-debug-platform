@@ -1,0 +1,15 @@
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\config\KafkaConfig.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\controller\InventoryController.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\domain\Inventory.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\domain\InventoryReservation.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\domain\InventoryReservationStatus.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\dto\ErrorResponse.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\dto\InventoryResponse.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\exception\GlobalExceptionHandler.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\exception\NotFoundException.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\InventoryServiceApplication.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\messaging\consumer\PaymentEventConsumer.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\messaging\producer\InventoryEventProducer.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\repository\InventoryRepository.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\repository\InventoryReservationRepository.java
+D:\KLTN\Code\saga-debug-platform\inventory-service\src\main\java\com\example\inventory\service\InventoryService.java
