@@ -1,6 +1,7 @@
 package com.example.correlation.messaging;
 
 import com.example.correlation.service.CorrelationService;
+import com.example.correlation.service.EventSchemaValidator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -15,11 +16,14 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * Consumes business events from 7 Kafka topics and maps them to generic saga operations.
+ * Consumes business events from 7 Kafka topics and maps them to generic saga
+ * operations.
  *
  * <h3>Event Mapping Architecture</h3>
- * Demo services publish business-named events (e.g., {@code PaymentCompletedEvent}).
+ * Demo services publish business-named events (e.g.,
+ * {@code PaymentCompletedEvent}).
  * The Correlation Engine maps them on ingestion:
+ * 
  * <pre>
  *   Kafka Topic           → eventType          → stepName           → serviceName
  *   ─────────────────────────────────────────────────────────────────────────────────
@@ -45,6 +49,7 @@ public class SagaEventConsumer {
 
     private final CorrelationService correlationService;
     private final ObjectMapper objectMapper;
+    private final EventSchemaValidator schemaValidator;
 
     private static final Map<String, String> TOPIC_EVENT_MAP = Map.of(
             "order-created", "ORDER_CREATED",
@@ -53,8 +58,7 @@ public class SagaEventConsumer {
             "inventory-reserved", "INVENTORY_RESERVED",
             "inventory-failed", "INVENTORY_FAILED",
             "refund-payment", "REFUND_PAYMENT",
-            "payment-refunded", "PAYMENT_REFUNDED"
-    );
+            "payment-refunded", "PAYMENT_REFUNDED");
 
     private static final Map<String, String> TOPIC_STEP_MAP = Map.of(
             "order-created", "CREATE_ORDER",
@@ -63,8 +67,7 @@ public class SagaEventConsumer {
             "inventory-reserved", "RESERVE_INVENTORY",
             "inventory-failed", "RESERVE_INVENTORY",
             "refund-payment", "REFUND_PAYMENT",
-            "payment-refunded", "REFUND_PAYMENT"
-    );
+            "payment-refunded", "REFUND_PAYMENT");
 
     private static final Map<String, String> TOPIC_SERVICE_MAP = Map.of(
             "order-created", "order-service",
@@ -73,22 +76,20 @@ public class SagaEventConsumer {
             "inventory-reserved", "inventory-service",
             "inventory-failed", "inventory-service",
             "refund-payment", "order-service",
-            "payment-refunded", "payment-service"
-    );
+            "payment-refunded", "payment-service");
 
-    public SagaEventConsumer(CorrelationService correlationService, ObjectMapper objectMapper) {
+    public SagaEventConsumer(CorrelationService correlationService, ObjectMapper objectMapper,
+            EventSchemaValidator schemaValidator) {
         this.correlationService = correlationService;
         this.objectMapper = objectMapper;
+        this.schemaValidator = schemaValidator;
     }
 
-    @KafkaListener(
-            topics = {
-                    "order-created", "payment-completed", "payment-failed",
-                    "inventory-reserved", "inventory-failed",
-                    "refund-payment", "payment-refunded"
-            },
-            groupId = "correlation-engine-group"
-    )
+    @KafkaListener(topics = {
+            "order-created", "payment-completed", "payment-failed",
+            "inventory-reserved", "inventory-failed",
+            "refund-payment", "payment-refunded"
+    }, groupId = "correlation-engine-group")
     public void handleEvent(ConsumerRecord<String, String> record) {
         try {
             String topic = record.topic();
@@ -97,6 +98,13 @@ public class SagaEventConsumer {
             String serviceName = TOPIC_SERVICE_MAP.getOrDefault(topic, "unknown");
 
             JsonNode payload = objectMapper.readTree(record.value());
+
+            // Schema validation — log invalid events, don't crash
+            java.util.List<String> violations = schemaValidator.validate(payload);
+            if (!violations.isEmpty()) {
+                log.warn("Event from topic {} has schema violations: {}. Processing anyway.", topic, violations);
+            }
+            schemaValidator.logWarnings(payload, topic);
 
             // Extract sagaId: event body → Kafka header → orderId fallback
             String sagaId = extractSagaId(payload, record);
@@ -119,8 +127,7 @@ public class SagaEventConsumer {
 
             correlationService.processEvent(
                     eventId, sagaId, eventType, stepName,
-                    serviceName, eventTimestamp, record.value()
-            );
+                    serviceName, eventTimestamp, record.value());
 
         } catch (Exception e) {
             log.error("Failed to process event from topic {}: {}", record.topic(), e.getMessage(), e);
@@ -129,7 +136,8 @@ public class SagaEventConsumer {
 
     private String extractSagaId(JsonNode payload, ConsumerRecord<String, String> record) {
         String fromBody = extractField(payload, "sagaId");
-        if (fromBody != null) return fromBody;
+        if (fromBody != null)
+            return fromBody;
 
         Header header = record.headers().lastHeader("saga-id");
         if (header != null) {

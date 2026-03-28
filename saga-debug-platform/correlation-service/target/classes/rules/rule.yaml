@@ -1,0 +1,121 @@
+rule:
+  id: TIMEOUT_RETRY_STORM
+  name: Timeout Retry Storm
+  priority: HIGH
+  description: Multiple timeouts followed by retries indicate downstream service degradation
+  pattern:
+    - event_type: PAYMENT_FAILED
+      payload_contains: "timeout"
+      count: ">= 2"
+      time_window: 60s
+  evidence:
+    - last_event_timestamp
+    - retry_count
+    - service_name
+  root_cause: "Downstream service degradation causing timeout retry storm"
+  suggestion: "Check payment service health and network connectivity"
+---
+rule:
+  id: DUPLICATE_EVENT
+  name: Duplicate Event Detection
+  priority: MEDIUM
+  description: Same eventId received more than once
+  pattern:
+    - condition: duplicate_event_id
+  evidence:
+    - eventId
+    - duplicate_count
+    - first_occurrence_timestamp
+  root_cause: "Duplicate event detected — possible producer retry without idempotency"
+  suggestion: "Verify producer idempotency configuration"
+---
+rule:
+  id: STUCK_SAGA
+  name: Stuck Saga Detection
+  priority: CRITICAL
+  description: Saga has no new events beyond the step timeout
+  pattern:
+    - condition: no_event_beyond_timeout
+  evidence:
+    - last_event_type
+    - last_event_timestamp
+    - timeout_threshold_seconds
+  root_cause: "Saga is stuck — step did not complete within timeout"
+  suggestion: "Check if the responsible service is running and processing messages"
+---
+rule:
+  id: COMPENSATION_FAILED
+  name: Compensation Failed
+  priority: CRITICAL
+  description: A compensation step failed during saga rollback
+  pattern:
+    - event_type: REFUND_PAYMENT
+      followed_by_missing: PAYMENT_REFUNDED
+      time_window: 30s
+  evidence:
+    - compensation_step
+    - last_compensation_event
+    - saga_status
+  root_cause: "Compensation step failed — saga cannot fully rollback"
+  suggestion: "Manual intervention required. Check compensation service logs"
+---
+rule:
+  id: OUT_OF_ORDER
+  name: Out of Order Events
+  priority: HIGH
+  description: Events arrived in unexpected chronological order
+  pattern:
+    - condition: timestamp_violation
+  evidence:
+    - event_sequence
+    - expected_order
+    - actual_order
+  root_cause: "Events arrived out of chronological order"
+  suggestion: "Check Kafka partition ordering and producer timestamps"
+---
+rule:
+  id: MISSING_COMPLETION
+  name: Missing Step Completion
+  priority: HIGH
+  description: A saga step started but never completed or failed
+  pattern:
+    - condition: step_started_no_result
+      time_window: 60s
+  evidence:
+    - started_step
+    - started_timestamp
+    - elapsed_seconds
+  root_cause: "Step started but no completion/failure event received"
+  suggestion: "Check if the downstream service processed and published result event"
+---
+rule:
+  id: CIRCUIT_BREAKER_OPEN
+  name: Circuit Breaker Open
+  priority: HIGH
+  description: Circuit breaker triggered due to repeated failures
+  pattern:
+    - event_type: PAYMENT_FAILED
+      count: ">= 3"
+      time_window: 120s
+  evidence:
+    - failure_count
+    - circuit_breaker_state
+    - affected_service
+  root_cause: "Circuit breaker opened due to repeated failures"
+  suggestion: "Service is likely degraded. Wait for recovery or investigate root cause"
+---
+rule:
+  id: NETWORK_PARTITION
+  name: Network Partition
+  priority: CRITICAL
+  description: Multiple services timing out simultaneously
+  pattern:
+    - condition: multiple_service_timeouts
+      services_affected: ">= 2"
+      time_window: 30s
+  evidence:
+    - affected_services
+    - timeout_timestamps
+    - network_segment
+  root_cause: "Possible network partition — multiple services unreachable"
+  suggestion: "Check network infrastructure and Kafka broker connectivity"

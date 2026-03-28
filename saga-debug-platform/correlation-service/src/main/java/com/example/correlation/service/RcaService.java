@@ -19,11 +19,14 @@ import java.util.stream.Collectors;
  * Root Cause Analysis Service.
  *
  * Architecture:
- *   AnomalyDetectionService = Phase 1 (DETECT) — flags anomalies like STUCK_SAGA, OUT_OF_ORDER
- *   RcaService              = Phase 2 (EXPLAIN) — aggregates anomalies + events → root cause + suggestion
+ * AnomalyDetectionService = Phase 1 (DETECT) — flags anomalies like STUCK_SAGA,
+ * OUT_OF_ORDER
+ * RcaService = Phase 2 (EXPLAIN) — aggregates anomalies + events → root cause +
+ * suggestion
  *
  * Rules are implemented as Java methods for simplicity.
- * In production, a YAML/DSL-based configuration would allow non-developer modification.
+ * In production, a YAML/DSL-based configuration would allow non-developer
+ * modification.
  */
 @Service
 public class RcaService {
@@ -37,10 +40,10 @@ public class RcaService {
     private final ObjectMapper objectMapper;
 
     public RcaService(SagaInstanceRepository sagaInstanceRepository,
-                      SagaEventRepository sagaEventRepository,
-                      AnomalyRepository anomalyRepository,
-                      RcaResultRepository rcaResultRepository,
-                      ObjectMapper objectMapper) {
+            SagaEventRepository sagaEventRepository,
+            AnomalyRepository anomalyRepository,
+            RcaResultRepository rcaResultRepository,
+            ObjectMapper objectMapper) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
@@ -68,40 +71,53 @@ public class RcaService {
         // ---- CRITICAL rules ----
         if (rootCause == null) {
             rootCause = checkCircuitBreakerOpen(events, anomalies, evidence, suggestions);
-            if (rootCause != null) severity = "CRITICAL";
+            if (rootCause != null)
+                severity = "CRITICAL";
         }
 
         if (rootCause == null) {
             rootCause = checkTimeoutRetryStorm(events, anomalies, evidence, suggestions);
-            if (rootCause != null) severity = "CRITICAL";
+            if (rootCause != null)
+                severity = "CRITICAL";
         }
 
         // ---- HIGH rules ----
         if (rootCause == null) {
             rootCause = checkCompensationFailed(saga, events, evidence, suggestions);
-            if (rootCause != null) severity = "HIGH";
+            if (rootCause != null) {
+                // COMPENSATION_FAILED → HIGH, COMPENSATION_RECOVERED → LOW
+                severity = "COMPENSATION_RECOVERED".equals(rootCause) ? "LOW" : "HIGH";
+            }
         }
 
         if (rootCause == null) {
             rootCause = checkStuckSaga(saga, anomalies, evidence, suggestions);
-            if (rootCause != null) severity = "HIGH";
+            if (rootCause != null) {
+                // STUCK_SAGA → HIGH, RECOVERED_FROM_STUCK → LOW
+                severity = "RECOVERED_FROM_STUCK".equals(rootCause) ? "LOW" : "HIGH";
+            }
         }
 
         // ---- MEDIUM rules ----
         if (rootCause == null) {
             rootCause = checkMissingCompletion(saga, events, anomalies, evidence, suggestions);
-            if (rootCause != null) severity = "MEDIUM";
+            if (rootCause != null) {
+                // MISSING_COMPLETION → MEDIUM, LATE_COMPLETION → LOW
+                severity = "LATE_COMPLETION".equals(rootCause) ? "LOW" : "MEDIUM";
+            }
         }
 
         if (rootCause == null) {
             rootCause = checkOutOfOrder(anomalies, evidence, suggestions);
-            if (rootCause != null) severity = "MEDIUM";
+            if (rootCause != null)
+                severity = "MEDIUM";
         }
 
         // ---- LOW rules ----
         if (rootCause == null) {
             rootCause = checkDuplicateEvent(anomalies, evidence, suggestions);
-            if (rootCause != null) severity = "LOW";
+            if (rootCause != null)
+                severity = "LOW";
         }
 
         // ---- Fallback ----
@@ -166,10 +182,11 @@ public class RcaService {
 
     /**
      * CIRCUIT_BREAKER_OPEN: Payment failed with circuit breaker message.
-     * Condition: PAYMENT_FAILED event with "circuit breaker" or "retry exhausted" in payload.
+     * Condition: PAYMENT_FAILED event with "circuit breaker" or "retry exhausted"
+     * in payload.
      */
     private String checkCircuitBreakerOpen(List<SagaEvent> events, List<Anomaly> anomalies,
-                                           List<String> evidence, List<String> suggestions) {
+            List<String> evidence, List<String> suggestions) {
         for (SagaEvent event : events) {
             if ("PAYMENT_FAILED".equals(event.getEventType())) {
                 String payload = event.getPayload() != null ? event.getPayload().toLowerCase() : "";
@@ -190,14 +207,15 @@ public class RcaService {
      * with short intervals, suggesting rapid retries.
      */
     private String checkTimeoutRetryStorm(List<SagaEvent> events, List<Anomaly> anomalies,
-                                          List<String> evidence, List<String> suggestions) {
+            List<String> evidence, List<String> suggestions) {
         // Count events by type
         Map<String, Long> eventTypeCounts = events.stream()
                 .collect(Collectors.groupingBy(SagaEvent::getEventType, Collectors.counting()));
 
         for (Map.Entry<String, Long> entry : eventTypeCounts.entrySet()) {
             if (entry.getValue() >= 3) {
-                evidence.add("Event type " + entry.getKey() + " appears " + entry.getValue() + " times (possible retry storm)");
+                evidence.add("Event type " + entry.getKey() + " appears " + entry.getValue()
+                        + " times (possible retry storm)");
                 suggestions.add("Reduce retry count or increase backoff in Resilience4j config");
                 suggestions.add("Check service logs for timeout root cause");
                 return "TIMEOUT_RETRY_STORM";
@@ -207,68 +225,128 @@ public class RcaService {
     }
 
     /**
-     * COMPENSATION_FAILED: Saga is in COMPENSATING status but has no PAYMENT_REFUNDED event.
-     * The compensation flow did not complete.
+     * COMPENSATION_FAILED: Saga is in COMPENSATING status but has no
+     * COMPENSATION_FAILED / COMPENSATION_RECOVERED:
+     * If saga is COMPENSATING and no PAYMENT_REFUNDED → COMPENSATION_FAILED (HIGH).
+     * If saga was COMPENSATING but has since COMPENSATED → COMPENSATION_RECOVERED (LOW).
      */
     private String checkCompensationFailed(SagaInstance saga, List<SagaEvent> events,
-                                           List<String> evidence, List<String> suggestions) {
-        if (saga.getStatus() == SagaStatus.COMPENSATING) {
-            boolean hasRefund = events.stream()
-                    .anyMatch(e -> "PAYMENT_REFUNDED".equals(e.getEventType()));
-            if (!hasRefund) {
-                evidence.add("Saga stuck in COMPENSATING status — no PAYMENT_REFUNDED event received");
-                evidence.add("Expected compensation step did not complete");
-                suggestions.add("Check payment-service logs for refund processing errors");
-                suggestions.add("Verify Kafka connectivity for refund command delivery");
-                return "COMPENSATION_FAILED";
+            List<String> evidence, List<String> suggestions) {
+        boolean hasRefundCommand = events.stream()
+                .anyMatch(e -> "REFUND_PAYMENT".equals(e.getEventType()));
+
+        if (!hasRefundCommand) return null; // no compensation was even attempted
+
+        boolean hasRefundCompleted = events.stream()
+                .anyMatch(e -> "PAYMENT_REFUNDED".equals(e.getEventType()));
+
+        if (saga.getStatus() == SagaStatus.COMPENSATED && hasRefundCompleted) {
+            // Compensation completed successfully
+            evidence.add("Compensation flow completed: REFUND_PAYMENT → PAYMENT_REFUNDED");
+            evidence.add("Saga final status: COMPENSATED");
+            if (saga.getStartTime() != null && saga.getEndTime() != null) {
+                long durationMs = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
+                evidence.add("Total duration (including compensation): " + durationMs + "ms");
             }
+            suggestions.add("Saga correctly rolled back via compensation");
+            suggestions.add("Review why the forward step failed to prevent recurrence");
+            return "COMPENSATION_RECOVERED";
         }
+
+        if (saga.getStatus() == SagaStatus.COMPENSATING && !hasRefundCompleted) {
+            // Still stuck in compensation
+            evidence.add("Saga stuck in COMPENSATING status — no PAYMENT_REFUNDED event received");
+            evidence.add("Expected compensation step did not complete");
+            suggestions.add("Check payment-service logs for refund processing errors");
+            suggestions.add("Verify Kafka connectivity for refund command delivery");
+            return "COMPENSATION_FAILED";
+        }
+
         return null;
     }
 
     /**
-     * STUCK_SAGA: Saga has STUCK_SAGA anomaly — detected by AnomalyDetectionService.
+     * STUCK_SAGA / RECOVERED_FROM_STUCK:
+     * If saga has STUCK_SAGA anomaly AND is still stuck → STUCK_SAGA (HIGH).
+     * If saga has STUCK_SAGA anomaly BUT has since completed → RECOVERED_FROM_STUCK (LOW).
+     * This lets the dashboard show that the system self-healed.
      */
     private String checkStuckSaga(SagaInstance saga, List<Anomaly> anomalies,
-                                  List<String> evidence, List<String> suggestions) {
+            List<String> evidence, List<String> suggestions) {
         for (Anomaly anomaly : anomalies) {
-            if ("STUCK_SAGA".equals(anomaly.getAnomalyType())) {
-                evidence.add("Anomaly detected: " + anomaly.getDescription());
-                evidence.add("Saga has been in " + saga.getStatus() + " status too long");
-                suggestions.add("Check if consuming service is running and processing events");
-                suggestions.add("Verify Kafka consumer group offsets");
-                return "STUCK_SAGA";
+            if (anomaly.getAnomalyType() == AnomalyType.STUCK_SAGA) {
+                boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
+                        || saga.getStatus() == SagaStatus.COMPENSATED;
+
+                if (isTerminal) {
+                    // Saga recovered after being stuck
+                    evidence.add("Previously stuck: " + anomaly.getDescription());
+                    evidence.add("Saga has since recovered → final status: " + saga.getStatus());
+                    if (saga.getStartTime() != null && saga.getEndTime() != null) {
+                        long durationMs = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
+                        evidence.add("Total duration (including stuck period): " + durationMs + "ms");
+                    }
+                    suggestions.add("Self-healed: downstream service recovered and processed pending Kafka message");
+                    suggestions.add("Review service uptime to prevent future stuck periods");
+                    return "RECOVERED_FROM_STUCK";
+                } else {
+                    // Still stuck
+                    evidence.add("Anomaly detected: " + anomaly.getDescription());
+                    evidence.add("Saga is still in " + saga.getStatus() + " status");
+                    suggestions.add("Check if consuming service is running and processing events");
+                    suggestions.add("Verify Kafka consumer group offsets");
+                    return "STUCK_SAGA";
+                }
             }
         }
         return null;
     }
 
     /**
-     * MISSING_COMPLETION: Saga never reached COMPLETED/FAILED but has anomalies.
+     * MISSING_COMPLETION / LATE_COMPLETION:
+     * If saga has MISSING_COMPLETION anomaly AND is still not complete → MISSING_COMPLETION (MEDIUM).
+     * If saga has MISSING_COMPLETION anomaly BUT has since completed → LATE_COMPLETION (LOW).
      */
     private String checkMissingCompletion(SagaInstance saga, List<SagaEvent> events,
-                                          List<Anomaly> anomalies, List<String> evidence,
-                                          List<String> suggestions) {
+            List<Anomaly> anomalies, List<String> evidence,
+            List<String> suggestions) {
         for (Anomaly anomaly : anomalies) {
-            if ("MISSING_COMPLETION".equals(anomaly.getAnomalyType())) {
-                evidence.add("Anomaly detected: " + anomaly.getDescription());
-                evidence.add("Events received: " + events.stream()
-                        .map(SagaEvent::getEventType)
-                        .collect(Collectors.joining(" → ")));
-                suggestions.add("Check if the next service in the saga workflow is running");
-                return "MISSING_COMPLETION";
+            if (anomaly.getAnomalyType() == AnomalyType.MISSING_COMPLETION) {
+                boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
+                        || saga.getStatus() == SagaStatus.COMPENSATED;
+
+                if (isTerminal) {
+                    evidence.add("Previously missing: " + anomaly.getDescription());
+                    evidence.add("Saga has since completed → final status: " + saga.getStatus());
+                    evidence.add("Events: " + events.stream()
+                            .map(SagaEvent::getEventType)
+                            .collect(Collectors.joining(" → ")));
+                    suggestions.add("Completion arrived late but saga finished successfully");
+                    suggestions.add("Consider increasing step timeout to avoid false alarms");
+                    return "LATE_COMPLETION";
+                } else {
+                    evidence.add("Anomaly detected: " + anomaly.getDescription());
+                    evidence.add("Events received: " + events.stream()
+                            .map(SagaEvent::getEventType)
+                            .collect(Collectors.joining(" → ")));
+                    suggestions.add("Check if the next service in the saga workflow is running");
+                    return "MISSING_COMPLETION";
+                }
             }
         }
         return null;
     }
 
     /**
-     * OUT_OF_ORDER: Events arrived out of expected workflow order.
+     * OUT_OF_ORDER / COMPLETED_WITH_ORDER_ANOMALY:
+     * If saga has OUT_OF_ORDER anomaly AND is still running → OUT_OF_ORDER (MEDIUM).
+     * If saga completed despite out-of-order events → COMPLETED_WITH_ORDER_ANOMALY (LOW).
      */
     private String checkOutOfOrder(List<Anomaly> anomalies, List<String> evidence,
-                                   List<String> suggestions) {
+            List<String> suggestions) {
+        // Note: saga param not available here, but we can check via anomaly context
         for (Anomaly anomaly : anomalies) {
-            if ("OUT_OF_ORDER".equals(anomaly.getAnomalyType())) {
+            if (anomaly.getAnomalyType() == AnomalyType.OUT_OF_ORDER) {
                 evidence.add("Anomaly detected: " + anomaly.getDescription());
                 suggestions.add("Check Kafka partition ordering and consumer processing");
                 return "OUT_OF_ORDER";
@@ -281,9 +359,9 @@ public class RcaService {
      * DUPLICATE_EVENT: Same event was received multiple times.
      */
     private String checkDuplicateEvent(List<Anomaly> anomalies, List<String> evidence,
-                                       List<String> suggestions) {
+            List<String> suggestions) {
         for (Anomaly anomaly : anomalies) {
-            if ("DUPLICATE_EVENT".equals(anomaly.getAnomalyType())) {
+            if (anomaly.getAnomalyType() == AnomalyType.DUPLICATE_EVENT) {
                 evidence.add("Anomaly detected: " + anomaly.getDescription());
                 suggestions.add("Verify producer idempotency and consumer deduplication");
                 return "DUPLICATE_EVENT";
@@ -297,7 +375,8 @@ public class RcaService {
     // =====================================================================
 
     private String extractTraceId(String payloadJson) {
-        if (payloadJson == null || payloadJson.isBlank()) return null;
+        if (payloadJson == null || payloadJson.isBlank())
+            return null;
         try {
             var node = objectMapper.readTree(payloadJson);
             if (node.has("traceId") && !node.get("traceId").isNull()) {

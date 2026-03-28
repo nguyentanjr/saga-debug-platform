@@ -75,7 +75,7 @@ public class CorrelationService {
             saga.setLastUpdated(eventTimestamp);
             log.info("New saga detected: {}", sagaId);
         } else {
-            // Track previous step for transition validation
+            // Track previous event type for transition validation
             var previousEvents = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
             if (!previousEvents.isEmpty()) {
                 previousStep = previousEvents.get(previousEvents.size() - 1).getEventType();
@@ -111,9 +111,15 @@ public class CorrelationService {
         anomalyDetectionService.detectMissingCompletion(sagaId);
 
         // 7. State machine transition validation
-        String expectedStep = workflowLoader.getOrderSagaWorkflow().getExpectedStepForEvent(eventType);
-        if (expectedStep != null && previousStep != null) {
-            anomalyDetectionService.detectInvalidTransition(sagaId, previousStep, eventType);
+        // Map eventType → stepName (e.g. ORDER_CREATED → CREATE_ORDER)
+        // because WorkflowSpec.isValidTransition() operates on step names, not event types.
+        var workflow = workflowLoader.getOrderSagaWorkflow();
+        if (workflow != null && previousStep != null) {
+            String previousStepName = workflow.getExpectedStepForEvent(previousStep);
+            String currentStepName = workflow.getExpectedStepForEvent(eventType);
+            if (previousStepName != null && currentStepName != null) {
+                anomalyDetectionService.detectInvalidTransition(sagaId, previousStepName, currentStepName);
+            }
         }
     }
 

@@ -11,6 +11,8 @@ import com.example.saga.events.PaymentCompletedEvent;
 import com.example.inventory.messaging.producer.InventoryEventProducer;
 import com.example.inventory.repository.InventoryRepository;
 import com.example.inventory.repository.InventoryReservationRepository;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.slf4j.Logger;
@@ -41,6 +43,8 @@ public class InventoryService {
 
     @Transactional
     @WithSpan("saga.inventory.reserve")
+    @CircuitBreaker(name = "inventoryProcessing", fallbackMethod = "handlePaymentCompletedFallback")
+    @Retry(name = "inventoryProcessing")
     public void handlePaymentCompleted(PaymentCompletedEvent event) {
 
         Span.current().setAttribute("order.id", event.getOrderId().toString());
@@ -64,7 +68,7 @@ public class InventoryService {
         Inventory inventory = inventoryRepository.findByProductId(productId)
                 .orElse(null);
 
-        if (inventory == null || inventory.getAvailableQuantity() > quantity) {
+        if (inventory == null || inventory.getAvailableQuantity() < quantity) {
             InventoryReservation reservation = new InventoryReservation();
             reservation.setId(UUID.randomUUID());
             reservation.setOrderId(event.getOrderId());
@@ -114,5 +118,20 @@ public class InventoryService {
         Inventory inventory = inventoryRepository.findByProductId(productId)
                 .orElseThrow(() -> new NotFoundException("Inventory not found for product " + productId));
         return new InventoryResponse(inventory.getProductId(), inventory.getAvailableQuantity());
+    }
+
+    /**
+     * Resilience4j fallback — publishes InventoryFailedEvent when circuit breaker opens.
+     */
+    public void handlePaymentCompletedFallback(PaymentCompletedEvent event, Throwable t) {
+        log.error("Circuit breaker / retry fallback for order {}: {}", event.getOrderId(), t.getMessage());
+
+        InventoryFailedEvent failedEvent = new InventoryFailedEvent();
+        failedEvent.setOrderId(event.getOrderId());
+        failedEvent.setSagaId(event.getSagaId());
+        failedEvent.setProductId(event.getProductId());
+        failedEvent.setQuantity(event.getQuantity());
+        failedEvent.setReason("Circuit breaker open: " + t.getMessage());
+        inventoryEventProducer.publishInventoryFailed(failedEvent);
     }
 }
