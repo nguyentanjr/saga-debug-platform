@@ -48,7 +48,7 @@ public class WorkflowSpec {
         return transitions.stream().anyMatch(t ->
                 t.getFrom().equals(fromStep) &&
                 t.getTo().equals(toStep) &&
-                (condition == null || t.getCondition().equals(condition))
+                (condition == null || condition.equals(t.getCondition()))
         );
     }
 

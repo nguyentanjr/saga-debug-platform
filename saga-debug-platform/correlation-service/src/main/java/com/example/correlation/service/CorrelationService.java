@@ -45,7 +45,8 @@ public class CorrelationService {
     @Transactional
     public void processEvent(String eventId, String sagaId, String eventType,
                              String stepName, String serviceName,
-                             Instant eventTimestamp, String payload) {
+                             Instant eventTimestamp, String payload,
+                             Instant receivedAt) {
 
         // Idempotency key: {sagaId}-{stepName}-{eventType}
         // This ensures the same saga step event is not processed twice,
@@ -102,6 +103,7 @@ public class CorrelationService {
         sagaEvent.setServiceName(serviceName);
         sagaEvent.setTimestamp(eventTimestamp);
         sagaEvent.setPayload(payload);
+        sagaEvent.setReceivedAt(receivedAt); // Set from Kafka listener, NOT default
         sagaEventRepository.save(sagaEvent);
 
         log.info("Saga {} | event={} | step={} | status={}", sagaId, eventType, stepName, newStatus);

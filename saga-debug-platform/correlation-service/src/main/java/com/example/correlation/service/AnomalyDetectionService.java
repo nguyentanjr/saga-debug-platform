@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -46,19 +47,36 @@ public class AnomalyDetectionService {
 
     /**
      * Detect out-of-order events for a specific saga.
+     *
+     * Logic: Sort events by ARRIVAL order (receivedAt).
+     * Then check if their CREATION timestamps (timestamp) are monotonically increasing.
+     * If event[i] was created BEFORE event[i-1] but arrived AFTER → out-of-order.
+     *
+     * Uses a 2-second clock skew tolerance to avoid false positives
+     * caused by unsynchronized clocks across microservices.
      */
     public void detectOutOfOrder(String sagaId) {
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
+        // Sort by receivedAt (arrival order), NOT by timestamp (creation order)
+        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByReceivedAtAsc(sagaId);
         if (events.size() < 2) return;
 
+        // Efficient DB check — avoid loading all anomalies into memory
+        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.OUT_OF_ORDER)) return;
+
+        // Tolerance for clock skew between microservices
+        Duration skewTolerance = Duration.ofSeconds(2);
+
         for (int i = 1; i < events.size(); i++) {
-            Instant prev = events.get(i - 1).getTimestamp();
-            Instant curr = events.get(i).getTimestamp();
-            if (curr.isBefore(prev)) {
+            Instant prevCreated = events.get(i - 1).getTimestamp();
+            Instant currCreated = events.get(i).getTimestamp();
+            // Only flag if timestamp difference exceeds clock skew tolerance
+            if (currCreated.plus(skewTolerance).isBefore(prevCreated)) {
                 createAnomaly(sagaId, AnomalyType.OUT_OF_ORDER,
-                        String.format("Event '%s' (at %s) arrived before '%s' (at %s)",
-                                events.get(i).getEventType(), curr,
-                                events.get(i - 1).getEventType(), prev));
+                        String.format("Event '%s' was received after '%s' but has an earlier creation timestamp (%s < %s)",
+                                events.get(i).getEventType(),
+                                events.get(i - 1).getEventType(),
+                                currCreated, prevCreated));
+                return; // One anomaly per saga is enough
             }
         }
     }
@@ -123,6 +141,9 @@ public class AnomalyDetectionService {
      * Detect missing completion — step started but no completion within timeout window.
      */
     public void detectMissingCompletion(String sagaId) {
+        // Skip if anomaly already exists for this saga
+        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_COMPLETION)) return;
+
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
 
         // Check if we have PAYMENT_COMPLETED but no corresponding INVENTORY event after timeout

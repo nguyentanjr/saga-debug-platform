@@ -91,6 +91,8 @@ public class SagaEventConsumer {
             "refund-payment", "payment-refunded"
     }, groupId = "correlation-engine-group")
     public void handleEvent(ConsumerRecord<String, String> record) {
+        // Capture arrival time IMMEDIATELY — before any processing
+        Instant receivedAt = Instant.now();
         try {
             String topic = record.topic();
             String eventType = TOPIC_EVENT_MAP.getOrDefault(topic, topic);
@@ -127,7 +129,7 @@ public class SagaEventConsumer {
 
             correlationService.processEvent(
                     eventId, sagaId, eventType, stepName,
-                    serviceName, eventTimestamp, record.value());
+                    serviceName, eventTimestamp, record.value(), receivedAt);
 
         } catch (Exception e) {
             log.error("Failed to process event from topic {}: {}", record.topic(), e.getMessage(), e);
