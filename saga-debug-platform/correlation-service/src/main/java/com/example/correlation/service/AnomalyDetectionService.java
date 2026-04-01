@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -51,9 +51,6 @@ public class AnomalyDetectionService {
      * Logic: Sort events by ARRIVAL order (receivedAt).
      * Then check if their CREATION timestamps (timestamp) are monotonically increasing.
      * If event[i] was created BEFORE event[i-1] but arrived AFTER → out-of-order.
-     *
-     * Uses a 2-second clock skew tolerance to avoid false positives
-     * caused by unsynchronized clocks across microservices.
      */
     public void detectOutOfOrder(String sagaId) {
         // Sort by receivedAt (arrival order), NOT by timestamp (creation order)
@@ -63,14 +60,10 @@ public class AnomalyDetectionService {
         // Efficient DB check — avoid loading all anomalies into memory
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.OUT_OF_ORDER)) return;
 
-        // Tolerance for clock skew between microservices
-        Duration skewTolerance = Duration.ofSeconds(2);
-
         for (int i = 1; i < events.size(); i++) {
             Instant prevCreated = events.get(i - 1).getTimestamp();
             Instant currCreated = events.get(i).getTimestamp();
-            // Only flag if timestamp difference exceeds clock skew tolerance
-            if (currCreated.plus(skewTolerance).isBefore(prevCreated)) {
+            if (currCreated.isBefore(prevCreated)) {
                 createAnomaly(sagaId, AnomalyType.OUT_OF_ORDER,
                         String.format("Event '%s' was received after '%s' but has an earlier creation timestamp (%s < %s)",
                                 events.get(i).getEventType(),
@@ -89,7 +82,7 @@ public class AnomalyDetectionService {
         if (workflow == null || workflow.getTransitions() == null) return;
 
         if (previousStep != null && !workflow.isValidTransition(previousStep, currentStep, null)) {
-            createAnomaly(sagaId, AnomalyType.OUT_OF_ORDER,
+            createAnomaly(sagaId, AnomalyType.INVALID_TRANSITION,
                     String.format("Invalid transition: %s -> %s (not defined in workflow spec)", previousStep, currentStep));
         }
     }
@@ -108,10 +101,10 @@ public class AnomalyDetectionService {
         Instant now = Instant.now();
 
         for (SagaInstance saga : runningSagas) {
-            List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            if (events.isEmpty()) continue;
-
-            SagaEvent lastEvent = events.get(events.size() - 1);
+            SagaEvent lastEvent = sagaEventRepository
+                    .findTopBySagaIdOrderByTimestampDesc(saga.getSagaId())
+                    .orElse(null);
+            if (lastEvent == null) continue;
             String currentStep = lastEvent.getEventType();
 
             // Get step-specific timeout or default to 60s
@@ -134,34 +127,11 @@ public class AnomalyDetectionService {
                                     lastEvent.getTimestamp(), currentStep, timeoutSeconds));
                 }
             }
+
         }
     }
 
-    /**
-     * Detect missing completion — step started but no completion within timeout window.
-     */
-    public void detectMissingCompletion(String sagaId) {
-        // Skip if anomaly already exists for this saga
-        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_COMPLETION)) return;
 
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
-
-        // Check if we have PAYMENT_COMPLETED but no corresponding INVENTORY event after timeout
-        boolean hasPaymentCompleted = events.stream()
-                .anyMatch(e -> "PAYMENT_COMPLETED".equals(e.getEventType()));
-        boolean hasInventoryResult = events.stream()
-                .anyMatch(e -> "INVENTORY_RESERVED".equals(e.getEventType()) || "INVENTORY_FAILED".equals(e.getEventType()));
-
-        if (hasPaymentCompleted && !hasInventoryResult) {
-            SagaEvent paymentEvent = events.stream()
-                    .filter(e -> "PAYMENT_COMPLETED".equals(e.getEventType()))
-                    .findFirst().orElse(null);
-            if (paymentEvent != null && paymentEvent.getTimestamp().plus(30, ChronoUnit.SECONDS).isBefore(Instant.now())) {
-                createAnomaly(sagaId, AnomalyType.MISSING_COMPLETION,
-                        "RESERVE_INVENTORY step missing completion: PAYMENT_COMPLETED received but no INVENTORY_RESERVED/FAILED");
-            }
-        }
-    }
 
     private void createAnomaly(String sagaId, AnomalyType type, String description) {
         Anomaly anomaly = new Anomaly();

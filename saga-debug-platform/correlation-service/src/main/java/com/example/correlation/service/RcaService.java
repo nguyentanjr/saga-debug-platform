@@ -98,17 +98,23 @@ public class RcaService {
             }
         }
 
-        // ---- MEDIUM rules ----
-        if (rootCause == null) {
-            rootCause = checkMissingCompletion(saga, events, anomalies, evidence, suggestions);
-            if (rootCause != null) {
-                // MISSING_COMPLETION → MEDIUM, LATE_COMPLETION → LOW
-                severity = "LATE_COMPLETION".equals(rootCause) ? "LOW" : "MEDIUM";
+        // ---- Recovery-aware: saga completed despite anomalies ----
+        if (rootCause == null && saga.getStatus() == SagaStatus.COMPLETED) {
+            // Check if there were any anomalies but saga still completed
+            boolean hasOutOfOrder = anomalies.stream()
+                    .anyMatch(a -> a.getAnomalyType() == AnomalyType.OUT_OF_ORDER);
+            if (hasOutOfOrder) {
+                rootCause = "COMPLETED_WITH_ORDER_ANOMALY";
+                severity = "LOW";
+                evidence.add("Saga completed successfully despite out-of-order events");
+                suggestions.add("Check Kafka partition ordering and consumer processing");
             }
         }
 
+
+        // ---- MEDIUM rules ----
         if (rootCause == null) {
-            rootCause = checkOutOfOrder(anomalies, evidence, suggestions);
+            rootCause = checkOutOfOrder(saga, anomalies, evidence, suggestions);
             if (rootCause != null)
                 severity = "MEDIUM";
         }
@@ -302,52 +308,26 @@ public class RcaService {
         return null;
     }
 
-    /**
-     * MISSING_COMPLETION / LATE_COMPLETION:
-     * If saga has MISSING_COMPLETION anomaly AND is still not complete → MISSING_COMPLETION (MEDIUM).
-     * If saga has MISSING_COMPLETION anomaly BUT has since completed → LATE_COMPLETION (LOW).
-     */
-    private String checkMissingCompletion(SagaInstance saga, List<SagaEvent> events,
-            List<Anomaly> anomalies, List<String> evidence,
-            List<String> suggestions) {
-        for (Anomaly anomaly : anomalies) {
-            if (anomaly.getAnomalyType() == AnomalyType.MISSING_COMPLETION) {
-                boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
-                        || saga.getStatus() == SagaStatus.COMPENSATED;
-
-                if (isTerminal) {
-                    evidence.add("Previously missing: " + anomaly.getDescription());
-                    evidence.add("Saga has since completed → final status: " + saga.getStatus());
-                    evidence.add("Events: " + events.stream()
-                            .map(SagaEvent::getEventType)
-                            .collect(Collectors.joining(" → ")));
-                    suggestions.add("Completion arrived late but saga finished successfully");
-                    suggestions.add("Consider increasing step timeout to avoid false alarms");
-                    return "LATE_COMPLETION";
-                } else {
-                    evidence.add("Anomaly detected: " + anomaly.getDescription());
-                    evidence.add("Events received: " + events.stream()
-                            .map(SagaEvent::getEventType)
-                            .collect(Collectors.joining(" → ")));
-                    suggestions.add("Check if the next service in the saga workflow is running");
-                    return "MISSING_COMPLETION";
-                }
-            }
-        }
-        return null;
-    }
 
     /**
      * OUT_OF_ORDER / COMPLETED_WITH_ORDER_ANOMALY:
      * If saga has OUT_OF_ORDER anomaly AND is still running → OUT_OF_ORDER (MEDIUM).
      * If saga completed despite out-of-order events → COMPLETED_WITH_ORDER_ANOMALY (LOW).
      */
-    private String checkOutOfOrder(List<Anomaly> anomalies, List<String> evidence,
-            List<String> suggestions) {
-        // Note: saga param not available here, but we can check via anomaly context
+    /**
+     * OUT_OF_ORDER: only for non-terminal sagas.
+     * If saga already completed, recovery-aware block above handles it.
+     */
+    private String checkOutOfOrder(SagaInstance saga, List<Anomaly> anomalies,
+            List<String> evidence, List<String> suggestions) {
+        boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
+                || saga.getStatus() == SagaStatus.COMPENSATED;
+        if (isTerminal) return null; // handled by COMPLETED_WITH_ORDER_ANOMALY above
+
         for (Anomaly anomaly : anomalies) {
             if (anomaly.getAnomalyType() == AnomalyType.OUT_OF_ORDER) {
                 evidence.add("Anomaly detected: " + anomaly.getDescription());
+                evidence.add("Saga still in " + saga.getStatus() + " status");
                 suggestions.add("Check Kafka partition ordering and consumer processing");
                 return "OUT_OF_ORDER";
             }

@@ -27,6 +27,12 @@ public class PaymentService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
+    // Toggle: khi true, payment sẽ throw exception → trigger Resilience4j fallback
+    private static volatile boolean failMode = false;
+
+    public static void setFailMode(boolean enabled) { failMode = enabled; }
+    public static boolean isFailMode() { return failMode; }
+
     private final PaymentRepository paymentRepository;
     private final PaymentEventProducer paymentEventProducer;
 
@@ -46,6 +52,12 @@ public class PaymentService {
         Span.current().setAttribute("product.id", event.getProductId());
         Span.current().setAttribute("quantity", event.getQuantity());
         Span.current().setAttribute("amount", event.getAmount().toString());
+
+        // Simulate failure for circuit breaker demo
+        if (failMode) {
+            log.warn("FAIL MODE enabled — rejecting payment for order {}", event.getOrderId());
+            throw new RuntimeException("Payment gateway unavailable (simulated failure)");
+        }
 
         // idempotency: if payment already exists for this order, skip
         if (paymentRepository.findByOrderId(event.getOrderId()).isPresent()) {

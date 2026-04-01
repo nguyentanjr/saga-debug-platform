@@ -74,6 +74,7 @@ resilience4j:
         enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2
         retryExceptions:
+          - java.lang.RuntimeException
           - java.io.IOException
           - java.util.concurrent.TimeoutException
   timelimiter:

@@ -110,7 +110,6 @@ public class CorrelationService {
 
         // 6. Anomaly detection
         anomalyDetectionService.detectOutOfOrder(sagaId);
-        anomalyDetectionService.detectMissingCompletion(sagaId);
 
         // 7. State machine transition validation
         // Map eventType → stepName (e.g. ORDER_CREATED → CREATE_ORDER)

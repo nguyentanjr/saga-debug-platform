@@ -8,6 +8,7 @@ com\example\payment\messaging\consumer\RefundPaymentConsumer.class
 com\example\payment\service\PaymentService.class
 com\example\payment\exception\NotFoundException.class
 com\example\payment\domain\PaymentStatus.class
+com\example\payment\controller\AdminController.class
 com\example\payment\PaymentServiceApplication.class
 com\example\payment\controller\PaymentController.class
 com\example\payment\messaging\consumer\OrderEventConsumer.class

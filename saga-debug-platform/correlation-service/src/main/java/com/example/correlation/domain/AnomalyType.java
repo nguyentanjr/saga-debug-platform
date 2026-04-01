@@ -4,5 +4,5 @@ public enum AnomalyType {
     STUCK_SAGA,
     DUPLICATE_EVENT,
     OUT_OF_ORDER,
-    MISSING_COMPLETION
+    INVALID_TRANSITION
 }
