@@ -47,5 +47,13 @@ public class KafkaConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic paymentRetryTopic() {
+        return TopicBuilder.name("payment-retry")
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
 }
 

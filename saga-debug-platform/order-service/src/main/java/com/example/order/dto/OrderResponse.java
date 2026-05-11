@@ -9,6 +9,7 @@ import java.util.UUID;
 public class OrderResponse {
 
     private UUID id;
+    private UUID sagaId;
     private String customerId;
     private String productId;
     private int quantity;
@@ -23,6 +24,14 @@ public class OrderResponse {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public UUID getSagaId() {
+        return sagaId;
+    }
+
+    public void setSagaId(UUID sagaId) {
+        this.sagaId = sagaId;
     }
 
     public String getCustomerId() {

@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/sagas")
@@ -58,6 +60,16 @@ public class SagaController {
             sagas = sagaInstanceRepository.findAll(pageRequest);
         }
 
+        // Bulk-fetch event counts to avoid N+1 query
+        List<String> sagaIds = sagas.getContent().stream()
+                .map(SagaInstance::getSagaId)
+                .collect(Collectors.toList());
+        Map<String, Long> eventCounts = sagaIds.isEmpty() ? Map.of()
+                : sagaEventRepository.countBySagaIdIn(sagaIds).stream()
+                    .collect(Collectors.toMap(
+                            r -> (String) r[0],
+                            r -> (Long) r[1]));
+
         Page<SagaListItem> result = sagas.map(saga -> {
             SagaListItem item = new SagaListItem();
             item.setSagaId(saga.getSagaId());
@@ -68,7 +80,7 @@ public class SagaController {
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
                 item.setDurationMs(Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis());
             }
-            item.setEventCount(sagaEventRepository.countBySagaId(saga.getSagaId()));
+            item.setEventCount(eventCounts.getOrDefault(saga.getSagaId(), 0L));
             return item;
         });
 

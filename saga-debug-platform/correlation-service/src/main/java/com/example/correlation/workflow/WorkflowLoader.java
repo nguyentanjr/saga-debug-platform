@@ -11,9 +11,7 @@ import org.springframework.stereotype.Component;
 import java.io.InputStream;
 import java.util.Map;
 
-/**
- * Loads workflow specifications from YAML files on startup.
- */
+
 @Component
 public class WorkflowLoader {
 

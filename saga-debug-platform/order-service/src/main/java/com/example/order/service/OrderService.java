@@ -183,6 +183,7 @@ public class OrderService {
     private OrderResponse toResponse(Order order) {
         OrderResponse dto = new OrderResponse();
         dto.setId(order.getId());
+        dto.setSagaId(order.getSagaId());
         dto.setCustomerId(order.getCustomerId());
         dto.setProductId(order.getProductId());
         dto.setQuantity(order.getQuantity());

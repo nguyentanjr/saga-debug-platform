@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface RcaResultRepository extends JpaRepository<RcaResult, Long> {
     List<RcaResult> findBySagaIdOrderByCreatedAtDesc(String sagaId);
+    void deleteAllBySagaId(String sagaId);
 }

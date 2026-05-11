@@ -14,6 +14,9 @@ public class SagaInstance {
     @Column(name = "workflow_type", nullable = false)
     private String workflowType = "ORDER_SAGA";
 
+    @Column(name = "order_id")
+    private String orderId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private SagaStatus status;
@@ -32,6 +35,9 @@ public class SagaInstance {
 
     public String getWorkflowType() { return workflowType; }
     public void setWorkflowType(String workflowType) { this.workflowType = workflowType; }
+
+    public String getOrderId() { return orderId; }
+    public void setOrderId(String orderId) { this.orderId = orderId; }
 
     public SagaStatus getStatus() { return status; }
     public void setStatus(SagaStatus status) { this.status = status; }

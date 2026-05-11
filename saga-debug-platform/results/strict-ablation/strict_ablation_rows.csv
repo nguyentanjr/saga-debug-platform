@@ -1,0 +1,376 @@
+profile,trial,scenarioId,category,split,predicted_root_cause,expected_root_cause,is_correct,status,saga_id,error
+confidence-only,1,SC01_HEALTHY,A,test,,,True,ok,e1bff196-9e7a-45a6-9893-9276db4257ae,
+confidence-only,1,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,2bed85fb-1910-4c79-bc69-1ca30df3ba81,
+confidence-only,1,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,1,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,1,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-d3272ff7,
+confidence-only,1,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,1,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-6c7647ab,
+confidence-only,1,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-d5e03a02,
+confidence-only,1,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-8c57ad94,
+confidence-only,1,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-68b114d3,
+confidence-only,1,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-0574db6c,
+confidence-only,1,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-11d95e9a,
+confidence-only,1,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-66f10e17,
+confidence-only,1,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-58a81af6,
+confidence-only,1,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-dcc8ebd8,
+confidence-only,1,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,1,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,1,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-bf9e5082,
+confidence-only,1,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-2d8acfa3,
+confidence-only,1,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-c10d72df,
+confidence-only,1,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-23bb9c3c,
+confidence-only,1,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-1cc5ef5a,
+confidence-only,1,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-7fd5ec22,
+confidence-only,1,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-97831886,
+confidence-only,1,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-496dd674,
+confidence-only,2,SC01_HEALTHY,A,test,,,True,ok,b5de56a4-10c1-4fae-bf5c-ea4aa0e11a7b,
+confidence-only,2,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,e169ffd7-46b9-4d7a-ad75-c3d02fe540fd,
+confidence-only,2,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,2,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,2,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-6056e07a,
+confidence-only,2,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,2,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-2ba4f93c,
+confidence-only,2,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-505b9422,
+confidence-only,2,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-585701d5,
+confidence-only,2,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-f9863cf6,
+confidence-only,2,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-0bdaa869,
+confidence-only,2,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-560e1700,
+confidence-only,2,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-75c644f7,
+confidence-only,2,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-a8c140ad,
+confidence-only,2,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-cdd61f97,
+confidence-only,2,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,2,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,2,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-3c1494e1,
+confidence-only,2,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-788c3cec,
+confidence-only,2,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-fab4a8c2,
+confidence-only,2,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-286cb770,
+confidence-only,2,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-2958a806,
+confidence-only,2,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-3acf0c4e,
+confidence-only,2,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-975733a2,
+confidence-only,2,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-31a82c89,
+confidence-only,3,SC01_HEALTHY,A,test,,,True,ok,aacb5fb2-3d0f-46a4-a17e-81f1122b6212,
+confidence-only,3,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,6f9e805e-985b-42b3-a352-6ac24011322c,
+confidence-only,3,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,3,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,3,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-9356d958,
+confidence-only,3,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,3,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-3bff524e,
+confidence-only,3,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-db3fddf6,
+confidence-only,3,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-c59ff7c3,
+confidence-only,3,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-015bb34e,
+confidence-only,3,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-f49b1fb3,
+confidence-only,3,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-9034e8c4,
+confidence-only,3,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-b87af23c,
+confidence-only,3,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-5a8cbc37,
+confidence-only,3,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-90ae5e98,
+confidence-only,3,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,3,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-only,3,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-1fd76cec,
+confidence-only,3,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-f38d5ab5,
+confidence-only,3,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-e0bcfe12,
+confidence-only,3,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-de92914f,
+confidence-only,3,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-fc6b1f37,
+confidence-only,3,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-7f71604b,
+confidence-only,3,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-f19c2ed6,
+confidence-only,3,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-137b0882,
+confidence-heavy,1,SC01_HEALTHY,A,test,,,True,ok,375d4a9f-7e6c-4921-a4d6-c71b62523f48,
+confidence-heavy,1,SC02_COMPENSATION_HAPPY_PATH,D,train,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,d2590702-82c4-4f2c-bbd4-f533e5c1b1c4,
+confidence-heavy,1,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,1,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,1,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-1fdd3656,
+confidence-heavy,1,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,1,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-cb841d02,
+confidence-heavy,1,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-96ac8215,
+confidence-heavy,1,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-948e938b,
+confidence-heavy,1,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-6a7c3657,
+confidence-heavy,1,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-2c1f4571,
+confidence-heavy,1,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-f6618eb3,
+confidence-heavy,1,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-8cf13fe0,
+confidence-heavy,1,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-33e25897,
+confidence-heavy,1,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-fa3b5917,
+confidence-heavy,1,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,1,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,1,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-d03557b8,
+confidence-heavy,1,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-34018972,
+confidence-heavy,1,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-83952d56,
+confidence-heavy,1,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-8923f364,
+confidence-heavy,1,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-2bd5ef1b,
+confidence-heavy,1,SC24_DELAYED_COMPENSATION,D,test,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,ev-sc24-1ac86285,
+confidence-heavy,1,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-d631d7e4,
+confidence-heavy,1,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-37586815,
+confidence-heavy,2,SC01_HEALTHY,A,test,,,True,ok,ceb0ffdd-6b6d-4dc6-9990-72cee38418a1,
+confidence-heavy,2,SC02_COMPENSATION_HAPPY_PATH,D,train,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,ae4b719f-d902-42c1-abc0-705b80d5825c,
+confidence-heavy,2,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,2,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,2,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-081125a5,
+confidence-heavy,2,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,2,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-602b310b,
+confidence-heavy,2,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-9bc7f6cd,
+confidence-heavy,2,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-df71cf4a,
+confidence-heavy,2,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-8a3ce8a1,
+confidence-heavy,2,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-a491880b,
+confidence-heavy,2,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-3a094ea8,
+confidence-heavy,2,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-300c8aab,
+confidence-heavy,2,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-237da4ab,
+confidence-heavy,2,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-73edc66f,
+confidence-heavy,2,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,2,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,2,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-0009a799,
+confidence-heavy,2,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-86c2ba7d,
+confidence-heavy,2,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-1c7a1869,
+confidence-heavy,2,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-d290f040,
+confidence-heavy,2,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-32bd8434,
+confidence-heavy,2,SC24_DELAYED_COMPENSATION,D,test,COMPENSATION_NOT_TRIGGERED,FORWARD_STEP_FAILURE,False,ok,ev-sc24-5111e63e,
+confidence-heavy,2,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-1b4c9608,
+confidence-heavy,2,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-11e3d0a5,
+confidence-heavy,3,SC01_HEALTHY,A,test,,,True,ok,a121d13a-506d-48af-910e-c39bf9bcf1aa,
+confidence-heavy,3,SC02_COMPENSATION_HAPPY_PATH,D,train,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,6e2080d0-cad9-4204-a143-e37c9bc717ba,
+confidence-heavy,3,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,3,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,3,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-12805bfa,
+confidence-heavy,3,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,3,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-c85f2ea0,
+confidence-heavy,3,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-8f6c2c11,
+confidence-heavy,3,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-f7b3f74d,
+confidence-heavy,3,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-977f51c1,
+confidence-heavy,3,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-22cae2a2,
+confidence-heavy,3,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-937bc03e,
+confidence-heavy,3,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-c413dad4,
+confidence-heavy,3,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-bcfe76c9,
+confidence-heavy,3,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-064ceae5,
+confidence-heavy,3,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,3,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+confidence-heavy,3,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-a6720b6c,
+confidence-heavy,3,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-a2d0baa8,
+confidence-heavy,3,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-2b3c604f,
+confidence-heavy,3,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-198bdff4,
+confidence-heavy,3,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-a11e21c0,
+confidence-heavy,3,SC24_DELAYED_COMPENSATION,D,test,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,ev-sc24-59aea8b7,
+confidence-heavy,3,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-e4798b3c,
+confidence-heavy,3,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-ce1a81fc,
+equal-weight,1,SC01_HEALTHY,A,test,,,True,ok,ef28c7a2-49d2-4f8d-aa06-387a2880178f,
+equal-weight,1,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,60317be4-adbf-442a-9f9e-d733fd4cabb7,
+equal-weight,1,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,1,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,1,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-3f1fc887,
+equal-weight,1,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,1,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-040714f4,
+equal-weight,1,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-2e7f74d7,
+equal-weight,1,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-b6c921b3,
+equal-weight,1,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-e0215102,
+equal-weight,1,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-87c9c1c8,
+equal-weight,1,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-a59ad33e,
+equal-weight,1,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-df2a3dd7,
+equal-weight,1,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-8ecdc0fb,
+equal-weight,1,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-f4b1bade,
+equal-weight,1,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,1,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,1,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-a556fcf9,
+equal-weight,1,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-d29d75c6,
+equal-weight,1,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-560a563f,
+equal-weight,1,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-a5ba037d,
+equal-weight,1,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-610316c1,
+equal-weight,1,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-76742734,
+equal-weight,1,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-f6a75dd3,
+equal-weight,1,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-27fcee4e,
+equal-weight,2,SC01_HEALTHY,A,test,,,True,ok,5ad39217-ca6b-4726-aa5b-5e5ae3c28861,
+equal-weight,2,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,01a50b2e-e771-43e5-9e04-4acd6d253c90,
+equal-weight,2,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,2,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,2,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-b3102341,
+equal-weight,2,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,2,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-2ee0cded,
+equal-weight,2,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-e75ac1d0,
+equal-weight,2,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-9a1ebf42,
+equal-weight,2,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-1afe77cc,
+equal-weight,2,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-48a0612d,
+equal-weight,2,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-c3b8fd95,
+equal-weight,2,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-a79b25b0,
+equal-weight,2,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-48b54700,
+equal-weight,2,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-f9a47017,
+equal-weight,2,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,2,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,2,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-a63736e1,
+equal-weight,2,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-4b3632e1,
+equal-weight,2,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-93dcfe34,
+equal-weight,2,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-94fa4884,
+equal-weight,2,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-68cb628e,
+equal-weight,2,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-afeee239,
+equal-weight,2,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-bd5abf2a,
+equal-weight,2,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-a0b5176b,
+equal-weight,3,SC01_HEALTHY,A,test,,,True,ok,45f17f70-18b6-45a7-ae8b-0a2eaec861d1,
+equal-weight,3,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,cffbe3aa-3d99-49f0-a022-e19da39071ec,
+equal-weight,3,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,3,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,3,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-71bf58d0,
+equal-weight,3,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,3,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-4cf907d3,
+equal-weight,3,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-2a05960a,
+equal-weight,3,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-dce8c99b,
+equal-weight,3,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-55aa6e1b,
+equal-weight,3,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-201c9fe5,
+equal-weight,3,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-73fd3ade,
+equal-weight,3,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-9e07c6a0,
+equal-weight,3,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-a2751f9a,
+equal-weight,3,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-00eb4da5,
+equal-weight,3,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,3,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+equal-weight,3,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-9c29df59,
+equal-weight,3,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-d43f96b0,
+equal-weight,3,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-52f28d5c,
+equal-weight,3,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-5732b09a,
+equal-weight,3,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-f3247912,
+equal-weight,3,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-ca1e5cfb,
+equal-weight,3,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-8a76e6ac,
+equal-weight,3,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-6a726f75,
+severity-heavy,1,SC01_HEALTHY,A,test,,,True,ok,22e05f92-e113-4f74-9498-9daf25aab694,
+severity-heavy,1,SC02_COMPENSATION_HAPPY_PATH,D,train,TERMINAL_STATE_OVERWRITE,FORWARD_STEP_FAILURE,False,ok,2ee6d022-07ce-4238-894f-b5c02e818d03,
+severity-heavy,1,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,1,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,1,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-f063e671,
+severity-heavy,1,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,1,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-c447e122,
+severity-heavy,1,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-bf2af51e,
+severity-heavy,1,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-42a6b503,
+severity-heavy,1,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-212ef8a4,
+severity-heavy,1,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-753cea2c,
+severity-heavy,1,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-b5fe75f9,
+severity-heavy,1,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-9c6a3d22,
+severity-heavy,1,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-5102f673,
+severity-heavy,1,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-2686a4b5,
+severity-heavy,1,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,1,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,1,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-b2e478c0,
+severity-heavy,1,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-274e17fd,
+severity-heavy,1,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-8e0ed51b,
+severity-heavy,1,SC22_COMPENSATION_NOT_TRIGGERED,D,train,COMPENSATION_NOT_TRIGGERED,COMPENSATION_NOT_TRIGGERED,True,ok,ev-sc22-0863c19a,
+severity-heavy,1,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-bcb9157b,
+severity-heavy,1,SC24_DELAYED_COMPENSATION,D,test,DOWNSTREAM_TIMEOUT,FORWARD_STEP_FAILURE,False,ok,ev-sc24-2b7dcb8d,
+severity-heavy,1,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-555f485a,
+severity-heavy,1,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-b129d8a8,
+severity-heavy,2,SC01_HEALTHY,A,test,,,True,ok,84a41408-2eb1-4c25-acd4-878632030e93,
+severity-heavy,2,SC02_COMPENSATION_HAPPY_PATH,D,train,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,fe6e41cf-ca4e-49f9-80bb-f77004e3ced7,
+severity-heavy,2,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,2,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,2,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-ade62e7c,
+severity-heavy,2,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,2,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-043f7433,
+severity-heavy,2,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-629435f2,
+severity-heavy,2,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-105fd100,
+severity-heavy,2,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-7a3214a9,
+severity-heavy,2,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-343061f2,
+severity-heavy,2,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-6d5c8651,
+severity-heavy,2,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-78e614c6,
+severity-heavy,2,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-13afbaa2,
+severity-heavy,2,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-db6b74a1,
+severity-heavy,2,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,2,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,2,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-5e5ab5fb,
+severity-heavy,2,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-a76fdd31,
+severity-heavy,2,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-47223d24,
+severity-heavy,2,SC22_COMPENSATION_NOT_TRIGGERED,D,train,COMPENSATION_NOT_TRIGGERED,COMPENSATION_NOT_TRIGGERED,True,ok,ev-sc22-8a59a652,
+severity-heavy,2,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-ad20fbe1,
+severity-heavy,2,SC24_DELAYED_COMPENSATION,D,test,DOWNSTREAM_TIMEOUT,FORWARD_STEP_FAILURE,False,ok,ev-sc24-afd87a43,
+severity-heavy,2,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-25a3704f,
+severity-heavy,2,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-2f388089,
+severity-heavy,3,SC01_HEALTHY,A,test,,,True,ok,3bdf7b34-41b2-4b9e-99bc-65d82ab0abd9,
+severity-heavy,3,SC02_COMPENSATION_HAPPY_PATH,D,train,INVALID_TRANSITION,FORWARD_STEP_FAILURE,False,ok,25dc208f-5edc-455e-b55f-c99d4c321ab0,
+severity-heavy,3,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,3,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,3,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-7960fc20,
+severity-heavy,3,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,3,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-7ea3d153,
+severity-heavy,3,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-16700e9b,
+severity-heavy,3,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-1963f6c3,
+severity-heavy,3,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-3f77606f,
+severity-heavy,3,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-bce75430,
+severity-heavy,3,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-cce4b949,
+severity-heavy,3,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-bee1e443,
+severity-heavy,3,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-ed61d750,
+severity-heavy,3,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-96d90309,
+severity-heavy,3,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,3,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+severity-heavy,3,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-eb4456b3,
+severity-heavy,3,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-198a2f76,
+severity-heavy,3,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-9af033bb,
+severity-heavy,3,SC22_COMPENSATION_NOT_TRIGGERED,D,train,COMPENSATION_NOT_TRIGGERED,COMPENSATION_NOT_TRIGGERED,True,ok,ev-sc22-dafefbe6,
+severity-heavy,3,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-846a1cd1,
+severity-heavy,3,SC24_DELAYED_COMPENSATION,D,test,DOWNSTREAM_TIMEOUT,FORWARD_STEP_FAILURE,False,ok,ev-sc24-2f4b431b,
+severity-heavy,3,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-671cdfd0,
+severity-heavy,3,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-c77c8361,
+evidence-heavy,1,SC01_HEALTHY,A,test,,,True,ok,1c1d1e85-ff42-42aa-a48e-4c35de68b558,
+evidence-heavy,1,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,164de0f4-1e99-4bb0-b6dc-e03d9ac5bc12,
+evidence-heavy,1,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,1,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,1,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-f2416234,
+evidence-heavy,1,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,1,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-42cf8439,
+evidence-heavy,1,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-8cd3cb27,
+evidence-heavy,1,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-ab93e03a,
+evidence-heavy,1,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-03eb64c5,
+evidence-heavy,1,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-7fa7ac9e,
+evidence-heavy,1,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-1112c58b,
+evidence-heavy,1,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-f6ec9d22,
+evidence-heavy,1,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-de8afd51,
+evidence-heavy,1,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-5ab32205,
+evidence-heavy,1,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,1,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,1,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-bd008303,
+evidence-heavy,1,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-e5368a60,
+evidence-heavy,1,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-b9962759,
+evidence-heavy,1,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-5ad5ef8b,
+evidence-heavy,1,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-cc2bd897,
+evidence-heavy,1,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-36a3065e,
+evidence-heavy,1,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-137e6820,
+evidence-heavy,1,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-4b1c12e8,
+evidence-heavy,2,SC01_HEALTHY,A,test,,,True,ok,5673eb02-71ee-4c9d-8a0d-6f3dc348ef47,
+evidence-heavy,2,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,76b677cd-f7ae-4f0e-9516-c468df799b0f,
+evidence-heavy,2,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,2,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,2,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-cbd930fa,
+evidence-heavy,2,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,2,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-59967170,
+evidence-heavy,2,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-0714d501,
+evidence-heavy,2,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-e4aaf589,
+evidence-heavy,2,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-c687e37f,
+evidence-heavy,2,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-65237b6c,
+evidence-heavy,2,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-479505e3,
+evidence-heavy,2,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-3f0b2512,
+evidence-heavy,2,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-5713ac4b,
+evidence-heavy,2,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-9e8687a4,
+evidence-heavy,2,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,2,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,2,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-c3067b21,
+evidence-heavy,2,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-a4d998e4,
+evidence-heavy,2,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-71eedf70,
+evidence-heavy,2,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-2f08f89d,
+evidence-heavy,2,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-757323ee,
+evidence-heavy,2,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-5f9407fd,
+evidence-heavy,2,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-09a8e796,
+evidence-heavy,2,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-d141e43b,
+evidence-heavy,3,SC01_HEALTHY,A,test,,,True,ok,d3286655-3d12-4939-9c0b-2bf14c3ab56c,
+evidence-heavy,3,SC02_COMPENSATION_HAPPY_PATH,D,train,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,b48116c4-1e47-4062-baa9-4db236cbcc6b,
+evidence-heavy,3,SC03_STUCK_LIVE,A,train,,STUCK_UNKNOWN_CAUSE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,3,SC04_STUCK_RECOVERED_BRIEF,A,train,,TRANSIENT_SERVICE_FAILURE,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,3,SC05_COMPENSATION_STEP_FAILURE,D,train,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc05-a467a485,
+evidence-heavy,3,SC06_CIRCUIT_BREAKER_REAL,B,train,,CIRCUIT_BREAKER_OPEN,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,3,SC07_NETWORK_LATENCY_TOXIPROXY,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc07-4659d64b,
+evidence-heavy,3,SC08_DUPLICATE_EVENT_FAST,E,train,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc08-b2b9157c,
+evidence-heavy,3,SC09_OUT_OF_ORDER,C,train,OUT_OF_ORDER_DELIVERY,OUT_OF_ORDER_DELIVERY,True,ok,ev-sc09-150b308d,
+evidence-heavy,3,SC10_INVALID_TRANSITION,C,train,INVALID_TRANSITION,INVALID_TRANSITION,True,ok,ev-sc10-5f682fc3,
+evidence-heavy,3,SC11_ORPHAN_EVENT,E,train,WRONG_SAGA_CORRELATION_KEY,WRONG_SAGA_CORRELATION_KEY,True,ok,ev-sc11-90a15663,
+evidence-heavy,3,SC12_RETRY_STORM_NO_CB,B,train,TIMEOUT_RETRY_STORM,TIMEOUT_RETRY_STORM,True,ok,ev-sc12-0be32c1b,
+evidence-heavy,3,SC13_FORBIDDEN_POST_TERMINAL,C,train,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc13-f26e4087,
+evidence-heavy,3,SC14_MISSING_TRACE_CONTEXT,E,train,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc14-76818be8,
+evidence-heavy,3,SC15_STEP_TIMEOUT_INJECT,B,train,SERVICE_CRASH,DOWNSTREAM_TIMEOUT,False,ok,ev-sc15-da69ce5e,
+evidence-heavy,3,SC16_STUCK_RECOVERED_LONG,A,train,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,3,SC17_STUCK_DEAD_PERMANENT,A,test,,SERVICE_CRASH,False,skipped_invalid,,explicitly skipped: known fragile saga-linkage in current environment
+evidence-heavy,3,SC19_TIMEOUT_THEN_RECOVER,B,test,DOWNSTREAM_TIMEOUT,DOWNSTREAM_TIMEOUT,True,ok,ev-sc19-e503bb43,
+evidence-heavy,3,SC20_STATE_REGRESSION,C,test,TERMINAL_STATE_OVERWRITE,TERMINAL_STATE_OVERWRITE,True,ok,ev-sc20-fa2782a4,
+evidence-heavy,3,SC21_MULTI_TERMINAL_CONFLICT,C,test,MULTI_TERMINAL_CONFLICT,MULTI_TERMINAL_CONFLICT,True,ok,ev-sc21-f5ba4397,
+evidence-heavy,3,SC22_COMPENSATION_NOT_TRIGGERED,D,train,STUCK_UNKNOWN_CAUSE,COMPENSATION_NOT_TRIGGERED,False,ok,ev-sc22-c17c2302,
+evidence-heavy,3,SC23_DUPLICATE_COMPENSATION,D,test,COMPENSATION_STEP_FAILURE,COMPENSATION_STEP_FAILURE,True,ok,ev-sc23-e77c1326,
+evidence-heavy,3,SC24_DELAYED_COMPENSATION,D,test,FORWARD_STEP_FAILURE,FORWARD_STEP_FAILURE,True,ok,ev-sc24-0928eabb,
+evidence-heavy,3,SC25_DUPLICATE_EVENT_DELAYED,E,test,DUPLICATE_DELIVERY,DUPLICATE_DELIVERY,True,ok,ev-sc25-b363bd9f,
+evidence-heavy,3,SC26_PARTIAL_TRACE_PROPAGATION,E,test,MISSING_TRACE_PROPAGATION,MISSING_TRACE_PROPAGATION,True,ok,ev-sc26-9e711611,

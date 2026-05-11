@@ -43,3 +43,28 @@ testem.log
 # System Files
 .DS_Store
 Thumbs.db
+
+# Maven
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Temp/Misc
+*.zip
+New folder*
+"New folder*"
+scenarios.txt
+*.md
+docs/
+

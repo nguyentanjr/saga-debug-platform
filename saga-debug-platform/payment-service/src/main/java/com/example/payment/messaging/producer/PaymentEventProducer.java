@@ -4,6 +4,7 @@ import com.example.saga.events.BaseEvent;
 import com.example.saga.events.PaymentCompletedEvent;
 import com.example.saga.events.PaymentFailedEvent;
 import com.example.saga.events.PaymentRefundedEvent;
+import com.example.saga.events.RetryAttemptedEvent;
 import io.opentelemetry.api.trace.Span;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
@@ -61,6 +62,26 @@ public class PaymentEventProducer {
                         log.error("Failed to publish PaymentRefunded for {}: {}", event.getOrderId(), ex.getMessage());
                     } else {
                         log.info("Published PaymentRefunded for {} [sagaId={}]", event.getOrderId(), event.getSagaId());
+                    }
+                });
+    }
+
+    public void publishRetryAttempted(RetryAttemptedEvent event) {
+        enrichTraceContext(event);
+        String key = event.getOrderId() != null
+                ? event.getOrderId().toString()
+                : event.getSagaId().toString();
+        ProducerRecord<String, Object> record =
+                new ProducerRecord<>("payment-retry", key, event);
+        addStandardHeaders(record, event);
+        kafkaTemplate.send(record)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("Failed to publish PaymentRetry for saga {}: {}",
+                                event.getSagaId(), ex.getMessage());
+                    } else {
+                        log.info("Published PaymentRetry for saga {} [attempt={}]",
+                                event.getSagaId(), event.getAttemptNumber());
                     }
                 });
     }

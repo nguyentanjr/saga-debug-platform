@@ -42,7 +42,8 @@ spring:
         spring.json.type.mapping: >-
           paymentCompletedEvent:com.example.saga.events.PaymentCompletedEvent,
           paymentFailedEvent:com.example.saga.events.PaymentFailedEvent,
-          paymentRefundedEvent:com.example.saga.events.PaymentRefundedEvent
+          paymentRefundedEvent:com.example.saga.events.PaymentRefundedEvent,
+          retryAttemptedEvent:com.example.saga.events.RetryAttemptedEvent
 
 management:
   endpoints:
@@ -54,8 +55,17 @@ management:
       enabled: true
 
 # Resilience4j Configuration
+# Aspect order: CircuitBreaker is OUTER, Retry is INNER. With this order:
+#   CB.execute( () -> Retry.execute( actualMethod() ) )
+# so the Retry aspect sees individual exception attempts and fires onRetry events
+# (consumed by Resilience4jRetryListenerConfig to emit PAYMENT_RETRY).
+# Once Retry exhausts, the exception propagates out to CircuitBreaker, which
+# invokes the fallback method (handleOrderCreatedFallback → PAYMENT_FAILED).
+# Default order is the reverse (Retry outer, CB inner), which causes CB's
+# fallback to mask the exception from Retry → no retry happens.
 resilience4j:
   circuitbreaker:
+    circuit-breaker-aspect-order: 2
     instances:
       paymentProcessing:
         registerHealthIndicator: true
@@ -67,9 +77,16 @@ resilience4j:
         failureRateThreshold: 50
         eventConsumerBufferSize: 10
   retry:
+    retry-aspect-order: 1
     instances:
       paymentProcessing:
-        maxAttempts: 3
+        # maxAttempts = 4 → 1 initial call + 3 retries per failing saga.
+        # This matches the correlation-service detectRetryBurst threshold
+        # (BURST_THRESHOLD=3 retry events within BURST_WINDOW=60s) so that a
+        # single failed saga emits enough PAYMENT_RETRY events to trigger
+        # the RETRY_BURST anomaly. Reducing this would make the detector
+        # require multiple sagas to fire concurrently.
+        maxAttempts: 4
         waitDuration: 1s
         enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2

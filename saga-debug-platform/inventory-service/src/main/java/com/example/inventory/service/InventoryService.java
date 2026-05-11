@@ -46,7 +46,6 @@ public class InventoryService {
     @CircuitBreaker(name = "inventoryProcessing", fallbackMethod = "handlePaymentCompletedFallback")
     @Retry(name = "inventoryProcessing")
     public void handlePaymentCompleted(PaymentCompletedEvent event) {
-
         Span.current().setAttribute("order.id", event.getOrderId().toString());
         if (event.getSagaId() != null) {
             Span.current().setAttribute("saga.id", event.getSagaId().toString());

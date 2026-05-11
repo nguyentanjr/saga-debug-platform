@@ -31,15 +31,17 @@ public class DeduplicationCache {
      * Check if eventId has been seen before.
      * If not seen, mark as seen and return false.
      * If already seen, return true (duplicate).
+     * Uses Caffeine's atomic get() to prevent race conditions between
+     * concurrent Kafka consumer threads.
      */
     public boolean isDuplicate(String eventId) {
         if (eventId == null) return false;
-        Boolean existing = cache.getIfPresent(eventId);
-        if (existing != null) {
-            return true;
-        }
-        cache.put(eventId, Boolean.TRUE);
-        return false;
+        boolean[] wasAbsent = {false};
+        cache.get(eventId, k -> {
+            wasAbsent[0] = true;
+            return Boolean.TRUE;
+        });
+        return !wasAbsent[0];
     }
 
     /**

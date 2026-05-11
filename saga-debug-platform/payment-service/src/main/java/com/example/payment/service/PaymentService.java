@@ -43,23 +43,24 @@ public class PaymentService {
 
     @WithSpan("saga.payment.process_created")
     @Transactional
-    @CircuitBreaker(name = "paymentProcessing", fallbackMethod = "handleOrderCreatedFallback")
-    @Retry(name = "paymentProcessing")
+    @CircuitBreaker(name = "paymentProcessing")
+    @Retry(name = "paymentProcessing", fallbackMethod = "handleOrderCreatedFallback")
     public void handleOrderCreated(OrderCreatedEvent event) {
-
+        // NOTE: MDC values (sagaId, orderId) are populated by OrderEventConsumer
+        // BEFORE entering this @Retry-wrapped method, so that Resilience4j's
+        // onRetry listener sees them on every retry attempt. Do NOT clear MDC
+        // here — the consumer's finally block owns that lifecycle.
         Span.current().setAttribute("order.id", event.getOrderId().toString());
         Span.current().setAttribute("saga.id", event.getSagaId().toString());
         Span.current().setAttribute("product.id", event.getProductId());
         Span.current().setAttribute("quantity", event.getQuantity());
         Span.current().setAttribute("amount", event.getAmount().toString());
 
-        // Simulate failure for circuit breaker demo
         if (failMode) {
             log.warn("FAIL MODE enabled — rejecting payment for order {}", event.getOrderId());
             throw new RuntimeException("Payment gateway unavailable (simulated failure)");
         }
 
-        // idempotency: if payment already exists for this order, skip
         if (paymentRepository.findByOrderId(event.getOrderId()).isPresent()) {
             log.info("Payment already exists for order {}. Skipping.", event.getOrderId());
             return;
@@ -74,14 +75,12 @@ public class PaymentService {
 
         paymentRepository.save(payment);
 
-        // simple rule: always succeed for demo
         payment.setStatus(PaymentStatus.COMPLETED);
         paymentRepository.save(payment);
 
         PaymentCompletedEvent completedEvent = new PaymentCompletedEvent();
         completedEvent.setOrderId(payment.getOrderId());
         completedEvent.setAmount(payment.getAmount());
-        // Passthrough: forward from OrderCreatedEvent, NOT stored in Payment DB
         completedEvent.setSagaId(event.getSagaId());
         completedEvent.setProductId(event.getProductId());
         completedEvent.setQuantity(event.getQuantity());

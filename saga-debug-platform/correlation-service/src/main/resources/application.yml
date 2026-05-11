@@ -36,3 +36,24 @@ management:
     web:
       exposure:
         include: health,info
+
+# ============================================================================
+# RCA rule-ranking weights.
+#
+# Default profile: "confidence-only" — reproduces the legacy "sort by confidence"
+# behaviour exactly (w_c=1.0, others=0). This makes adding the ranking scaffold
+# behaviour-preserving for existing tests.
+#
+# Override via Spring profile during ablation:
+#   --spring.profiles.active=rca-equal-weight
+#   --spring.profiles.active=rca-confidence-heavy
+#   --spring.profiles.active=rca-severity-heavy
+#   --spring.profiles.active=rca-evidence-heavy
+# (corresponding application-rca-*.yml files supply the alternative weights)
+# ============================================================================
+rca:
+  ranking:
+    profile-name: confidence-only
+    confidence-weight: 1.0
+    severity-weight: 0.0
+    evidence-weight: 0.0

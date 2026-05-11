@@ -1,0 +1,36 @@
+SAGA OBSERVABILITY PLATFORM — EVALUATION REPORT (Tier 2)
+Generated: 2026-05-11 18:40:32
+============================================================
+
+SC15_STEP_TIMEOUT_INJECT
+  B3 — large gap between steps → STEP_TIMEOUT (scheduler)
+  Expected RCA: DOWNSTREAM_TIMEOUT
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 68.179s  |  RCA Latency: 34.3ms
+
+SC22_COMPENSATION_NOT_TRIGGERED
+  D3 — INVENTORY_FAILED but no REFUND_PAYMENT → COMPENSATION_MISSING (R09)
+  Expected RCA: COMPENSATION_NOT_TRIGGERED
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 73.141s  |  RCA Latency: 24.6ms
+
+
+OVERALL: Accuracy=100.0%  PASS
+
+RCA CLASSIFICATION METRICS
+  Precision: 1.000
+  Recall:    1.000
+  F1-Score:  1.000
+  TP=4  FP=0  FN=0  TN=0
+
+  Per-class breakdown:
+  RCA Label                             Prec Recall     F1 Support
+  ------------------------------------------------------------
+  COMPENSATION_NOT_TRIGGERED           1.000  1.000  1.000       2
+  DOWNSTREAM_TIMEOUT                   1.000  1.000  1.000       2
+
+ANOMALY DETECTION METRICS
+  Precision: 0.400
+  Recall:    1.000
+  F1-Score:  0.571
+  TP=4  FP=6  FN=0

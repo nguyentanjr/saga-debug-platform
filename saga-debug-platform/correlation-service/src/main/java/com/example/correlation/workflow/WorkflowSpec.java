@@ -1,11 +1,11 @@
 package com.example.correlation.workflow;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 import java.util.Map;
 
-/**
- * Domain model for workflow specification loaded from YAML.
- */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkflowSpec {
 
     private String name;
@@ -33,28 +33,34 @@ public class WorkflowSpec {
     public Map<String, String> getValidEventTypes() { return validEventTypes; }
     public void setValidEventTypes(Map<String, String> validEventTypes) { this.validEventTypes = validEventTypes; }
 
-    /**
-     * Get the expected step name for a given event type.
-     */
+
     public String getExpectedStepForEvent(String eventType) {
         return validEventTypes != null ? validEventTypes.get(eventType) : null;
     }
 
-    /**
-     * Check if a transition from -> to is valid.
-     */
+
     public boolean isValidTransition(String fromStep, String toStep, String condition) {
-        if (transitions == null) return true; // no validation if not defined
-        return transitions.stream().anyMatch(t ->
+        if (transitions == null) return true;
+
+        // Exact match: from → to with same condition
+        boolean exactMatch = transitions.stream().anyMatch(t ->
                 t.getFrom().equals(fromStep) &&
                 t.getTo().equals(toStep) &&
-                (condition == null || condition.equals(t.getCondition()))
-        );
+                (condition == null || condition.equals(t.getCondition())));
+        if (exactMatch) return true;
+
+        // A FAILED event at step X means the saga reached step X (valid forward
+        // transition) but X itself failed. Accept if from → to exists with any
+        // condition, since the step was legitimately reached.
+        if ("FAILED".equals(condition)) {
+            return transitions.stream().anyMatch(t ->
+                    t.getFrom().equals(fromStep) && t.getTo().equals(toStep));
+        }
+
+        return false;
     }
 
-    /**
-     * Get timeout for a given step in seconds.
-     */
+
     public int getStepTimeoutSeconds(String stepId) {
         if (steps != null) {
             for (StepSpec step : steps) {
@@ -86,6 +92,7 @@ public class WorkflowSpec {
 
     // --- Nested classes ---
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class StepSpec {
         private String id;
         private String service;
