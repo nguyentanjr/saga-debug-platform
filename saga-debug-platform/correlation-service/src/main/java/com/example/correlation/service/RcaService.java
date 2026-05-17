@@ -1,20 +1,33 @@
 package com.example.correlation.service;
 
 import com.example.correlation.domain.*;
+import com.example.correlation.domain.rca.CandidateStatus;
+import com.example.correlation.domain.rca.CandidateAssessment;
+import com.example.correlation.domain.rca.Directness;
+import com.example.correlation.domain.rca.Evidence;
+import com.example.correlation.domain.rca.EvidenceSource;
+import com.example.correlation.domain.rca.RcaCandidate;
+import com.example.correlation.domain.rca.RcaStatus;
+import com.example.correlation.domain.rca.Specificity;
 import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
-import com.example.correlation.service.ranking.RcaRankingScorer;
+import com.example.correlation.service.alert.AlertEvent;
+import com.example.correlation.service.alert.AlertSink;
+import com.example.correlation.service.rca.RcaSelector;
+import com.example.correlation.service.rca.SelectionResult;
 import com.example.correlation.workflow.WorkflowLoader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,7 +42,9 @@ public class RcaService {
     private final RcaResultRepository rcaResultRepository;
     private final WorkflowLoader workflowLoader;
     private final ObjectMapper objectMapper;
-    private final RcaRankingScorer rankingScorer;
+    private final RcaSelector rcaSelector;
+    private final DetectionProperties detectionProperties;
+    private final AlertSink alertSink;
 
     public RcaService(SagaInstanceRepository sagaInstanceRepository,
             SagaEventRepository sagaEventRepository,
@@ -37,48 +52,18 @@ public class RcaService {
             RcaResultRepository rcaResultRepository,
             WorkflowLoader workflowLoader,
             ObjectMapper objectMapper,
-            RcaRankingScorer rankingScorer) {
+            RcaSelector rcaSelector,
+            DetectionProperties detectionProperties,
+            AlertSink alertSink) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
         this.rcaResultRepository = rcaResultRepository;
         this.workflowLoader = workflowLoader;
         this.objectMapper = objectMapper;
-        this.rankingScorer = rankingScorer;
-    }
-
-    /**
-     * Compute the ranking score for a rule using the active
-     * {@link RcaRankingScorer}. Extracted so the comparator at the
-     * sort site is short and so unit tests can verify per-rule scores.
-     */
-    private double scoreOf(RuleResult rr) {
-        return rankingScorer.score(rr.confidence, rr.severity, rr.evidence.size());
-    }
-
-
-    private static class RuleResult {
-        final String rootCause;
-        final String severity;
-        final double confidence;
-        final String ruleId;
-        final List<String> evidence;
-        final List<String> suggestions;
-
-        RuleResult(String rootCause, String severity, double confidence, String ruleId,
-                   List<String> evidence, List<String> suggestions) {
-            this.rootCause = rootCause;
-            this.severity = severity;
-            this.confidence = confidence;
-            this.ruleId = ruleId;
-            this.evidence = evidence != null ? evidence : new ArrayList<>();
-            this.suggestions = suggestions != null ? suggestions : new ArrayList<>();
-        }
-
-        static RuleResult of(String rootCause, String severity, double confidence, String ruleId) {
-            return new RuleResult(rootCause, severity, confidence, ruleId,
-                    new ArrayList<>(), new ArrayList<>());
-        }
+        this.rcaSelector = rcaSelector;
+        this.detectionProperties = detectionProperties;
+        this.alertSink = alertSink;
     }
 
     @Transactional
@@ -95,76 +80,58 @@ public class RcaService {
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
         List<Anomaly> anomalies = anomalyRepository.findBySagaId(sagaId);
 
-        // Collect ALL matching rules (multi-rule matching)
-        List<RuleResult> allResults = new ArrayList<>();
-        addIfPresent(allResults, ruleCircuitBreakerOpen(events));
-        addIfPresent(allResults, ruleTimeoutRetryStorm(anomalies));
-        addIfPresent(allResults, ruleMultiTerminalConflict(anomalies));
-        addIfPresent(allResults, ruleTerminalStateOverwrite(anomalies));
-        addIfPresent(allResults, ruleServiceCrash(saga, anomalies, events));
-        addIfPresent(allResults, ruleTransientServiceFailure(saga, anomalies));
-        addIfPresent(allResults, ruleDownstreamTimeout(anomalies));
-        addIfPresent(allResults, ruleDownstreamSlowResponse(anomalies));
-        addIfPresent(allResults, ruleCompensationNotTriggered(anomalies));
-        addIfPresent(allResults, ruleCompensationStepFailure(saga, events, anomalies));
-        addIfPresent(allResults, ruleForwardStepFailure(saga, events));
-        addIfPresent(allResults, ruleInvalidTransition(anomalies));
-        addIfPresent(allResults, ruleDuplicateDelivery(anomalies));
-        addIfPresent(allResults, ruleOutOfOrderDelivery(saga, anomalies));
-        addIfPresent(allResults, ruleWrongSagaCorrelationKey(anomalies));
-        addIfPresent(allResults, ruleBrokerDelayQueueing(anomalies));
-        addIfPresent(allResults, ruleConsumerLagBacklog(anomalies));
-        addIfPresent(allResults, ruleSchemaMismatch(anomalies));
-        addIfPresent(allResults, ruleMissingTracePropagation(anomalies));
-        addIfPresent(allResults, ruleDelayedCompensation(anomalies));
+        // Collect all matching candidates (multi-rule matching).
+        List<CandidateAssessment> candidates = new ArrayList<>();
+        addIfPresent(candidates, ruleCircuitBreakerOpen(events));
+        addIfPresent(candidates, ruleTimeoutRetryStorm(anomalies, events));
+        addIfPresent(candidates, ruleMultiTerminalConflict(anomalies));
+        addIfPresent(candidates, ruleTerminalStateOverwrite(anomalies));
+        addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
+        addIfPresent(candidates, ruleTransientServiceFailure(saga, anomalies));
+        addIfPresent(candidates, ruleDownstreamTimeout(anomalies));
+        addIfPresent(candidates, ruleCompensationNotTriggered(anomalies));
+        addIfPresent(candidates, ruleCompensationStepFailure(saga, events, anomalies));
+        addIfPresent(candidates, ruleForwardStepFailure(saga, events));
+        addIfPresent(candidates, ruleInvalidTransition(anomalies));
+        addIfPresent(candidates, ruleDuplicateDelivery(anomalies));
+        addIfPresent(candidates, ruleOutOfOrderDelivery(saga, anomalies));
+        addIfPresent(candidates, ruleWrongSagaCorrelationKey(anomalies));
+        addIfPresent(candidates, ruleMissingTracePropagation(anomalies));
+        addIfPresent(candidates, ruleDelayedCompensation(anomalies));
 
         // Bug 4 fix: R20 and R21 are BOTH fallback-only — only use when no other rule matched.
         // Previously R21 was in the main loop and always preempted R20.
-        if (allResults.isEmpty()) {
-            addIfPresent(allResults, ruleStuckUnknownCause(saga, anomalies));
-            if (allResults.isEmpty()) {
-                addIfPresent(allResults, ruleObservabilityGap(anomalies));
-            }
-        }
+        addIfPresent(candidates, ruleStuckUnknownCause(saga, anomalies));
+        addIfPresent(candidates, ruleObservabilityGap(anomalies));
 
-        // Rank rules by the active multi-criteria score (RcaRankingScorer).
-        // The default profile is "confidence-only" (w_c=1, w_s=0, w_e=0) which
-        // reproduces the original "sort by confidence" behaviour exactly. Other
-        // profiles (confidence-heavy / equal-weight / severity-heavy /
-        // evidence-heavy) are opt-in via Spring profiles or property overrides
-        // for the ablation harness; see RankingProperties JavaDoc.
-        allResults.sort((a, b) -> Double.compare(scoreOf(b), scoreOf(a)));
-
-        RuleResult primary = allResults.isEmpty() ? null : allResults.get(0);
-        // Filter out low-confidence fallback rules (R20, R21) from contributing
-        // causes when a strong primary exists.
-        List<RuleResult> contributing = allResults.size() > 1
-                ? allResults.subList(1, allResults.size()).stream()
-                    .filter(r -> r.confidence > 0.30 || primary.confidence <= 0.30)
-                    .collect(java.util.stream.Collectors.toList())
-                : List.of();
+        SelectionResult selection = rcaSelector.select(candidates, anomalies, saga);
+        RcaStatus rcaStatus = selection.getRcaStatus();
+        List<RcaCandidate> selectedCandidates = candidatesWithStatus(selection, CandidateStatus.SELECTED);
+        selectedCandidates.sort(this::compareCandidateStrength);
+        List<RcaCandidate> contributing = candidatesWithStatus(selection, CandidateStatus.CONTRIBUTING);
+        RcaCandidate primary = selectedCandidates.isEmpty() ? null : selectedCandidates.get(0);
 
         // Determine outcome — now aware of RCA result
-        String outcome = determineOutcome(saga, anomalies, primary);
+        String outcome = determineOutcome(saga, anomalies, rcaStatus);
 
         // Build merged evidence and suggestions
         List<String> evidence = new ArrayList<>();
         List<String> suggestions = new ArrayList<>();
 
-        if (primary != null) {
-            evidence.addAll(primary.evidence);
-            suggestions.addAll(primary.suggestions);
+        for (RcaCandidate selected : selectedCandidates) {
+            evidence.addAll(evidenceFacts(selected));
+            suggestions.addAll(selected.getSuggestions());
         }
 
         // Append contributing causes
-        for (RuleResult cr : contributing) {
-            evidence.add(String.format("[Contributing: %s (%.0f%% confidence, %s)] %s",
-                    cr.rootCause, cr.confidence * 100, cr.ruleId,
-                    String.join("; ", cr.evidence)));
+        for (RcaCandidate cr : contributing) {
+            evidence.add(String.format("[Contributing: %s (%s, CONTRIBUTING)] %s",
+                    cr.getRootCause(), cr.getRuleId(),
+                    String.join("; ", evidenceFacts(cr))));
         }
 
         // Fallback: no rule matched
-        if (primary == null) {
+        if (selectedCandidates.isEmpty()) {
             if ("NORMAL".equals(outcome)) {
                 evidence.add("Saga completed successfully with " + events.size() + " events");
                 if (saga.getStartTime() != null && saga.getEndTime() != null) {
@@ -172,20 +139,12 @@ public class RcaService {
                     evidence.add("Total duration: " + ms + "ms");
                 }
             } else {
-                evidence.add("No matching RCA rules. Saga status: " + saga.getStatus());
+                evidence.addAll(selection.getMissingEvidence());
                 suggestions.add("Review saga events manually");
             }
         }
 
-        // The final confidence equals the primary rule's tier value (Confidence.STRONG
-        // / MEDIUM / WEAK / FALLBACK). The previous "boost" — adding 0.03 per distinct
-        // co-firing anomaly type, capped at +0.10 — has been removed. The "+0.03 per
-        // anomaly" weight was never justified, and it violated the tier system: a
-        // STRONG rule (0.90) could end up at 0.97, claiming higher precision than the
-        // tier definitions support. Co-firing anomalies are still surfaced as
-        // contributing causes (see `contributing` above), which is the correct way to
-        // express that multiple signals corroborate the primary diagnosis.
-        double confidence = primary != null ? primary.confidence : 1.0;
+        // Numeric confidence is intentionally not persisted in Phase 3+.
 
         // Add trace IDs for Jaeger link
         List<String> traceIds = events.stream()
@@ -200,32 +159,38 @@ public class RcaService {
                     .collect(Collectors.joining(", ")));
         }
 
+        String selectedRootCause = primary != null ? primary.getRootCause() : null;
+
         // Save RCA result
         try {
             RcaResult result = new RcaResult();
             result.setSagaId(sagaId);
-            result.setRootCause(primary != null ? primary.rootCause : null);
+            result.setRootCause(selectedRootCause);
             result.setOutcome(outcome);
-            result.setSeverity(primary != null ? primary.severity : ("NORMAL".equals(outcome) ? "NONE" : "LOW"));
-            result.setConfidence(confidence);
-            result.setRuleId(primary != null ? primary.ruleId : null);
+            result.setSeverity(primary != null ? primary.getSeverity() : fallbackSeverity(outcome, selection));
+            result.setConfidence(null);
+            result.setRuleId(primary != null ? primary.getRuleId() : null);
             result.setEvidence(objectMapper.writeValueAsString(evidence));
             result.setSuggestions(objectMapper.writeValueAsString(suggestions));
+            result.setRcaStatus(rcaStatus);
+            result.setPrimaryRootCauses(selection.getPrimaryRootCauses());
+            result.setCandidates(selection.getCandidates());
+            result.setMissingEvidence(selection.getMissingEvidence());
 
-            // Store contributing causes in evidence JSON for thesis analysis
+            // Legacy JSON compatibility: no percentage/confidence in labels.
             if (!contributing.isEmpty()) {
                 List<String> contributingLabels = contributing.stream()
-                        .map(cr -> cr.rootCause + " (" + cr.ruleId + ", " +
-                                String.format("%.0f%%", cr.confidence * 100) + ")")
+                        .map(cr -> cr.getRootCause() + " (" + cr.getRuleId() + ", CONTRIBUTING)")
                         .collect(Collectors.toList());
                 result.setContributingCauses(objectMapper.writeValueAsString(contributingLabels));
             }
 
             rcaResultRepository.save(result);
+            emitAlert(result, evidence);
 
-            log.info("RCA saga={}: rootCause={}, outcome={}, severity={}, confidence={}, contributing={}",
-                    sagaId, result.getRootCause(), outcome, result.getSeverity(), confidence,
-                    contributing.stream().map(cr -> cr.rootCause).collect(Collectors.toList()));
+            log.info("RCA saga={}: rootCause={}, rcaStatus={}, outcome={}, severity={}, contributing={}",
+                    sagaId, result.getRootCause(), rcaStatus, outcome, result.getSeverity(),
+                    contributing.stream().map(RcaCandidate::getRootCause).collect(Collectors.toList()));
             return result;
         } catch (Exception e) {
             log.error("Failed to save RCA result for saga {}: {}", sagaId, e.getMessage());
@@ -237,13 +202,67 @@ public class RcaService {
         return rcaResultRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
     }
 
-    private void addIfPresent(List<RuleResult> list, RuleResult rr) {
-        if (rr != null) list.add(rr);
+    @Scheduled(fixedRateString = "${rca.auto-analysis.fixed-rate-ms:30000}")
+    @Transactional
+    public void autoAnalyzeNewlyDetectedAnomalies() {
+        Instant cutoff = Instant.now().minus(2, ChronoUnit.MINUTES);
+        List<String> sagaIds = anomalyRepository.findSagaIdsWithAnomaliesSince(cutoff);
+
+        for (String sagaId : sagaIds) {
+            Instant latestAnomalyAt = anomalyRepository.findLatestDetectedAtBySagaId(sagaId);
+            if (latestAnomalyAt == null) {
+                continue;
+            }
+
+            List<RcaResult> existing = rcaResultRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
+            boolean needsAnalysis = existing.isEmpty()
+                    || existing.get(0).getCreatedAt() == null
+                    || existing.get(0).getCreatedAt().isBefore(latestAnomalyAt);
+
+            if (needsAnalysis) {
+                try {
+                    RcaResult result = analyze(sagaId);
+                    if (result != null) {
+                        log.info("Auto-RCA triggered for saga {} with rcaStatus={} rootCause={}",
+                                sagaId, result.getRcaStatus(), result.getRootCause());
+                    }
+                } catch (Exception e) {
+                    log.error("Auto-RCA failed for saga {}: {}", sagaId, e.getMessage());
+                }
+            }
+        }
     }
 
-    private String determineOutcome(SagaInstance saga, List<Anomaly> anomalies, RuleResult rr) {
+    private void emitAlert(RcaResult result, List<String> evidenceSummary) {
+        if (result.getRcaStatus() != RcaStatus.SELECTED || result.getRootCause() == null) {
+            return;
+        }
+
+        try {
+            List<String> primaryRootCauses = result.getPrimaryRootCauses();
+            if (primaryRootCauses == null || primaryRootCauses.isEmpty()) {
+                primaryRootCauses = List.of(result.getRootCause());
+            }
+
+            alertSink.emit(new AlertEvent(
+                    Instant.now(),
+                    result.getSagaId(),
+                    result.getRcaStatus().name(),
+                    primaryRootCauses,
+                    result.getSeverity(),
+                    evidenceSummary != null ? List.copyOf(evidenceSummary) : List.of()));
+        } catch (Exception e) {
+            log.error("Failed to emit RCA alert for saga {}: {}", result.getSagaId(), e.getMessage());
+        }
+    }
+
+    private void addIfPresent(List<CandidateAssessment> list, CandidateAssessment candidate) {
+        if (candidate != null) list.add(candidate);
+    }
+
+    private String determineOutcome(SagaInstance saga, List<Anomaly> anomalies, RcaStatus rcaStatus) {
         boolean hasAnomalies = !anomalies.isEmpty();
-        boolean hasRca = rr != null;
+        boolean hasRca = rcaStatus == RcaStatus.SELECTED;
         boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
                 || saga.getStatus() == SagaStatus.COMPENSATED
                 || saga.getStatus() == SagaStatus.FAILED;
@@ -266,17 +285,20 @@ public class RcaService {
     // R01 — STRONG: payload contains literal "circuit breaker" / "retry exhausted".
     // Payment service writes that exact phrase only when CB triggers fallback.
     // Label is direct quote of the failure reason.
-    private RuleResult ruleCircuitBreakerOpen(List<SagaEvent> events) {
+    private CandidateAssessment ruleCircuitBreakerOpen(List<SagaEvent> events) {
         for (SagaEvent event : events) {
             if ("PAYMENT_FAILED".equals(event.getEventType())) {
                 String payload = event.getPayload() != null ? event.getPayload().toLowerCase() : "";
                 if (payload.contains("circuit breaker") || payload.contains("retry exhausted")) {
-                    RuleResult rr = RuleResult.of("CIRCUIT_BREAKER_OPEN", "CRITICAL",
-                            Confidence.STRONG.value, "R01");
-                    rr.evidence.add("Payment failed with circuit breaker/retry exhaustion");
-                    rr.evidence.add("Payload: " + event.getPayload());
-                    rr.suggestions.add("Check downstream service health");
-                    rr.suggestions.add("Review Resilience4j metrics at /actuator/circuitbreakers");
+                    CandidateAssessment rr = candidate("CIRCUIT_BREAKER_OPEN", "CRITICAL", "R01",
+                            Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                    rr.getEvidence().add(Evidence.ofEvent("Payment failed with circuit breaker/retry exhaustion",
+                            event.getPayload(), "payment succeeds or reports business failure",
+                            EvidenceSource.EVENT_PAYLOAD, event.getEventId()));
+                    rr.getEvidence().add(Evidence.of("Payload: " + event.getPayload(),
+                            EvidenceSource.EVENT_PAYLOAD, null));
+                    rr.getSuggestions().add("Check downstream service health");
+                    rr.getSuggestions().add("Review Resilience4j metrics at /actuator/circuitbreakers");
                     return rr;
                 }
             }
@@ -291,30 +313,62 @@ public class RcaService {
     // other RuntimeException — not necessarily a timeout. The named cause
     // is heuristic, hence WEAK. (Renaming to RETRY_STORM would justify
     // promoting this to STRONG; tracked as separate cleanup.)
-    private RuleResult ruleTimeoutRetryStorm(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleTimeoutRetryStorm(List<Anomaly> anomalies, List<SagaEvent> events) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.RETRY_BURST) {
-                RuleResult rr = RuleResult.of("TIMEOUT_RETRY_STORM", "CRITICAL",
-                        Confidence.WEAK.value, "R02");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Reduce retry count or increase backoff");
-                rr.suggestions.add("Check service logs for timeout root cause");
+                List<SagaEvent> timeoutRetryEvents = events.stream()
+                        .filter(e -> "PAYMENT_RETRY".equals(e.getEventType()))
+                        .filter(e -> payloadIndicatesTimeout(e.getPayload()))
+                        .collect(Collectors.toList());
+                boolean hasTimeoutEvidence = !timeoutRetryEvents.isEmpty();
+                CandidateAssessment rr = candidate("TIMEOUT_RETRY_STORM", "CRITICAL", "R02",
+                        hasTimeoutEvidence ? Directness.DIRECT_SIGNATURE : Directness.HEURISTIC_INFERENCE,
+                        hasTimeoutEvidence ? Specificity.LABEL_IS_SIGNATURE : Specificity.LABEL_HEURISTIC);
+                rr.getEvidence().add(evidence(a));
+                if (hasTimeoutEvidence) {
+                    rr.getEvidence().add(Evidence.of(
+                            "PAYMENT_RETRY payloads report timeout exceptions",
+                            timeoutRetryEvents.stream()
+                                    .map(SagaEvent::getPayload)
+                                    .filter(Objects::nonNull)
+                                    .limit(3)
+                                    .collect(Collectors.joining("; ")),
+                            "retry burst should not be caused by timeout exceptions",
+                            EvidenceSource.EVENT_PAYLOAD,
+                            null,
+                            timeoutRetryEvents.stream()
+                                    .map(SagaEvent::getEventId)
+                                    .filter(Objects::nonNull)
+                                    .collect(Collectors.toList())));
+                } else {
+                    rr.setMissingForStronger("Retry events do not record timeout exception class.");
+                }
+                rr.getSuggestions().add("Reduce retry count or increase backoff");
+                rr.getSuggestions().add("Check service logs for timeout root cause");
                 return rr;
             }
         }
         return null;
     }
 
+    private boolean payloadIndicatesTimeout(String payload) {
+        if (payload == null) return false;
+        String normalized = payload.toLowerCase(Locale.ROOT);
+        return normalized.contains("timeout")
+                || normalized.contains("timed out")
+                || normalized.contains("timeoutexception");
+    }
+
     // R03 — STRONG: anomaly is detected from the event log directly (saga has
     // multiple conflicting terminal events). The data IS the bug; label = signature.
-    private RuleResult ruleMultiTerminalConflict(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleMultiTerminalConflict(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.MULTI_TERMINAL_CONFLICT) {
-                RuleResult rr = RuleResult.of("MULTI_TERMINAL_CONFLICT", "CRITICAL",
-                        Confidence.STRONG.value, "R03");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Enforce final-state immutability");
-                rr.suggestions.add("Check for duplicate terminal event delivery");
+                CandidateAssessment rr = candidate("MULTI_TERMINAL_CONFLICT", "CRITICAL", "R03",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Enforce final-state immutability");
+                rr.getSuggestions().add("Check for duplicate terminal event delivery");
                 return rr;
             }
         }
@@ -324,15 +378,15 @@ public class RcaService {
     // R04 — STRONG: FORBIDDEN_POST_TERMINAL / STATE_REGRESSION anomalies come
     // from deterministic state-machine checks against terminal status.
     // Label = signature.
-    private RuleResult ruleTerminalStateOverwrite(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleTerminalStateOverwrite(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL
                     || a.getAnomalyType() == AnomalyType.STATE_REGRESSION) {
-                RuleResult rr = RuleResult.of("TERMINAL_STATE_OVERWRITE", "HIGH",
-                        Confidence.STRONG.value, "R04");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Implement compare-and-set for saga state updates");
-                rr.suggestions.add("Reject events arriving after terminal state");
+                CandidateAssessment rr = candidate("TERMINAL_STATE_OVERWRITE", "HIGH", "R04",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Implement compare-and-set for saga state updates");
+                rr.getSuggestions().add("Reject events arriving after terminal state");
                 return rr;
             }
         }
@@ -347,7 +401,7 @@ public class RcaService {
     //   Bug 2 fix: also fires for recovered sagas with adjusted severity.
     //   Bug 5 fix: null guard for getSteps(). Bug 6 fix: use anomaly detectedAt.
     //   TODO (magic-number): the "× 3" threshold needs justification or ablation.
-    private RuleResult ruleServiceCrash(SagaInstance saga, List<Anomaly> anomalies,
+    private CandidateAssessment ruleServiceCrash(SagaInstance saga, List<Anomaly> anomalies,
             List<SagaEvent> events) {
         boolean hasStuck = anomalies.stream()
                 .anyMatch(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK);
@@ -363,37 +417,47 @@ public class RcaService {
 
             var workflow = workflowLoader.getOrderSagaWorkflow();
             // Bug 5 fix: null guard for workflow.getSteps()
-            int maxTimeout = 60; // default
+            int maxTimeout = detectionProperties.getDefaultStepTimeoutSeconds();
             if (workflow != null && workflow.getSteps() != null) {
                 maxTimeout = workflow.getSteps().stream()
                         .mapToInt(s -> workflow.getStepTimeoutSeconds(s.getId()))
-                        .max().orElse(60);
+                        .max().orElse(detectionProperties.getDefaultStepTimeoutSeconds());
             }
+            int serviceCrashTimeoutSeconds = maxTimeout * detectionProperties.getServiceCrashTimeoutMultiplier();
 
             if (saga.getLastUpdated() != null) {
-                // Bug 6 fix: use SAGA_STUCK anomaly's detectedAt for accurate measurement
-                // instead of Instant.now() which depends on when analyze() is called
+                // Use the latest corroborating stuck anomaly instead of Instant.now().
+                // SAGA_STUCK marks the first threshold breach; MISSING_TERMINAL_EVENT
+                // proves the saga stayed stuck long enough to classify service crash.
                 Instant stuckMeasurePoint = anomalies.stream()
-                        .filter(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK)
+                        .filter(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK
+                                || a.getAnomalyType() == AnomalyType.MISSING_TERMINAL_EVENT)
                         .map(Anomaly::getDetectedAt)
+                        .filter(Objects::nonNull)
                         .max(Instant::compareTo)
                         .orElse(Instant.now());
-                long stuckSeconds = Duration.between(saga.getLastUpdated(), stuckMeasurePoint).getSeconds();
+                Instant stuckStart = events.stream()
+                        .map(SagaEvent::getTimestamp)
+                        .filter(Objects::nonNull)
+                        .filter(timestamp -> !timestamp.isAfter(stuckMeasurePoint))
+                        .max(Instant::compareTo)
+                        .orElse(saga.getLastUpdated());
+                long stuckSeconds = Duration.between(stuckStart, stuckMeasurePoint).getSeconds();
 
-                if (stuckSeconds > maxTimeout * 3) {
-                    // Both branches use Confidence.MEDIUM — the "recovered" status
+                if (stuckSeconds > serviceCrashTimeoutSeconds) {
                     // affects severity (operational urgency), not signature
                     // specificity. The cause label is equally inferred either way.
-                    RuleResult rr = RuleResult.of("SERVICE_CRASH",
-                            isRecovered ? "MEDIUM" : "CRITICAL",
-                            Confidence.MEDIUM.value, "R05");
-                    rr.evidence.add("Saga stuck for " + stuckSeconds + "s (>" + (maxTimeout * 3) + "s threshold)");
-                    rr.evidence.add("Both SAGA_STUCK and MISSING_TERMINAL_EVENT anomalies present");
+                    CandidateAssessment rr = candidate("SERVICE_CRASH",
+                            isRecovered ? "MEDIUM" : "CRITICAL", "R05",
+                            Directness.CORROBORATED_INFERENCE, Specificity.LABEL_INFERS_FROM_SIGNATURE);
+                    rr.getEvidence().add(evidence("Saga stuck for " + stuckSeconds + "s (>"
+                            + serviceCrashTimeoutSeconds + "s threshold)"));
+                    rr.getEvidence().add(evidence("Both SAGA_STUCK and MISSING_TERMINAL_EVENT anomalies present"));
                     if (isRecovered) {
-                        rr.evidence.add("Service recovered → saga now " + saga.getStatus());
+                        rr.getEvidence().add(evidence("Service recovered → saga now " + saga.getStatus()));
                     }
-                    rr.suggestions.add("Check if downstream service container is running");
-                    rr.suggestions.add("Verify docker container health and restart policy");
+                    rr.getSuggestions().add("Check if downstream service container is running");
+                    rr.getSuggestions().add("Verify docker container health and restart policy");
                     return rr;
                 }
             }
@@ -403,6 +467,10 @@ public class RcaService {
 
     // R06 — STRONG: label is literally descriptive of the observed sequence —
     // saga went stuck, then reached a terminal status without MISSING_TERMINAL.
+    // If STEP_TIMEOUT was already observed before recovery, R07 is the more
+    // specific threshold violation. A STEP_TIMEOUT measured on the terminal
+    // recovery event is a side-effect of the transient outage and should not
+    // mask the recovered-stuck signature.
     // The events themselves prove "transient failure". Severity is LOW because
     // operational impact is small (it self-healed), but confidence in the
     // diagnosis is high.
@@ -410,7 +478,7 @@ public class RcaService {
     //   MISSING_TERMINAL_EVENT. If both SAGA_STUCK and MISSING_TERMINAL_EVENT
     //   exist, R05 handles it — even if saga later recovered.
     //   Bug 7 fix: added FAILED to isTerminal check for consistency.
-    private RuleResult ruleTransientServiceFailure(SagaInstance saga, List<Anomaly> anomalies) {
+    private CandidateAssessment ruleTransientServiceFailure(SagaInstance saga, List<Anomaly> anomalies) {
         boolean hasStuck = anomalies.stream()
                 .anyMatch(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK);
         boolean hasMissingTerminal = anomalies.stream()
@@ -418,22 +486,34 @@ public class RcaService {
         boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
                 || saga.getStatus() == SagaStatus.COMPENSATED
                 || saga.getStatus() == SagaStatus.FAILED;
+        boolean hasStepTimeoutBeforeRecovery = hasStepTimeoutBeforeRecovery(saga, anomalies);
 
         // Only fire for brief transient failures (stuck but no MISSING_TERMINAL_EVENT).
         // If hasMissingTerminal is true, R05 covers this case (even after recovery).
-        if (hasStuck && !hasMissingTerminal && isTerminal) {
-            RuleResult rr = RuleResult.of("TRANSIENT_SERVICE_FAILURE", "LOW",
-                    Confidence.STRONG.value, "R06");
-            rr.evidence.add("Saga was previously stuck (SAGA_STUCK anomaly detected)");
-            rr.evidence.add("Saga has since recovered → final status: " + saga.getStatus());
+        if (hasStuck && !hasMissingTerminal && !hasStepTimeoutBeforeRecovery && isTerminal) {
+            CandidateAssessment rr = candidate("TRANSIENT_SERVICE_FAILURE", "LOW", "R06",
+                    Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+            rr.getEvidence().add(evidence("Saga was previously stuck (SAGA_STUCK anomaly detected)"));
+            rr.getEvidence().add(evidence("Saga has since recovered → final status: " + saga.getStatus()));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
                 long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
-                rr.evidence.add("Total duration (including stuck period): " + ms + "ms");
+                rr.getEvidence().add(evidence("Total duration (including stuck period): " + ms + "ms"));
             }
-            rr.suggestions.add("Service self-healed — review uptime to prevent recurrence");
+            rr.getSuggestions().add("Service self-healed — review uptime to prevent recurrence");
             return rr;
         }
         return null;
+    }
+
+    private boolean hasStepTimeoutBeforeRecovery(SagaInstance saga, List<Anomaly> anomalies) {
+        if (saga.getEndTime() == null) {
+            return anomalies.stream().anyMatch(a -> a.getAnomalyType() == AnomalyType.STEP_TIMEOUT);
+        }
+        return anomalies.stream()
+                .filter(a -> a.getAnomalyType() == AnomalyType.STEP_TIMEOUT)
+                .map(Anomaly::getMeasuredAt)
+                .filter(Objects::nonNull)
+                .anyMatch(measuredAt -> measuredAt.isBefore(saga.getEndTime()));
     }
 
     // R07 — WEAK: STEP_TIMEOUT detection is reliable (step exceeded its
@@ -441,37 +521,31 @@ public class RcaService {
     // the slowness. The same signature could be produced by local GC pause,
     // network jitter on the producer side, or a wrong timeout config on the
     // step itself. The named cause cannot be proved from the signature alone.
-    private RuleResult ruleDownstreamTimeout(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleDownstreamTimeout(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.STEP_TIMEOUT) {
-                RuleResult rr = RuleResult.of("DOWNSTREAM_TIMEOUT", "HIGH",
-                        Confidence.WEAK.value, "R07");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Tune step timeout thresholds in workflow spec");
-                rr.suggestions.add("Check downstream service performance");
+                CandidateAssessment rr = candidate("DOWNSTREAM_TIMEOUT", "HIGH", "R07",
+                        Directness.THRESHOLD_VIOLATION, Specificity.LABEL_HEURISTIC);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Tune step timeout thresholds in workflow spec");
+                rr.getSuggestions().add("Check downstream service performance");
                 return rr;
             }
         }
         return null;
     }
 
-    // R08 — MEDIUM
-    private RuleResult ruleDownstreamSlowResponse(List<Anomaly> anomalies) {
-        // Placeholder — needs StepDurationMetric baseline (Phase 4)
-        return null;
-    }
-
     // R09 — STRONG: COMPENSATION_MISSING anomaly is a deterministic
     // workflow-state check — saga reached a state where compensation should
     // have started but didn't. Label = signature.
-    private RuleResult ruleCompensationNotTriggered(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleCompensationNotTriggered(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.COMPENSATION_MISSING) {
-                RuleResult rr = RuleResult.of("COMPENSATION_NOT_TRIGGERED", "HIGH",
-                        Confidence.STRONG.value, "R09");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Check if orchestrator (order-service) is running");
-                rr.suggestions.add("Verify compensation trigger logic");
+                CandidateAssessment rr = candidate("COMPENSATION_NOT_TRIGGERED", "HIGH", "R09",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Check if orchestrator (order-service) is running");
+                rr.getSuggestions().add("Verify compensation trigger logic");
                 return rr;
             }
         }
@@ -482,7 +556,7 @@ public class RcaService {
     // emitted, no PAYMENT_REFUNDED ack arrived, and saga is in COMPENSATING
     // (or MISSING_COMPENSATION_ACK fired). Label is descriptive of those
     // observable facts.
-    private RuleResult ruleCompensationStepFailure(SagaInstance saga, List<SagaEvent> events,
+    private CandidateAssessment ruleCompensationStepFailure(SagaInstance saga, List<SagaEvent> events,
             List<Anomaly> anomalies) {
         boolean hasRefundCommand = events.stream()
                 .anyMatch(e -> "REFUND_PAYMENT".equals(e.getEventType()));
@@ -493,12 +567,12 @@ public class RcaService {
 
         if (hasRefundCommand && !hasRefundCompleted
                 && (saga.getStatus() == SagaStatus.COMPENSATING || hasMissingCompAck)) {
-            RuleResult rr = RuleResult.of("COMPENSATION_STEP_FAILURE", "HIGH",
-                    Confidence.STRONG.value, "R10");
-            rr.evidence.add("Compensation started (REFUND_PAYMENT) but no PAYMENT_REFUNDED received");
-            rr.evidence.add("Saga stuck in COMPENSATING status");
-            rr.suggestions.add("Check payment-service logs for refund errors");
-            rr.suggestions.add("Verify Kafka connectivity for refund delivery");
+            CandidateAssessment rr = candidate("COMPENSATION_STEP_FAILURE", "HIGH", "R10",
+                    Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+            rr.getEvidence().add(evidence("Compensation started (REFUND_PAYMENT) but no PAYMENT_REFUNDED received"));
+            rr.getEvidence().add(evidence("Saga stuck in COMPENSATING status"));
+            rr.getSuggestions().add("Check payment-service logs for refund errors");
+            rr.getSuggestions().add("Verify Kafka connectivity for refund delivery");
             return rr;
         }
         return null;
@@ -508,23 +582,23 @@ public class RcaService {
     // PAYMENT_REFUNDED in the event log. Direct event-log evidence proves the
     // compensation succeeded; label is descriptive. Severity LOW because
     // compensation = recovery, but confidence in the diagnosis is high.
-    private RuleResult ruleForwardStepFailure(SagaInstance saga, List<SagaEvent> events) {
+    private CandidateAssessment ruleForwardStepFailure(SagaInstance saga, List<SagaEvent> events) {
         boolean hasRefundCommand = events.stream()
                 .anyMatch(e -> "REFUND_PAYMENT".equals(e.getEventType()));
         boolean hasRefundCompleted = events.stream()
                 .anyMatch(e -> "PAYMENT_REFUNDED".equals(e.getEventType()));
 
         if (saga.getStatus() == SagaStatus.COMPENSATED && hasRefundCommand && hasRefundCompleted) {
-            RuleResult rr = RuleResult.of("FORWARD_STEP_FAILURE", "LOW",
-                    Confidence.STRONG.value, "R11");
-            rr.evidence.add("Compensation completed: REFUND_PAYMENT → PAYMENT_REFUNDED");
-            rr.evidence.add("Saga status: COMPENSATED");
+            CandidateAssessment rr = candidate("FORWARD_STEP_FAILURE", "LOW", "R11",
+                    Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+            rr.getEvidence().add(evidence("Compensation completed: REFUND_PAYMENT → PAYMENT_REFUNDED"));
+            rr.getEvidence().add(evidence("Saga status: COMPENSATED"));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
                 long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
-                rr.evidence.add("Total duration (including compensation): " + ms + "ms");
+                rr.getEvidence().add(evidence("Total duration (including compensation): " + ms + "ms"));
             }
-            rr.suggestions.add("Saga rolled back correctly");
-            rr.suggestions.add("Review why the forward step failed to prevent recurrence");
+            rr.getSuggestions().add("Saga rolled back correctly");
+            rr.getSuggestions().add("Review why the forward step failed to prevent recurrence");
             return rr;
         }
         return null;
@@ -532,14 +606,14 @@ public class RcaService {
 
     // R12 — STRONG: INVALID_TRANSITION anomaly fires from direct workflow-spec
     // violation. Label = signature.
-    private RuleResult ruleInvalidTransition(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleInvalidTransition(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.INVALID_TRANSITION) {
-                RuleResult rr = RuleResult.of("INVALID_TRANSITION", "MEDIUM",
-                        Confidence.STRONG.value, "R12");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Verify event routing in upstream services");
-                rr.suggestions.add("Review workflow spec transitions");
+                CandidateAssessment rr = candidate("INVALID_TRANSITION", "MEDIUM", "R12",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Verify event routing in upstream services");
+                rr.getSuggestions().add("Review workflow spec transitions");
                 return rr;
             }
         }
@@ -548,15 +622,15 @@ public class RcaService {
 
     // R13 — STRONG: anomalies fire from exact eventId match in DB —
     // deterministic, direct evidence. Label = signature.
-    private RuleResult ruleDuplicateDelivery(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleDuplicateDelivery(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.EXACT_DUPLICATE_EVENT
                     || a.getAnomalyType() == AnomalyType.DUPLICATE_COMPENSATION) {
-                RuleResult rr = RuleResult.of("DUPLICATE_DELIVERY", "LOW",
-                        Confidence.STRONG.value, "R13");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Verify producer idempotency configuration");
-                rr.suggestions.add("Check consumer deduplication mechanisms");
+                CandidateAssessment rr = candidate("DUPLICATE_DELIVERY", "LOW", "R13",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Verify producer idempotency configuration");
+                rr.getSuggestions().add("Check consumer deduplication mechanisms");
                 return rr;
             }
         }
@@ -567,21 +641,21 @@ public class RcaService {
     // workflow-expected ordering. Detection is reliable, but vulnerable to
     // clock skew across services (false-positive risk). One inferential hop:
     // observed ordering anomaly may or may not be a real delivery problem.
-    private RuleResult ruleOutOfOrderDelivery(SagaInstance saga, List<Anomaly> anomalies) {
+    private CandidateAssessment ruleOutOfOrderDelivery(SagaInstance saga, List<Anomaly> anomalies) {
         boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
                 || saga.getStatus() == SagaStatus.COMPENSATED;
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.OUT_OF_ORDER) {
-                RuleResult rr = RuleResult.of("OUT_OF_ORDER_DELIVERY",
-                        isTerminal ? "LOW" : "MEDIUM",
-                        Confidence.MEDIUM.value, "R14");
-                rr.evidence.add(a.getDescription());
+                CandidateAssessment rr = candidate("OUT_OF_ORDER_DELIVERY",
+                        isTerminal ? "LOW" : "MEDIUM", "R14",
+                        Directness.THRESHOLD_VIOLATION, Specificity.LABEL_INFERS_FROM_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
                 if (isTerminal) {
-                    rr.evidence.add("Saga completed despite out-of-order events");
+                    rr.getEvidence().add(evidence("Saga completed despite out-of-order events"));
                 } else {
-                    rr.evidence.add("Saga still in " + saga.getStatus() + " status");
+                    rr.getEvidence().add(evidence("Saga still in " + saga.getStatus() + " status"));
                 }
-                rr.suggestions.add("Check Kafka partition key assignment");
+                rr.getSuggestions().add("Check Kafka partition key assignment");
                 return rr;
             }
         }
@@ -593,63 +667,32 @@ public class RcaService {
     // sagas are not deleted, so the only plausible cause of a missing-sagaId
     // event is wrong correlation-key wiring on the producer side. Label =
     // signature for our system.
-    private RuleResult ruleWrongSagaCorrelationKey(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleWrongSagaCorrelationKey(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.ORPHAN_EVENT) {
-                RuleResult rr = RuleResult.of("WRONG_SAGA_CORRELATION_KEY", "HIGH",
-                        Confidence.STRONG.value, "R15");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Verify sagaId propagation across services");
-                rr.suggestions.add("Check Kafka header saga-id configuration");
+                CandidateAssessment rr = candidate("WRONG_SAGA_CORRELATION_KEY", "HIGH", "R15",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_NARROWS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Verify sagaId propagation across services");
+                rr.getSuggestions().add("Check Kafka header saga-id configuration");
                 return rr;
             }
         }
-        return null;
-    }
-
-    // R16 — DEAD CODE: references AnomalyType.CONSUMER_LAG_HIGH, but no
-    // detector currently emits that anomaly type. Rule cannot fire. Kept as
-    // a stub for future KafkaMetricsService integration. Tier deferred until
-    // detector exists; would be MEDIUM (consumer lag has multiple causes:
-    // slow consumer, broker congestion, partition imbalance).
-    private RuleResult ruleBrokerDelayQueueing(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.CONSUMER_LAG_HIGH) {
-                RuleResult rr = RuleResult.of("BROKER_DELAY_QUEUEING", "HIGH",
-                        Confidence.MEDIUM.value, "R16");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Check Kafka broker health");
-                rr.suggestions.add("Monitor consumer group offsets");
-                return rr;
-            }
-        }
-        return null;
-    }
-
-    // R17 — HIGH (needs KafkaMetricsService)
-    private RuleResult ruleConsumerLagBacklog(List<Anomaly> anomalies) {
-        // Placeholder — enhanced in Phase 4
-        return null;
-    }
-
-    // R18 — HIGH (needs DLQ)
-    private RuleResult ruleSchemaMismatch(List<Anomaly> anomalies) {
-        // Placeholder — enhanced in Phase 4 with DLQ listener
         return null;
     }
 
     // R19 — STRONG: MISSING_TRACE_CONTEXT anomaly is a direct field-level
     // check (event payload's traceId == null). Label = signature exactly.
-    private RuleResult ruleMissingTracePropagation(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleMissingTracePropagation(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.MISSING_TRACE_CONTEXT) {
-                RuleResult rr = RuleResult.of("MISSING_TRACE_PROPAGATION", "MEDIUM",
-                        Confidence.STRONG.value, "R19");
-                rr.evidence.add(a.getDescription());
-                rr.evidence.add("Events missing traceId cannot be correlated in Jaeger");
-                rr.suggestions.add("Verify trace context propagation in service configuration");
-                rr.suggestions.add("Check OpenTelemetry agent or Spring Sleuth setup");
-                rr.suggestions.add("Ensure Kafka headers include traceparent/traceId");
+                CandidateAssessment rr = candidate("MISSING_TRACE_PROPAGATION", "MEDIUM", "R19",
+                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getEvidence().add(evidence("Events missing traceId cannot be correlated in Jaeger"));
+                rr.getSuggestions().add("Verify trace context propagation in service configuration");
+                rr.getSuggestions().add("Check OpenTelemetry agent or Spring Sleuth setup");
+                rr.getSuggestions().add("Ensure Kafka headers include traceparent/traceId");
                 return rr;
             }
         }
@@ -661,17 +704,17 @@ public class RcaService {
     // cause identified". The 0.30 value is intentionally below the
     // contributing-cause filter threshold so this never appears as a
     // contributing cause when a real primary exists.
-    private RuleResult ruleObservabilityGap(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleObservabilityGap(List<Anomaly> anomalies) {
         if (!anomalies.isEmpty()) {
-            RuleResult rr = RuleResult.of("OBSERVABILITY_GAP", "LOW",
-                    Confidence.FALLBACK.value, "R20");
-            rr.evidence.add("Anomalies detected but insufficient evidence to determine root cause");
-            rr.evidence.add("Anomaly types: " + anomalies.stream()
+            CandidateAssessment rr = candidate("OBSERVABILITY_GAP", "LOW", "R20",
+                    Directness.HEURISTIC_INFERENCE, Specificity.LABEL_HEURISTIC);
+            rr.getEvidence().add(evidence("Anomalies detected but insufficient evidence to determine root cause"));
+            rr.getEvidence().add(evidence("Anomaly types: " + anomalies.stream()
                     .map(a -> a.getAnomalyType().name())
                     .distinct()
-                    .collect(Collectors.joining(", ")));
-            rr.suggestions.add("Add more telemetry sources for better RCA");
-            rr.suggestions.add("Check if Jaeger/logs provide additional context");
+                    .collect(Collectors.joining(", "))));
+            rr.getSuggestions().add("Add more telemetry sources for better RCA");
+            rr.getSuggestions().add("Check if Jaeger/logs provide additional context");
             return rr;
         }
         return null;
@@ -682,7 +725,7 @@ public class RcaService {
     // Note: severity is HIGH (operational urgency — saga is stuck right now)
     // even though confidence is FALLBACK (low diagnostic certainty).
     // Severity and confidence measure different things.
-    private RuleResult ruleStuckUnknownCause(SagaInstance saga, List<Anomaly> anomalies) {
+    private CandidateAssessment ruleStuckUnknownCause(SagaInstance saga, List<Anomaly> anomalies) {
         boolean hasStuck = anomalies.stream()
                 .anyMatch(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK);
         boolean isNonTerminal = saga.getStatus() != SagaStatus.COMPLETED
@@ -690,12 +733,12 @@ public class RcaService {
                 && saga.getStatus() != SagaStatus.FAILED;
 
         if (hasStuck && isNonTerminal) {
-            RuleResult rr = RuleResult.of("STUCK_UNKNOWN_CAUSE", "HIGH",
-                    Confidence.FALLBACK.value, "R21");
-            rr.evidence.add("Saga stuck in " + saga.getStatus() + " status");
-            rr.evidence.add("No specific root cause identified — insufficient evidence");
-            rr.suggestions.add("Check all downstream service health");
-            rr.suggestions.add("Verify Kafka consumer group offsets");
+            CandidateAssessment rr = candidate("STUCK_UNKNOWN_CAUSE", "HIGH", "R21",
+                    Directness.HEURISTIC_INFERENCE, Specificity.LABEL_HEURISTIC);
+            rr.getEvidence().add(evidence("Saga stuck in " + saga.getStatus() + " status"));
+            rr.getEvidence().add(evidence("No specific root cause identified — insufficient evidence"));
+            rr.getSuggestions().add("Check all downstream service health");
+            rr.getSuggestions().add("Verify Kafka consumer group offsets");
             return rr;
         }
         return null;
@@ -706,14 +749,14 @@ public class RcaService {
     // unjustified magic number. Once the threshold is defended via ablation
     // or reasoning, this rule can move to STRONG.
     //   TODO (magic-number): defend or remove the × 1.5 threshold.
-    private RuleResult ruleDelayedCompensation(List<Anomaly> anomalies) {
+    private CandidateAssessment ruleDelayedCompensation(List<Anomaly> anomalies) {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.DELAYED_COMPENSATION) {
-                RuleResult rr = RuleResult.of("DELAYED_COMPENSATION", "MEDIUM",
-                        Confidence.MEDIUM.value, "R22");
-                rr.evidence.add(a.getDescription());
-                rr.suggestions.add("Review orchestrator compensation trigger latency");
-                rr.suggestions.add("Check message broker throughput during compensation");
+                CandidateAssessment rr = candidate("DELAYED_COMPENSATION", "MEDIUM", "R22",
+                        Directness.THRESHOLD_VIOLATION, Specificity.LABEL_INFERS_FROM_SIGNATURE);
+                rr.getEvidence().add(evidence(a));
+                rr.getSuggestions().add("Review orchestrator compensation trigger latency");
+                rr.getSuggestions().add("Check message broker throughput during compensation");
                 return rr;
             }
         }
@@ -723,6 +766,77 @@ public class RcaService {
     // =========================================================================
     // Utility
     // =========================================================================
+    private CandidateAssessment candidate(String rootCause, String severity, String ruleId,
+            Directness directness, Specificity specificity) {
+        return CandidateAssessment.builder()
+                .rootCause(rootCause)
+                .severity(severity)
+                .ruleId(ruleId)
+                .directness(directness)
+                .specificity(specificity)
+                .build();
+    }
+
+    private Evidence evidence(String fact) {
+        return Evidence.of(fact, EvidenceSource.CODE_CONSTANT, null);
+    }
+
+    private Evidence evidence(Anomaly anomaly) {
+        if (anomaly == null) return null;
+        return Evidence.of(
+                anomaly.getDescription(),
+                anomaly.getObservedValue(),
+                anomaly.getExpectedValue(),
+                sourceFrom(anomaly.getThresholdSource()),
+                anomaly.getId(),
+                anomaly.getEvidenceEventIds());
+    }
+
+    private EvidenceSource sourceFrom(String thresholdSource) {
+        if (thresholdSource == null) return EvidenceSource.CODE_CONSTANT;
+        if (thresholdSource.startsWith("workflow:")) return EvidenceSource.WORKFLOW_SPEC;
+        if (thresholdSource.startsWith("config:")) return EvidenceSource.CONFIG;
+        if (thresholdSource.startsWith("state:") || thresholdSource.startsWith("db:")) {
+            return EvidenceSource.STATE_MACHINE;
+        }
+        return EvidenceSource.CODE_CONSTANT;
+    }
+
+    private List<RcaCandidate> candidatesWithStatus(SelectionResult selection, CandidateStatus status) {
+        return selection.getCandidates().stream()
+                .filter(candidate -> candidate.getStatus() == status)
+                .collect(Collectors.toList());
+    }
+
+    private int compareCandidateStrength(RcaCandidate first, RcaCandidate second) {
+        int directness = Integer.compare(enumRank(first.getDirectness()), enumRank(second.getDirectness()));
+        if (directness != 0) return directness;
+        int specificity = Integer.compare(enumRank(first.getSpecificity()), enumRank(second.getSpecificity()));
+        if (specificity != 0) return specificity;
+        return Comparator.nullsLast(String::compareTo).compare(first.getRuleId(), second.getRuleId());
+    }
+
+    private int enumRank(Enum<?> value) {
+        return value != null ? value.ordinal() : Integer.MAX_VALUE;
+    }
+
+    private List<String> evidenceFacts(RcaCandidate candidate) {
+        return candidate.getEvidence().stream()
+                .map(Evidence::fact)
+                .filter(fact -> fact != null && !fact.isBlank())
+                .collect(Collectors.toList());
+    }
+
+    private String fallbackSeverity(String outcome, SelectionResult selection) {
+        if ("NORMAL".equals(outcome)) return "NONE";
+        return selection.getCandidates().stream()
+                .map(RcaCandidate::getSeverity)
+                .filter(Objects::nonNull)
+                .filter(severity -> "HIGH".equals(severity) || "CRITICAL".equals(severity))
+                .findFirst()
+                .orElse("LOW");
+    }
+
     private String extractTraceId(String payloadJson) {
         if (payloadJson == null || payloadJson.isBlank()) return null;
         try {

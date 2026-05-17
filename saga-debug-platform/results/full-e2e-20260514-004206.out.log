@@ -1,0 +1,106 @@
+============================================================
+SAGA OBSERVABILITY PLATFORM — EVALUATION (Tier 2)
+Started: 2026-05-14 00:42:06
+Mode: FULL
+============================================================
+
+[1] Health Check
+  ✅ order-service
+  ✅ payment-service
+  ✅ inventory-service
+  ✅ correlation-service
+
+[2] Inventory Reset
+  ✅ Inventory reset: PRODUCT-1 → 1000
+
+[3] Warm-up (2 requests)
+  warm-up 1: 42ms
+  warm-up 2: 32ms
+  Settling 5s (let warm-up sagas propagate)...
+
+  ✅ Toxiproxy available — including network-level scenarios
+
+[4] Running 25 scenarios
+
+───────────────────────────────────────────────────────
+▶ SC01_HEALTHY (1 runs)
+  Normal order — all steps succeed (negative class, TN)
+  Expected: status=COMPLETED, rca=None, rcaStatus=NO_DIAGNOSIS_NEEDED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/1: order=68438ba5.. saga=8ff543a4.. 33ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC02_COMPENSATION_HAPPY_PATH (1 runs)
+  Inventory stock-out → compensation succeeds (D1)
+  Expected: status=COMPENSATED, rca=FORWARD_STEP_FAILURE, rcaStatus=SELECTED
+  Run 1/1: order=857d91d0.. saga=4b0ee69e.. 27ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC03_STUCK_LIVE (2 runs)
+  A2 STUCK_LIVE — inventory down, saga stuck (~65s wait)
+  Expected: status=IN_PROGRESS, rca=None, rcaStatus=INSUFFICIENT_EVIDENCE
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=cd66c7f7.. saga=84ae39f0.. 38ms waiting 65s for stuck detection... → IN_PROGRESS | RCA=None status=INSUFFICIENT_EVIDENCE (expected=None status=INSUFFICIENT_EVIDENCE) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+  Run 2/2:   🛑 Stopped inventory-service
+order=013ce13d.. saga=26244848.. 116ms waiting 65s for stuck detection... → IN_PROGRESS | RCA=None status=INSUFFICIENT_EVIDENCE (expected=None status=INSUFFICIENT_EVIDENCE) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+
+───────────────────────────────────────────────────────
+▶ SC04_STUCK_RECOVERED_BRIEF (2 runs)
+  A3 STUCK_RECOVERED_BRIEF — stuck ~45s then restart → R06
+  Expected: status=COMPLETED, rca=TRANSIENT_SERVICE_FAILURE, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=2829eea9.. saga=0d20a629.. 38ms waiting 45s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=TRANSIENT_SERVICE_FAILURE status=SELECTED (expected=TRANSIENT_SERVICE_FAILURE status=SELECTED) ✅
+  Run 2/2:   🛑 Stopped inventory-service
+order=4d39f408.. saga=8260eb33.. 180ms waiting 45s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=TRANSIENT_SERVICE_FAILURE status=SELECTED (expected=TRANSIENT_SERVICE_FAILURE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC05_COMPENSATION_STEP_FAILURE (2 runs)
+  D2 — refund never acknowledged → MISSING_COMPENSATION_ACK
+  Expected: status=COMPENSATING, rca=COMPENSATION_STEP_FAILURE, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc05-900a waiting 70s... → COMPENSATING | RCA=COMPENSATION_STEP_FAILURE status=SELECTED (expected=COMPENSATION_STEP_FAILURE status=SELECTED) ✅
+  Run 2/2: saga=ev-sc05-63fc waiting 70s... → COMPENSATING | RCA=COMPENSATION_STEP_FAILURE status=SELECTED (expected=COMPENSATION_STEP_FAILURE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC06_CIRCUIT_BREAKER_REAL (3 runs)
+  B1 — REAL: fail-mode → 3 retries → R01 primary, R02 contributing
+  Expected: status=FAILED, rca=CIRCUIT_BREAKER_OPEN, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/3: order=9d904983.. saga=f67dbae3.. 270ms waiting for retry exhaustion... → FAILED | RCA=CIRCUIT_BREAKER_OPEN status=SELECTED (expected=CIRCUIT_BREAKER_OPEN status=SELECTED) ✅
+  Run 2/3: order=0d071d54.. saga=6baa4ea7.. 48ms waiting for retry exhaustion... → FAILED | RCA=CIRCUIT_BREAKER_OPEN status=SELECTED (expected=CIRCUIT_BREAKER_OPEN status=SELECTED) ✅
+  Run 3/3: order=69a155a5.. saga=3bb97570.. 42ms waiting for retry exhaustion... → FAILED | RCA=CIRCUIT_BREAKER_OPEN status=SELECTED (expected=CIRCUIT_BREAKER_OPEN status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC07_NETWORK_LATENCY_TOXIPROXY (2 runs)
+  B4 — Toxiproxy partial-realism (services not rerouted; documents limitation)
+  Expected: status=None, rca=DOWNSTREAM_TIMEOUT, rcaStatus=SELECTED
+  Run 1/2: toxic=12s latency on Kafka waiting 65s for step timeout detection... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+  Run 2/2: toxic=12s latency on Kafka waiting 65s for step timeout detection... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC08_DUPLICATE_EVENT_FAST (2 runs)
+  E1 — duplicate eventId at ~1s gap → EXACT_DUPLICATE_EVENT
+  Expected: status=None, rca=DUPLICATE_DELIVERY, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc08-63f5 waiting 5s... → IN_PROGRESS | RCA=DUPLICATE_DELIVERY status=SELECTED (expected=DUPLICATE_DELIVERY status=SELECTED) ✅
+  Run 2/2: saga=ev-sc08-fe19 waiting 5s... → IN_PROGRESS | RCA=DUPLICATE_DELIVERY status=SELECTED (expected=DUPLICATE_DELIVERY status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC09_OUT_OF_ORDER (2 runs)
+  C1 — events with reverse-chronological timestamps → OUT_OF_ORDER
+  Expected: status=None, rca=OUT_OF_ORDER_DELIVERY, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc09-75f8 waiting 5s... → IN_PROGRESS | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=OUT_OF_ORDER_DELIVERY status=SELECTED) ❌
+  Run 2/2: saga=ev-sc09-68c9 waiting 5s... → IN_PROGRESS | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=OUT_OF_ORDER_DELIVERY status=SELECTED) ❌
+
+───────────────────────────────────────────────────────
+▶ SC10_INVALID_TRANSITION (2 runs)
+  C2 — skip PAYMENT step → INVALID_TRANSITION
+  Expected: status=None, rca=INVALID_TRANSITION, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc10-89a3 waiting 5s... → COMPLETED | RCA=INVALID_TRANSITION status=SELECTED (expected=INVALID_TRANSITION status=SELECTED) ✅
+  Run 2/2: 

@@ -29,7 +29,6 @@ public enum AnomalyType {
 
     // Messaging
     RETRY_BURST,
-    CONSUMER_LAG_HIGH,  // Placeholder — no detector implemented. R16 checks but never fires.
 
     // Compensation timing
     DELAYED_COMPENSATION

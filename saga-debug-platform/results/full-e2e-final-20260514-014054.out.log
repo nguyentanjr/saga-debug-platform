@@ -1,0 +1,61 @@
+============================================================
+SAGA OBSERVABILITY PLATFORM — EVALUATION (Tier 2)
+Started: 2026-05-14 01:40:54
+Mode: FULL
+============================================================
+
+[1] Health Check
+  ✅ order-service
+  ✅ payment-service
+  ✅ inventory-service
+  ✅ correlation-service
+
+[2] Inventory Reset
+  ✅ Inventory reset: PRODUCT-1 → 1000
+
+[3] Warm-up (2 requests)
+  warm-up 1: 125ms
+  warm-up 2: 53ms
+  Settling 5s (let warm-up sagas propagate)...
+
+  ✅ Toxiproxy available — including network-level scenarios
+
+[4] Running 25 scenarios
+
+───────────────────────────────────────────────────────
+▶ SC01_HEALTHY (1 runs)
+  Normal order — all steps succeed (negative class, TN)
+  Expected: status=COMPLETED, rca=None, rcaStatus=NO_DIAGNOSIS_NEEDED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/1: order=88d46c00.. saga=550f505f.. 57ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC02_COMPENSATION_HAPPY_PATH (1 runs)
+  Inventory stock-out → compensation succeeds (D1)
+  Expected: status=COMPENSATED, rca=FORWARD_STEP_FAILURE, rcaStatus=SELECTED
+  Run 1/1: order=952ce203.. saga=79a19560.. 46ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC03_STUCK_LIVE (2 runs)
+  A2 STUCK_LIVE — inventory down, saga stuck (~65s wait)
+  Expected: status=IN_PROGRESS, rca=None, rcaStatus=INSUFFICIENT_EVIDENCE
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=831168f4.. saga=af0d4e55.. 43ms waiting 65s for stuck detection... → IN_PROGRESS | RCA=None status=INSUFFICIENT_EVIDENCE (expected=None status=INSUFFICIENT_EVIDENCE) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+  Run 2/2:   🛑 Stopped inventory-service
+order=525d683a.. saga=0a549c47.. 133ms waiting 65s for stuck detection... → IN_PROGRESS | RCA=None status=INSUFFICIENT_EVIDENCE (expected=None status=INSUFFICIENT_EVIDENCE) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+
+───────────────────────────────────────────────────────
+▶ SC04_STUCK_RECOVERED_BRIEF (2 runs)
+  A3 STUCK_RECOVERED_BRIEF — stuck ~45s then restart → R06
+  Expected: status=COMPLETED, rca=TRANSIENT_SERVICE_FAILURE, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=5b64bb01.. saga=fd1c3ede.. 55ms waiting 45s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=TRANSIENT_SERVICE_FAILURE status=SELECTED) ❌
+  Run 2/2:   🛑 Stopped inventory-service
+order=d5f0c5f7.. saga=2b5de0a0.. 35ms waiting 45s for stuck...

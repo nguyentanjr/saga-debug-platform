@@ -1,18 +1,66 @@
 SAGA OBSERVABILITY PLATFORM — EVALUATION REPORT (Tier 2)
-Generated: 2026-05-11 18:40:32
+Generated: 2026-05-14 21:17:33
 ============================================================
 
-SC15_STEP_TIMEOUT_INJECT
-  B3 — large gap between steps → STEP_TIMEOUT (scheduler)
-  Expected RCA: DOWNSTREAM_TIMEOUT
-  Accuracy: 100.0%  (2/2 runs OK)
-  TTI: 68.179s  |  RCA Latency: 34.3ms
+SC01_HEALTHY
+  Normal order — all steps succeed (negative class, TN)
+  Expected RCA: None (status=NO_DIAGNOSIS_NEEDED)
+  Accuracy: 100.0%  (5/5 runs OK)
+  TTI: 1.11s  |  RCA Latency: 27.2ms
 
-SC22_COMPENSATION_NOT_TRIGGERED
-  D3 — INVENTORY_FAILED but no REFUND_PAYMENT → COMPENSATION_MISSING (R09)
-  Expected RCA: COMPENSATION_NOT_TRIGGERED
+SC02_COMPENSATION_HAPPY_PATH
+  Inventory stock-out → compensation succeeds (D1)
+  Expected RCA: FORWARD_STEP_FAILURE (status=SELECTED)
+  Accuracy: 100.0%  (5/5 runs OK)
+  TTI: 1.112s  |  RCA Latency: 23.8ms
+
+SC03_STUCK_LIVE
+  A2 STUCK_LIVE — inventory down, saga stuck (~65s wait)
+  Expected RCA: None (status=INSUFFICIENT_EVIDENCE)
   Accuracy: 100.0%  (2/2 runs OK)
-  TTI: 73.141s  |  RCA Latency: 24.6ms
+  TTI: 70.776s  |  RCA Latency: 19.9ms
+
+SC04_STUCK_RECOVERED_BRIEF
+  A3 STUCK_RECOVERED_BRIEF — stuck ~45s then restart → R06
+  Expected RCA: TRANSIENT_SERVICE_FAILURE (status=SELECTED)
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 82.355s  |  RCA Latency: 27.1ms
+
+SC06_CIRCUIT_BREAKER_REAL
+  B1 — REAL: fail-mode → 3 retries → R01 primary, R02 contributing
+  Expected RCA: CIRCUIT_BREAKER_OPEN (status=SELECTED)
+  Accuracy: 100.0%  (3/3 runs OK)
+  TTI: 8.242s  |  RCA Latency: 29.8ms
+
+SC16_STUCK_RECOVERED_LONG
+  A4 — stuck ~125s (both anomalies) → restart → R05 (recovered)
+  Expected RCA: SERVICE_CRASH (status=SELECTED)
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 161.337s  |  RCA Latency: 25.1ms
+
+SC17_STUCK_DEAD_PERMANENT
+  A5 — stuck ~150s, never recovers → R05 (CRITICAL)
+  Expected RCA: SERVICE_CRASH (status=SELECTED)
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 154.993s  |  RCA Latency: 36.9ms
+
+SC27_PAYMENT_PAUSE_RECOVERY
+  D9-1 payment-service docker pause then recover -> real STEP_TIMEOUT
+  Expected RCA: DOWNSTREAM_TIMEOUT (status=SELECTED)
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 70.309s  |  RCA Latency: 17.6ms
+
+SC28_PAYMENT_SIGSTOP_RECOVERY
+  D9-2 payment-service PID 1 SIGSTOP then SIGCONT -> real STEP_TIMEOUT
+  Expected RCA: DOWNSTREAM_TIMEOUT (status=SELECTED)
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 69.76s  |  RCA Latency: 24.0ms
+
+SC29_PAYMENT_NETWORK_PARTITION
+  D9-3 disconnect payment-service from Docker network then recover -> real STEP_TIMEOUT
+  Expected RCA: DOWNSTREAM_TIMEOUT (status=SELECTED)
+  Accuracy: 100.0%  (2/2 runs OK)
+  TTI: 71.786s  |  RCA Latency: 21.9ms
 
 
 OVERALL: Accuracy=100.0%  PASS
@@ -21,16 +69,25 @@ RCA CLASSIFICATION METRICS
   Precision: 1.000
   Recall:    1.000
   F1-Score:  1.000
-  TP=4  FP=0  FN=0  TN=0
+  TP=20  FP=0  FN=0  TN=7
+
+RCA STATUS METRICS
+  Status Accuracy: 100.0% (27/27)
+  INSUFFICIENT_EVIDENCE: 100.0% (2/2) actual={'INSUFFICIENT_EVIDENCE': 2}
+  NO_DIAGNOSIS_NEEDED: 100.0% (5/5) actual={'NO_DIAGNOSIS_NEEDED': 5}
+  SELECTED: 100.0% (20/20) actual={'SELECTED': 20}
 
   Per-class breakdown:
   RCA Label                             Prec Recall     F1 Support
   ------------------------------------------------------------
-  COMPENSATION_NOT_TRIGGERED           1.000  1.000  1.000       2
-  DOWNSTREAM_TIMEOUT                   1.000  1.000  1.000       2
+  CIRCUIT_BREAKER_OPEN                 1.000  1.000  1.000       3
+  DOWNSTREAM_TIMEOUT                   1.000  1.000  1.000       6
+  FORWARD_STEP_FAILURE                 1.000  1.000  1.000       5
+  SERVICE_CRASH                        1.000  1.000  1.000       4
+  TRANSIENT_SERVICE_FAILURE            1.000  1.000  1.000       2
 
 ANOMALY DETECTION METRICS
-  Precision: 0.400
+  Precision: 1.000
   Recall:    1.000
-  F1-Score:  0.571
-  TP=4  FP=6  FN=0
+  F1-Score:  1.000
+  TP=27  FP=0  FN=0

@@ -1,0 +1,126 @@
+============================================================
+SAGA OBSERVABILITY PLATFORM — EVALUATION (Tier 2)
+Started: 2026-05-14 01:00:07
+Mode: BASIC (2 scenarios)
+============================================================
+
+[1] Health Check
+  ✅ order-service
+  ✅ payment-service
+  ✅ inventory-service
+  ✅ correlation-service
+
+[2] Inventory Reset
+  ✅ Inventory reset: PRODUCT-1 → 1000
+
+[3] Warm-up (2 requests)
+  warm-up 1: 147ms
+  warm-up 2: 57ms
+  Settling 5s (let warm-up sagas propagate)...
+
+  Selected scenarios: ['SC09_OUT_OF_ORDER', 'SC10_INVALID_TRANSITION', 'SC11_ORPHAN_EVENT', 'SC12_RETRY_STORM_NO_CB', 'SC13_FORBIDDEN_POST_TERMINAL', 'SC14_MISSING_TRACE_CONTEXT', 'SC15_STEP_TIMEOUT_INJECT', 'SC16_STUCK_RECOVERED_LONG', 'SC17_STUCK_DEAD_PERMANENT', 'SC19_TIMEOUT_THEN_RECOVER', 'SC20_STATE_REGRESSION', 'SC21_MULTI_TERMINAL_CONFLICT', 'SC22_COMPENSATION_NOT_TRIGGERED', 'SC23_DUPLICATE_COMPENSATION', 'SC24_DELAYED_COMPENSATION', 'SC25_DUPLICATE_EVENT_DELAYED', 'SC26_PARTIAL_TRACE_PROPAGATION']
+
+[4] Running 17 scenarios
+
+───────────────────────────────────────────────────────
+▶ SC09_OUT_OF_ORDER (2 runs)
+  C1 — events with reverse-chronological timestamps → OUT_OF_ORDER
+  Expected: status=None, rca=OUT_OF_ORDER_DELIVERY, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc09-e7e9 waiting 5s... → IN_PROGRESS | RCA=OUT_OF_ORDER_DELIVERY status=SELECTED (expected=OUT_OF_ORDER_DELIVERY status=SELECTED) ✅
+  Run 2/2: saga=ev-sc09-85c0 waiting 5s... → IN_PROGRESS | RCA=OUT_OF_ORDER_DELIVERY status=SELECTED (expected=OUT_OF_ORDER_DELIVERY status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC10_INVALID_TRANSITION (2 runs)
+  C2 — skip PAYMENT step → INVALID_TRANSITION
+  Expected: status=None, rca=INVALID_TRANSITION, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc10-f91c waiting 5s... → COMPLETED | RCA=INVALID_TRANSITION status=SELECTED (expected=INVALID_TRANSITION status=SELECTED) ✅
+  Run 2/2: saga=ev-sc10-b49e waiting 5s... → COMPLETED | RCA=INVALID_TRANSITION status=SELECTED (expected=INVALID_TRANSITION status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC11_ORPHAN_EVENT (2 runs)
+  E3 — first event for an unknown sagaId → ORPHAN_EVENT
+  Expected: status=None, rca=WRONG_SAGA_CORRELATION_KEY, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc11-29a9 waiting 5s... → IN_PROGRESS | RCA=WRONG_SAGA_CORRELATION_KEY status=SELECTED (expected=WRONG_SAGA_CORRELATION_KEY status=SELECTED) ✅
+  Run 2/2: saga=ev-sc11-ad30 waiting 5s... → IN_PROGRESS | RCA=WRONG_SAGA_CORRELATION_KEY status=SELECTED (expected=WRONG_SAGA_CORRELATION_KEY status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC12_RETRY_STORM_NO_CB (2 runs)
+  B2 — 3× PAYMENT_RETRY only (no failure) → R02 isolated
+  Expected: status=None, rca=TIMEOUT_RETRY_STORM, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc12-f180 waiting 5s... → IN_PROGRESS | RCA=TIMEOUT_RETRY_STORM status=SELECTED (expected=TIMEOUT_RETRY_STORM status=SELECTED) ✅
+  Run 2/2: saga=ev-sc12-ae65 waiting 5s... → IN_PROGRESS | RCA=TIMEOUT_RETRY_STORM status=SELECTED (expected=TIMEOUT_RETRY_STORM status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC13_FORBIDDEN_POST_TERMINAL (2 runs)
+  C3 — event after COMPLETED terminal → FORBIDDEN_POST_TERMINAL
+  Expected: status=None, rca=TERMINAL_STATE_OVERWRITE, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc13-a956 waiting 5s... → COMPLETED | RCA=TERMINAL_STATE_OVERWRITE status=SELECTED (expected=TERMINAL_STATE_OVERWRITE status=SELECTED) ✅
+  Run 2/2: saga=ev-sc13-5871 waiting 5s... → COMPLETED | RCA=TERMINAL_STATE_OVERWRITE status=SELECTED (expected=TERMINAL_STATE_OVERWRITE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC14_MISSING_TRACE_CONTEXT (2 runs)
+  E4 — events without traceId field → MISSING_TRACE_CONTEXT
+  Expected: status=None, rca=MISSING_TRACE_PROPAGATION, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc14-e8ce waiting 5s... → IN_PROGRESS | RCA=MISSING_TRACE_PROPAGATION status=SELECTED (expected=MISSING_TRACE_PROPAGATION status=SELECTED) ✅
+  Run 2/2: saga=ev-sc14-6d90 waiting 5s... → IN_PROGRESS | RCA=MISSING_TRACE_PROPAGATION status=SELECTED (expected=MISSING_TRACE_PROPAGATION status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC15_STEP_TIMEOUT_INJECT (2 runs)
+  B3 — large gap between steps → STEP_TIMEOUT (scheduler)
+  Expected: status=None, rca=DOWNSTREAM_TIMEOUT, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc15-c6f3 waiting 65s... → IN_PROGRESS | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+  Run 2/2: saga=ev-sc15-0bb9 waiting 65s... → IN_PROGRESS | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC16_STUCK_RECOVERED_LONG (2 runs)
+  A4 — stuck ~125s (both anomalies) → restart → R05 (recovered)
+  Expected: status=COMPLETED, rca=SERVICE_CRASH, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=88fb3853.. saga=f831fc18.. 486ms waiting 125s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  Run 2/2:   🛑 Stopped inventory-service
+order=07469de4.. saga=31abe8b9.. 88ms waiting 125s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC17_STUCK_DEAD_PERMANENT (2 runs)
+  A5 — stuck ~150s, never recovers → R05 (CRITICAL)
+  Expected: status=IN_PROGRESS, rca=SERVICE_CRASH, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=620bfa35.. saga=fce6f31a.. 47ms waiting 150s for stuck detection... → IN_PROGRESS | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+  Run 2/2:   🛑 Stopped inventory-service
+order=d62eb3ae.. saga=90091b9f.. 26ms waiting 150s for stuck detection... → IN_PROGRESS | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+
+───────────────────────────────────────────────────────
+▶ SC19_TIMEOUT_THEN_RECOVER (2 runs)
+  B5 — STEP_TIMEOUT then COMPLETED → R07 + outcome=SELF_HEALED
+  Expected: status=COMPLETED, rca=DOWNSTREAM_TIMEOUT, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc19-9bb3 phase1 done waiting 65s for STEP_TIMEOUT... phase2 done, settling 3s... → COMPLETED | RCA=TRANSIENT_SERVICE_FAILURE status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ❌
+  Run 2/2: saga=ev-sc19-ff40 phase1 done waiting 65s for STEP_TIMEOUT... phase2 done, settling 3s... → COMPLETED | RCA=TRANSIENT_SERVICE_FAILURE status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ❌
+
+───────────────────────────────────────────────────────
+▶ SC20_STATE_REGRESSION (2 runs)
+  C4 — COMPENSATED→FAILED regression → STATE_REGRESSION (R04)
+  Expected: status=None, rca=TERMINAL_STATE_OVERWRITE, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc20-b9f3 waiting 5s... → FAILED | RCA=TERMINAL_STATE_OVERWRITE status=SELECTED (expected=TERMINAL_STATE_OVERWRITE status=SELECTED) ✅
+  Run 2/2: saga=ev-sc20-422f waiting 5s... → FAILED | RCA=TERMINAL_STATE_OVERWRITE status=SELECTED (expected=TERMINAL_STATE_OVERWRITE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC21_MULTI_TERMINAL_CONFLICT (2 runs)
+  C5 — both success+failure terminals → MULTI_TERMINAL_CONFLICT (R03)
+  Expected: status=None, rca=MULTI_TERMINAL_CONFLICT, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc21-8608 waiting 5s... → FAILED | RCA=MULTI_TERMINAL_CONFLICT status=SELECTED (expected=MULTI_TERMINAL_CONFLICT status=SELECTED) ✅
+  Run 2/2: saga=ev-sc21-d5a8 waiting 5s... → FAILED | RCA=MULTI_TERMINAL_CONFLICT status=SELECTED (expected=MULTI_TERMINAL_CONFLICT status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC22_COMPENSATION_NOT_TRIGGERED (2 runs)
+  D3 — INVENTORY_FAILED but no REFUND_PAYMENT → COMPENSATION_MISSING (R09)
+  Expected: status=None, rca=COMPENSATION_NOT_TRIGGERED, rcaStatus=SELECTED
+  Run 1/2: saga=ev-sc22-a13f waiting 70s... → COMPENSATING | RCA=COMPENSATION_NOT_TRIGGERED status=SELECTED (expected=COMPENSATION_NOT_TRIGGERED status=SELECTED) ✅
+  Run 2/2: saga=ev-sc22-5e69 waiting 70s...

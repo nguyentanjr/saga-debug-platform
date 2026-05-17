@@ -1,0 +1,253 @@
+============================================================
+SAGA OBSERVABILITY PLATFORM — EVALUATION (Tier 2)
+Started: 2026-05-14 20:49:59
+Mode: FULL
+============================================================
+
+[1] Health Check
+  ✅ order-service
+  ✅ payment-service
+  ✅ inventory-service
+  ✅ correlation-service
+
+[2] Inventory Reset
+  ✅ Inventory reset: PRODUCT-1 → 1000
+
+[3] Warm-up (2 requests)
+  warm-up 1: 50ms
+  warm-up 2: 31ms
+  Settling 5s (let warm-up sagas propagate)...
+
+  ✅ Toxiproxy available — including network-level scenarios
+  Filtered to reproducibility='real': 10 of 28 scenarios.
+
+[4] Running 10 scenarios
+
+───────────────────────────────────────────────────────
+▶ SC01_HEALTHY (5 runs)
+  Normal order — all steps succeed (negative class, TN)
+  Expected: status=COMPLETED, rca=None, rcaStatus=NO_DIAGNOSIS_NEEDED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/5: order=1f47ba1a.. saga=bd78ca2c.. 41ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 2/5: order=8ec7ab16.. saga=95814aca.. 29ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 3/5: order=d3173413.. saga=379ea9dd.. 23ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 4/5: order=e0d15bd1.. saga=818242c3.. 21ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 5/5: order=a5fa5221.. saga=dd96f307.. 33ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC02_COMPENSATION_HAPPY_PATH (5 runs)
+  Inventory stock-out → compensation succeeds (D1)
+  Expected: status=COMPENSATED, rca=FORWARD_STEP_FAILURE, rcaStatus=SELECTED
+  Run 1/5: order=6d74f5ba.. saga=02e02d0f.. 41ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+  Run 2/5: order=a317f815.. saga=4fb4d3f6.. 59ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+  Run 3/5: order=d0615adb.. saga=92e74411.. 21ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+  Run 4/5: order=7e0b210e.. saga=2ac6f1ff.. 32ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+  Run 5/5: order=d0fd48dc.. saga=bad9e0bb.. 31ms → COMPENSATED | RCA=FORWARD_STEP_FAILURE status=SELECTED (expected=FORWARD_STEP_FAILURE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC03_STUCK_LIVE (2 runs)
+  A2 STUCK_LIVE — inventory down, saga stuck (~65s wait)
+  Expected: status=IN_PROGRESS, rca=None, rcaStatus=INSUFFICIENT_EVIDENCE
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=30c6f15b.. saga=0537b473.. 41ms waiting 65s for stuck detection... → IN_PROGRESS | RCA=None status=INSUFFICIENT_EVIDENCE (expected=None status=INSUFFICIENT_EVIDENCE) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+  Run 2/2:   🛑 Stopped inventory-service
+order=3ac064fc.. saga=ed75fd55.. 42ms waiting 65s for stuck detection... → IN_PROGRESS | RCA=None status=INSUFFICIENT_EVIDENCE (expected=None status=INSUFFICIENT_EVIDENCE) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+
+───────────────────────────────────────────────────────
+▶ SC04_STUCK_RECOVERED_BRIEF (2 runs)
+  A3 STUCK_RECOVERED_BRIEF — stuck ~45s then restart → R06
+  Expected: status=COMPLETED, rca=TRANSIENT_SERVICE_FAILURE, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=6a2c7693.. saga=d267b35e.. 29ms waiting 45s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=TRANSIENT_SERVICE_FAILURE status=SELECTED (expected=TRANSIENT_SERVICE_FAILURE status=SELECTED) ✅
+  Run 2/2:   🛑 Stopped inventory-service
+order=f0f5cc6c.. saga=7b995059.. 16ms waiting 45s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=TRANSIENT_SERVICE_FAILURE status=SELECTED (expected=TRANSIENT_SERVICE_FAILURE status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC06_CIRCUIT_BREAKER_REAL (3 runs)
+  B1 — REAL: fail-mode → 3 retries → R01 primary, R02 contributing
+  Expected: status=FAILED, rca=CIRCUIT_BREAKER_OPEN, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/3: order=a2df72d3.. saga=d8e4f417.. 37ms waiting for retry exhaustion... → FAILED | RCA=CIRCUIT_BREAKER_OPEN status=SELECTED (expected=CIRCUIT_BREAKER_OPEN status=SELECTED) ✅
+  Run 2/3: order=a5ecf42d.. saga=83dd1610.. 33ms waiting for retry exhaustion... → FAILED | RCA=CIRCUIT_BREAKER_OPEN status=SELECTED (expected=CIRCUIT_BREAKER_OPEN status=SELECTED) ✅
+  Run 3/3: order=c02ddfb4.. saga=d66d14c1.. 31ms waiting for retry exhaustion... → FAILED | RCA=CIRCUIT_BREAKER_OPEN status=SELECTED (expected=CIRCUIT_BREAKER_OPEN status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC16_STUCK_RECOVERED_LONG (2 runs)
+  A4 — stuck ~125s (both anomalies) → restart → R05 (recovered)
+  Expected: status=COMPLETED, rca=SERVICE_CRASH, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=259e0215.. saga=304615ee.. 20ms waiting 125s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  Run 2/2:   🛑 Stopped inventory-service
+order=27c8d6af.. saga=583c081b.. 35ms waiting 125s for stuck... stuck=yes  ▶️  Started inventory-service
+ restarting... ready → COMPLETED | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC17_STUCK_DEAD_PERMANENT (2 runs)
+  A5 — stuck ~150s, never recovers → R05 (CRITICAL)
+  Expected: status=IN_PROGRESS, rca=SERVICE_CRASH, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=c1a77f81.. saga=e381a9d1.. 32ms waiting 150s for stuck detection... → IN_PROGRESS | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+  Run 2/2:   🛑 Stopped inventory-service
+order=a8653444.. saga=0c3b4150.. 26ms waiting 150s for stuck detection... → IN_PROGRESS | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+
+───────────────────────────────────────────────────────
+▶ SC27_PAYMENT_PAUSE_RECOVERY (2 runs)
+  D9-1 payment-service docker pause then recover -> real STEP_TIMEOUT
+  Expected: status=COMPLETED, rca=DOWNSTREAM_TIMEOUT, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   Paused payment-service
+order=e61a024d.. saga=ace60322.. 32ms waiting 45s during docker pause...  Unpaused payment-service
+ settling 20s... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+  Run 2/2:   Paused payment-service
+order=30851dd5.. saga=b32d1f09.. 14ms waiting 45s during docker pause...  Unpaused payment-service
+ settling 20s... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC28_PAYMENT_SIGSTOP_RECOVERY (2 runs)
+  D9-2 payment-service PID 1 SIGSTOP then SIGCONT -> real STEP_TIMEOUT
+  Expected: status=COMPLETED, rca=DOWNSTREAM_TIMEOUT, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   Sent SIGSTOP to payment-service
+order=1ef38f18.. saga=37e292af.. 22ms waiting 45s during SIGSTOP...  Sent SIGCONT to payment-service
+ settling 20s... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+  Run 2/2:   Sent SIGSTOP to payment-service
+order=dd7f622d.. saga=50bd0fd0.. 36ms waiting 45s during SIGSTOP...  Sent SIGCONT to payment-service
+ settling 20s... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+
+───────────────────────────────────────────────────────
+▶ SC29_PAYMENT_NETWORK_PARTITION (2 runs)
+  D9-3 disconnect payment-service from Docker network then recover -> real STEP_TIMEOUT
+  Expected: status=COMPLETED, rca=DOWNSTREAM_TIMEOUT, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   Disconnected payment-service from saga-debug-platform_default
+order=07e41f00.. saga=ce4a146d.. 33ms waiting 45s during network partition...  Connected payment-service to saga-debug-platform_default
+ settling 20s... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+  Run 2/2:   Disconnected payment-service from saga-debug-platform_default
+order=1ef1cdb9.. saga=1cd04d32.. 21ms waiting 45s during network partition...  Connected payment-service to saga-debug-platform_default
+ settling 20s... → COMPLETED | RCA=DOWNSTREAM_TIMEOUT status=SELECTED (expected=DOWNSTREAM_TIMEOUT status=SELECTED) ✅
+
+============================================================
+EVALUATION RESULTS
+============================================================
+
+SC01_HEALTHY:
+  Accuracy    : 100.0%  (5/5)
+  Avg TTI     : 1.11s
+  RCA Latency : 27.2ms
+
+SC02_COMPENSATION_HAPPY_PATH:
+  Accuracy    : 100.0%  (5/5)
+  Avg TTI     : 1.11s
+  RCA Latency : 23.8ms
+
+SC03_STUCK_LIVE:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 70.78s
+  RCA Latency : 19.9ms
+
+SC04_STUCK_RECOVERED_BRIEF:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 82.35s
+  RCA Latency : 27.1ms
+
+SC06_CIRCUIT_BREAKER_REAL:
+  Accuracy    : 100.0%  (3/3)
+  Avg TTI     : 8.24s
+  RCA Latency : 29.8ms
+
+SC16_STUCK_RECOVERED_LONG:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 161.34s
+  RCA Latency : 25.1ms
+
+SC17_STUCK_DEAD_PERMANENT:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 154.99s
+  RCA Latency : 36.9ms
+
+SC27_PAYMENT_PAUSE_RECOVERY:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 70.31s
+  RCA Latency : 17.6ms
+
+SC28_PAYMENT_SIGSTOP_RECOVERY:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 69.76s
+  RCA Latency : 24.0ms
+
+SC29_PAYMENT_NETWORK_PARTITION:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 71.79s
+  RCA Latency : 21.9ms
+
+============================================================
+OVERALL
+  RCA Accuracy     : 100.0%  (target ≥90%)  ✅
+  Avg TTI          : 51.79s
+  RCA Latency Avg  : 25.5ms
+  RCA Latency P95  : 38.0ms
+  Total Scenarios  : 10
+  Total Runs       : 27
+
+============================================================
+RCA CLASSIFICATION METRICS
+  Precision : 1.000
+  Recall    : 1.000
+  F1-Score  : 1.000
+  TP=20  FP=0  FN=0  TN=7
+
+  Per-class breakdown:
+  RCA Label                             Prec Recall     F1 Support
+  ------------------------------------------------------------
+  CIRCUIT_BREAKER_OPEN                 1.000  1.000  1.000       3
+  DOWNSTREAM_TIMEOUT                   1.000  1.000  1.000       6
+  FORWARD_STEP_FAILURE                 1.000  1.000  1.000       5
+  SERVICE_CRASH                        1.000  1.000  1.000       4
+  TRANSIENT_SERVICE_FAILURE            1.000  1.000  1.000       2
+
+============================================================
+RCA STATUS METRICS
+  Status Accuracy : 100.0%  (27/27)
+  INSUFFICIENT_EVIDENCE    : 100.0%  (2/2) actual={'INSUFFICIENT_EVIDENCE': 2}
+  NO_DIAGNOSIS_NEEDED      : 100.0%  (5/5) actual={'NO_DIAGNOSIS_NEEDED': 5}
+  SELECTED                 : 100.0%  (20/20) actual={'SELECTED': 20}
+
+============================================================
+ANOMALY DETECTION METRICS
+  Precision : 1.000
+  Recall    : 1.000
+  F1-Score  : 1.000
+  TP=27  FP=0  FN=0
+
+============================================================
+PER-SPLIT ACCURACY
+  TRAIN  : 100.0%   (5 scenarios, 14 runs)
+  TEST   : 100.0%   (5 scenarios, 13 runs)
+
+============================================================
+PER-REPRODUCIBILITY ACCURACY
+  REAL      : 100.0%   (10 scenarios, 27 runs)
+
+============================================================
+PER-CATEGORY ACCURACY
+  A Service Availability         : 100.0%   (5 scenarios, 13 runs)
+  B Network / Timing             : 100.0%   (4 scenarios, 9 runs)
+  D Compensation                 : 100.0%   (1 scenarios, 5 runs)
+
+📁 Saved: results\evaluation_report.json
+📁 Saved: results\evaluation_report.txt

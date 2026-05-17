@@ -91,7 +91,7 @@ print_saga_result() {
     durationMs: .durationMs,
     events: [ .events[]? | {eventType, stepName, serviceName, timestamp} ],
     anomalies: [ .anomalies[]? | {anomalyType, detectedAt, description} ],
-    rca: [ .rcaResults[]? | {rootCause, outcome, confidence, explanation} ]
+    rca: [ .rcaResults[]? | {rootCause, rcaStatus, primaryRootCauses, outcome, candidates, missingEvidence} ]
   }'
   echo -e "${BOLD}═════════════════════════════════════${NC}"
 }

@@ -23,15 +23,10 @@ def main():
 
     changed_rows = []
     for scenario_id in sorted(summary["changed_scenarios"]):
-        changed_rows.append([
-            scenario_id,
-            str(expected.get(scenario_id)),
-            str(by[scenario_id].get("confidence-only")),
-            str(by[scenario_id].get("confidence-heavy")),
-            str(by[scenario_id].get("equal-weight")),
-            str(by[scenario_id].get("severity-heavy")),
-            str(by[scenario_id].get("evidence-heavy")),
-        ])
+        changed_rows.append(
+            [scenario_id, str(expected.get(scenario_id))]
+            + [str(by[scenario_id].get(profile)) for profile in profiles]
+        )
 
     changed_multi_rule = set(summary["multi_rule_changed"])
     multi_rule_rows = []
@@ -57,30 +52,31 @@ const accuracyRows = {js(accuracy_rows)};
 const changedRows = {js(changed_rows)};
 const multiRuleRows = {js(multi_rule_rows)};
 const ablationRows = {js(ablation_rows)};
+const changedHeaders = {js(["Scenario", "Expected"] + profiles)};
 
 export default function AblationResultsCanvas() {{
   return (
     <Stack gap={{16}}>
-      <H1>RCA Ranking Ablation Results</H1>
-      <Text>Dataset: 25 scenarios x 5 profiles = 125 profile-scenario evaluations.</Text>
-      <Callout tone="warning" title="Important validity caveat">5 scenarios failed to produce saga IDs in baseline (SC03, SC04, SC06, SC16, SC17), so profile accuracy uses n=20 scenarios. Also, profile re-scoring happened over time on the same saga IDs; non-terminal sagas can accumulate scheduled anomalies, which can mimic weight effects.</Callout>
+      <H1>Score-Free RCA Selection Results</H1>
+      <Text>Dataset uses the score-free selector profile. Numeric confidence-weight ablation is disabled because Phase 3+ no longer ranks RCA by confidence numbers.</Text>
+      <Callout tone="warning" title="Validity caveat">Profile re-scoring is no longer meaningful for confidence weights. Use this canvas for selector accuracy and scenario-level result inspection.</Callout>
 
       <Grid columns={{4}} gap={{12}}>
-        <Stat label="Profiles" value="5" />
+        <Stat label="Profiles" value={js(str(len(profiles)))} />
         <Stat label="Scenarios" value="25" />
-        <Stat label="Evaluated per profile" value="20" />
-        <Stat label="Best Accuracy@1" value="90.0%" />
+        <Stat label="Evaluated per profile" value="see table" />
+        <Stat label="Best Accuracy@1" value={js(accuracy_rows[0][3] if accuracy_rows else "N/A")} />
       </Grid>
 
-      <H2>Accuracy@1 by Profile</H2>
+      <H2>Accuracy@1</H2>
       <Table headers={{["Profile","Correct","Total","Accuracy@1"]}} rows={{accuracyRows}} />
 
       <Divider />
       <H2>Scenarios with Primary RCA Changes Across Profiles</H2>
-      <Table headers={{["Scenario","Expected","confidence-only","confidence-heavy","equal-weight","severity-heavy","evidence-heavy"]}} rows={{changedRows}} />
+      <Table headers={{changedHeaders}} rows={{changedRows}} />
 
       <Divider />
-      <H2>Multi-rule Scenarios Where Ranking Matters</H2>
+      <H2>Multi-rule Scenarios</H2>
       <Table headers={{["Scenario","Primary changed across profiles?"]}} rows={{multiRuleRows}} />
 
       <Divider />
