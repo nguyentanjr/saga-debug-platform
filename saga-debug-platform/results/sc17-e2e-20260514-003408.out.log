@@ -1,0 +1,90 @@
+============================================================
+SAGA OBSERVABILITY PLATFORM — EVALUATION (Tier 2)
+Started: 2026-05-14 00:34:08
+Mode: BASIC (2 scenarios)
+============================================================
+
+[1] Health Check
+  ✅ order-service
+  ✅ payment-service
+  ✅ inventory-service
+  ✅ correlation-service
+
+[2] Inventory Reset
+  ✅ Inventory reset: PRODUCT-1 → 1000
+
+[3] Warm-up (2 requests)
+  warm-up 1: 32ms
+  warm-up 2: 23ms
+  Settling 5s (let warm-up sagas propagate)...
+
+  Selected scenarios: ['SC17_STUCK_DEAD_PERMANENT']
+
+[4] Running 1 scenarios
+
+───────────────────────────────────────────────────────
+▶ SC17_STUCK_DEAD_PERMANENT (2 runs)
+  A5 — stuck ~150s, never recovers → R05 (CRITICAL)
+  Expected: status=IN_PROGRESS, rca=SERVICE_CRASH, rcaStatus=SELECTED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/2:   🛑 Stopped inventory-service
+order=20c13979.. saga=94c84236.. 36ms waiting 150s for stuck detection... → IN_PROGRESS | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+  Run 2/2:   🛑 Stopped inventory-service
+order=03ced8dc.. saga=3ed0ad7b.. 500ms waiting 150s for stuck detection... → IN_PROGRESS | RCA=SERVICE_CRASH status=SELECTED (expected=SERVICE_CRASH status=SELECTED) ✅
+  ▶️  Started inventory-service
+  ▶️  Restoring inventory... ready
+
+============================================================
+EVALUATION RESULTS
+============================================================
+
+SC17_STUCK_DEAD_PERMANENT:
+  Accuracy    : 100.0%  (2/2)
+  Avg TTI     : 155.29s
+  RCA Latency : 60.8ms
+
+============================================================
+OVERALL
+  RCA Accuracy     : 100.0%  (target ≥90%)  ✅
+  Avg TTI          : 155.29s
+  RCA Latency Avg  : 60.8ms
+  RCA Latency P95  : 92.3ms
+  Total Scenarios  : 1
+  Total Runs       : 2
+
+============================================================
+RCA CLASSIFICATION METRICS
+  Precision : 1.000
+  Recall    : 1.000
+  F1-Score  : 1.000
+  TP=2  FP=0  FN=0  TN=0
+
+  Per-class breakdown:
+  RCA Label                             Prec Recall     F1 Support
+  ------------------------------------------------------------
+  SERVICE_CRASH                        1.000  1.000  1.000       2
+
+============================================================
+RCA STATUS METRICS
+  Status Accuracy : 100.0%  (2/2)
+  SELECTED                 : 100.0%  (2/2) actual={'SELECTED': 2}
+
+============================================================
+ANOMALY DETECTION METRICS
+  Precision : 1.000
+  Recall    : 1.000
+  F1-Score  : 1.000
+  TP=4  FP=0  FN=0
+
+============================================================
+PER-SPLIT ACCURACY
+  TEST   : 100.0%   (1 scenarios, 2 runs)
+
+============================================================
+PER-CATEGORY ACCURACY
+  A Service Availability         : 100.0%   (1 scenarios, 2 runs)
+
+📁 Saved: results\evaluation_report.json
+📁 Saved: results\evaluation_report.txt

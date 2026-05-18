@@ -18,11 +18,7 @@ PLATFORM_HEALTH_URL = f"{ev.PLATFORM_URL}/actuator/health"
 RCA_URL = f"{ev.PLATFORM_URL}/rca/analyze"
 
 PROFILES = [
-    ("confidence-only", None),
-    ("confidence-heavy", "rca-confidence-heavy"),
-    ("equal-weight", "rca-equal-weight"),
-    ("severity-heavy", "rca-severity-heavy"),
-    ("evidence-heavy", "rca-evidence-heavy"),
+    ("score-free-selector", None),
 ]
 
 # Scenarios where multiple RCA rules can legitimately co-fire and ranking can matter.
@@ -95,7 +91,7 @@ def run_baseline_once_per_scenario(scenarios):
 
         rows.append(
             {
-                "profile": "confidence-only",
+                "profile": "score-free-selector",
                 "scenarioId": scenario["id"],
                 "predicted_root_cause": result.get("rca_root_cause"),
                 "expected_root_cause": scenario.get("expected_rca"),
@@ -192,10 +188,11 @@ def main():
     scenarios = all_scenarios()
     print(f"Running baseline on {len(scenarios)} scenarios...")
 
-    # Baseline run (confidence-only / default profile) generates the saga IDs.
+    # Baseline run generates the saga IDs. Numeric-confidence profile ablation is
+    # intentionally disabled in Phase 3+ because RCA selection is score-free.
     restart_correlation_service(None)
     all_rows = run_baseline_once_per_scenario(scenarios)
-    baseline_rows = [r for r in all_rows if r["profile"] == "confidence-only"]
+    baseline_rows = [r for r in all_rows if r["profile"] == "score-free-selector"]
 
     # Re-score same saga IDs under remaining profiles.
     for profile_name, spring_profile in PROFILES[1:]:

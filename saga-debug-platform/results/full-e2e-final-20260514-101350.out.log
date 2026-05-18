@@ -1,0 +1,31 @@
+============================================================
+SAGA OBSERVABILITY PLATFORM — EVALUATION (Tier 2)
+Started: 2026-05-14 10:13:51
+Mode: BASIC (2 scenarios)
+============================================================
+
+[1] Health Check
+  ✅ order-service
+  ✅ payment-service
+  ✅ inventory-service
+  ✅ correlation-service
+
+[2] Inventory Reset
+  ✅ Inventory reset: PRODUCT-1 → 1000
+
+[3] Warm-up (2 requests)
+  warm-up 1: 39ms
+  warm-up 2: 30ms
+  Settling 5s (let warm-up sagas propagate)...
+
+[4] Running 2 scenarios
+
+───────────────────────────────────────────────────────
+▶ SC01_HEALTHY (5 runs)
+  Normal order — all steps succeed (negative class, TN)
+  Expected: status=COMPLETED, rca=None, rcaStatus=NO_DIAGNOSIS_NEEDED
+  ✅ Inventory reset: PRODUCT-1 → 1000
+  Run 1/5: order=c9b77450.. saga=dcc7dd88.. 50ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 2/5: order=adccc6fd.. saga=98f602e9.. 46ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 3/5: order=aea1477a.. saga=e938233d.. 23ms → COMPLETED | RCA=None status=NO_DIAGNOSIS_NEEDED (expected=None status=NO_DIAGNOSIS_NEEDED) ✅
+  Run 4/5: 

@@ -2,7 +2,15 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { SagaListItem, SagaDetail, RcaResult, Page } from '../models/saga.model';
+import {
+  SagaListItem,
+  SagaDetail,
+  RcaResult,
+  Page,
+  DashboardSummary,
+  ScenarioDefinition,
+  ScenarioRunResponse
+} from '../models/saga.model';
 
 @Injectable({
   providedIn: 'root'
@@ -35,5 +43,18 @@ export class SagaService {
 
   getRcaResults(sagaId: string): Observable<RcaResult[]> {
     return this.http.get<RcaResult[]>(`${this.apiUrl}/rca/results/${sagaId}`);
+  }
+
+  getDashboardSummary(windowHours: number = 24): Observable<DashboardSummary> {
+    const params = new HttpParams().set('windowHours', windowHours.toString());
+    return this.http.get<DashboardSummary>(`${this.apiUrl}/api/dashboard/summary`, { params });
+  }
+
+  getScenarios(): Observable<ScenarioDefinition[]> {
+    return this.http.get<ScenarioDefinition[]>(`${this.apiUrl}/api/scenarios`);
+  }
+
+  runScenario(scenarioId: string): Observable<ScenarioRunResponse> {
+    return this.http.post<ScenarioRunResponse>(`${this.apiUrl}/api/scenarios/${scenarioId}/run`, {});
   }
 }

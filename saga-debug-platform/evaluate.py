@@ -9,7 +9,7 @@ End-to-end evaluation qua Kafka + Docker — test real infrastructure behavior.
   3. RCA Latency (ms) — thời gian chạy RCA analysis
   4. Classification Precision/Recall/F1
 
-25 Scenarios — 5 failure categories × 5 scenarios each
+28 Scenarios — 25 taxonomy scenarios + 3 D9 real-failure scenarios
 (see docs/RCA_SCENARIO_TAXONOMY.md):
   A — Service Availability   (A1=SC01, A2=SC03, A3=SC04, A4=SC16, A5=SC17)
   B — Network / Timing       (B1=SC06, B2=SC18, B3=SC15, B4=SC07, B5=SC19)
@@ -18,7 +18,7 @@ End-to-end evaluation qua Kafka + Docker — test real infrastructure behavior.
   E — Correlation / Identity (E1=SC08, E2=SC25, E3=SC11, E4=SC14, E5=SC26)
 
 Stratified train (15) / test (10) split — see taxonomy doc §4.
-Each scenario carries `split: train|test` and `category: A|B|C|D|E`.
+Each scenario carries `split`, `category`, and `reproducibility: real|synthetic`.
 
 Execution methods:
   REAL    — full Kafka pipeline (SC01, SC02, SC06)
@@ -29,10 +29,11 @@ Execution methods:
 Cách chạy:
   pip install requests
   python evaluate.py                            # 2 basic scenarios
-  python evaluate.py --full                     # all 25 scenarios
+  python evaluate.py --full                     # all scenarios
   python evaluate.py --full --split train       # only train set (15)
   python evaluate.py --full --split test        # held-out test set (10)
   python evaluate.py --full --category B        # only Category B
+  python evaluate.py --full --repro real        # only real-failure scenarios
   python evaluate.py --full --runs 3
   python evaluate.py --scenario SC03            # specific scenario(s)
   python evaluate.py --list                     # list scenarios with split + cat
@@ -231,6 +232,107 @@ def docker_start(container: str):
         print(f"  ⚠️  Cannot start {container}: {e}")
 
 
+def docker_pause(container: str) -> bool:
+    try:
+        result = subprocess.run(["docker", "pause", container],
+                                capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            print(f"  Paused {container}")
+            return True
+        print(f"  Cannot pause {container}: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"  Cannot pause {container}: {e}")
+    return False
+
+
+def docker_unpause(container: str) -> bool:
+    try:
+        result = subprocess.run(["docker", "unpause", container],
+                                capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            print(f"  Unpaused {container}")
+            return True
+        print(f"  Cannot unpause {container}: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"  Cannot unpause {container}: {e}")
+    return False
+
+
+def docker_exec(container: str, args: list[str], timeout: int = 15) -> bool:
+    try:
+        result = subprocess.run(["docker", "exec", container] + args,
+                                capture_output=True, text=True, timeout=timeout)
+        if result.returncode == 0:
+            return True
+        print(f"  docker exec {container} failed: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"  docker exec {container} failed: {e}")
+    return False
+
+
+def docker_signal_pid1(container: str, signal: str) -> bool:
+    try:
+        result = subprocess.run(["docker", "kill", f"--signal={signal}", container],
+                                capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            print(f"  Sent SIG{signal} to {container}")
+            return True
+        print(f"  Cannot send SIG{signal} to {container}: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"  Cannot send SIG{signal} to {container}: {e}")
+    return False
+
+
+def docker_networks(container: str) -> list[str]:
+    try:
+        result = subprocess.run([
+            "docker", "inspect", "-f",
+            "{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}",
+            container,
+        ], capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        print(f"  Cannot inspect networks for {container}: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"  Cannot inspect networks for {container}: {e}")
+    return []
+
+
+def docker_disconnect_networks(container: str, networks: list[str]) -> bool:
+    ok = True
+    for network in networks:
+        try:
+            result = subprocess.run(["docker", "network", "disconnect", "-f", network, container],
+                                    capture_output=True, text=True, timeout=20)
+            if result.returncode == 0:
+                print(f"  Disconnected {container} from {network}")
+            else:
+                ok = False
+                print(f"  Cannot disconnect {container} from {network}: {result.stderr.strip()}")
+        except Exception as e:
+            ok = False
+            print(f"  Cannot disconnect {container} from {network}: {e}")
+    return ok
+
+
+def docker_connect_networks(container: str, networks: list[str]) -> bool:
+    ok = True
+    for network in networks:
+        try:
+            result = subprocess.run(["docker", "network", "connect", network, container],
+                                    capture_output=True, text=True, timeout=20)
+            stderr = result.stderr.strip()
+            if result.returncode == 0 or "already exists" in stderr.lower():
+                print(f"  Connected {container} to {network}")
+            else:
+                ok = False
+                print(f"  Cannot connect {container} to {network}: {stderr}")
+        except Exception as e:
+            ok = False
+            print(f"  Cannot connect {container} to {network}: {e}")
+    return ok
+
+
 def wait_service_ready(url: str, timeout: int = 60):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -326,6 +428,37 @@ def ts_ago(minutes=0, seconds=0):
     return t.isoformat()
 
 
+def expected_rca_status(scenario: dict) -> str:
+    explicit = scenario.get("expected_rca_status")
+    if explicit:
+        return explicit
+    return "SELECTED" if scenario.get("expected_rca") is not None else "NO_DIAGNOSIS_NEEDED"
+
+
+def expected_root_matches(expected, actual_root, actual_roots) -> bool:
+    actual_roots = actual_roots or []
+    if isinstance(expected, list):
+        return set(actual_roots) == set(expected)
+    return actual_root == expected or expected in actual_roots
+
+
+def rca_expectation_matches(result: dict, scenario: dict) -> bool:
+    expected_status = expected_rca_status(scenario)
+    actual_status = result.get("rca_status")
+
+    if expected_status == "SELECTED":
+        return actual_status == "SELECTED" and expected_root_matches(
+            scenario.get("expected_rca"),
+            result.get("rca_root_cause"),
+            result.get("rca_primary_roots"),
+        )
+
+    if expected_status in ("INSUFFICIENT_EVIDENCE", "NO_DIAGNOSIS_NEEDED"):
+        return actual_status == expected_status and result.get("rca_root_cause") is None
+
+    return actual_status == expected_status
+
+
 def make_result(scenario: dict, run_index: int) -> dict:
     return {
         "scenario_id":        scenario["id"],
@@ -335,7 +468,10 @@ def make_result(scenario: dict, run_index: int) -> dict:
         "saga_status":        None,
         "saga_duration_ms":   None,
         "rca_root_cause":     None,
+        "rca_status":         None,
+        "rca_primary_roots":  [],
         "rca_expected":       scenario["expected_rca"],
+        "rca_expected_status": expected_rca_status(scenario),
         "rca_severity":       None,
         "rca_latency_ms":     None,
         "rca_accurate":       False,
@@ -345,6 +481,15 @@ def make_result(scenario: dict, run_index: int) -> dict:
         "anomalies_actual":   [],
         "error":              None,
     }
+
+
+def selected_root_cause(rca: dict | None):
+    if not rca:
+        return None
+    primary_roots = rca.get("primaryRootCauses") or []
+    if primary_roots:
+        return primary_roots[0]
+    return rca.get("rootCause")
 
 
 def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
@@ -361,15 +506,18 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
         ]
 
     if rca:
-        result["rca_root_cause"] = rca.get("rootCause")
+        result["rca_status"] = rca.get("rcaStatus")
+        result["rca_primary_roots"] = rca.get("primaryRootCauses") or []
+        result["rca_root_cause"] = selected_root_cause(rca)
         result["rca_severity"] = rca.get("severity")
 
     # Accuracy: compare actual vs expected (both can be None for healthy)
-    result["rca_accurate"] = (result["rca_root_cause"] == scenario["expected_rca"])
+    result["rca_accurate"] = rca_expectation_matches(result, scenario)
 
     icon = "✅" if result["rca_accurate"] else "❌"
     print(f" → {result.get('saga_status', '?')} | "
-          f"RCA={result['rca_root_cause']} (expected={scenario['expected_rca']}) {icon}")
+          f"RCA={result['rca_root_cause']} status={result['rca_status']} "
+          f"(expected={scenario['expected_rca']} status={expected_rca_status(scenario)}) {icon}")
 
 
 # ── Scenario runners ─────────────────────────────────────────────────────────
@@ -447,7 +595,7 @@ def run_stuck_saga(scenario: dict, run_index: int) -> dict:
 
     # Detector schedule:
     #   detectStuckSagas       @ 30s rate; trigger = lastEvent + step_timeout < now
-    #   detectMissingTerminal  @ 60s rate; trigger = saga age > 2 × max_step_timeout
+    #   detectMissingTerminal  @ 15s rate; trigger = saga age > 10 × max_step_timeout
     # Payment step timeout = 10s. So:
     #   ~65s  → only SAGA_STUCK reliably fires (A2).
     #   ~150s → both SAGA_STUCK + MISSING_TERMINAL_EVENT fire (A5/A4 base).
@@ -471,7 +619,7 @@ def run_recovered_from_stuck(scenario: dict, run_index: int) -> dict:
     """A3/A4 — stop inventory → stuck detected → restart → saga completes → RCA.
 
     Reads `stuck_wait_seconds` from the scenario dict:
-      - A3 STUCK_RECOVERED_BRIEF (~65s, only SAGA_STUCK before recovery)
+      - A3 STUCK_RECOVERED_BRIEF (~45s, only SAGA_STUCK before recovery)
       - A4 STUCK_RECOVERED_LONG (~125s, both SAGA_STUCK + MISSING_TERMINAL
         before recovery — exercises R05's recovered-with-MISSING_TERMINAL branch)
     """
@@ -535,6 +683,108 @@ def run_recovered_from_stuck(scenario: dict, run_index: int) -> dict:
     finalize_result(result, saga_id, rca, rca_ms, t_start, scenario)
     time.sleep(3)
     return result
+
+
+def run_payment_recovery_gap_scenario(
+        scenario: dict,
+        run_index: int,
+        induce_fault,
+        recover_fault,
+        recovery_label: str) -> dict:
+    """Real payment outage that later recovers.
+
+    Payment is unavailable while the order-created event waits in Kafka. After
+    recovery, payment emits PAYMENT_COMPLETED late, so the detector can observe
+    a real event gap and fire STEP_TIMEOUT without admin event injection.
+    """
+    result = make_result(scenario, run_index)
+    t_start = time.time()
+    fault_active = False
+
+    try:
+        if not induce_fault():
+            result["error"] = f"cannot induce {recovery_label}"
+            return result
+        fault_active = True
+        time.sleep(scenario.get("pre_order_wait_seconds", 3))
+
+        order_resp, latency = create_order(scenario["request"])
+        result["order_latency_ms"] = latency
+        if order_resp is None:
+            result["error"] = "create_order failed"
+            return result
+
+        order_id = order_resp.get("id", "")
+        saga_id = order_resp.get("sagaId", order_id)
+        result["saga_id"] = saga_id
+        print(f"order={order_id[:8]}.. saga={saga_id[:8]}.. {latency:.0f}ms", end="")
+
+        saga_info = find_saga_by_id(saga_id)
+        if saga_info is None:
+            result["error"] = "saga not found"
+            print(" -> not found")
+            return result
+
+        wait_seconds = scenario.get("freeze_seconds", 45)
+        print(f" waiting {wait_seconds}s during {recovery_label}...", end="", flush=True)
+        time.sleep(wait_seconds)
+
+        if not recover_fault():
+            result["error"] = f"cannot recover from {recovery_label}"
+            return result
+        fault_active = False
+
+        wait_service_ready(f"{PAYMENT_URL}/actuator/health", timeout=60)
+        detail, _ = poll_saga_terminal(saga_id, timeout=scenario.get("recover_poll_timeout", 60))
+        if detail:
+            result["saga_status"] = detail.get("status")
+            result["saga_duration_ms"] = detail.get("durationMs")
+
+        settle_seconds = scenario.get("post_recovery_wait_seconds", 20)
+        if settle_seconds:
+            print(f" settling {settle_seconds}s...", end="", flush=True)
+            time.sleep(settle_seconds)
+
+        rca, rca_ms = trigger_rca(saga_id)
+        finalize_result(result, saga_id, rca, rca_ms, t_start, scenario)
+        return result
+    finally:
+        if fault_active:
+            recover_fault()
+            wait_service_ready(f"{PAYMENT_URL}/actuator/health", timeout=60)
+
+
+def run_payment_pause_scenario(scenario: dict, run_index: int) -> dict:
+    return run_payment_recovery_gap_scenario(
+        scenario,
+        run_index,
+        lambda: docker_pause(PAYMENT_CONTAINER),
+        lambda: docker_unpause(PAYMENT_CONTAINER),
+        "docker pause")
+
+
+def run_payment_sigstop_scenario(scenario: dict, run_index: int) -> dict:
+    return run_payment_recovery_gap_scenario(
+        scenario,
+        run_index,
+        lambda: docker_signal_pid1(PAYMENT_CONTAINER, "STOP"),
+        lambda: docker_signal_pid1(PAYMENT_CONTAINER, "CONT"),
+        "SIGSTOP")
+
+
+def run_payment_network_partition_scenario(scenario: dict, run_index: int) -> dict:
+    networks = docker_networks(PAYMENT_CONTAINER)
+    if not networks:
+        result = make_result(scenario, run_index)
+        result["error"] = "payment-service has no Docker network to disconnect"
+        return result
+
+    return run_payment_recovery_gap_scenario(
+        scenario,
+        run_index,
+        lambda: docker_disconnect_networks(PAYMENT_CONTAINER, networks),
+        lambda: docker_connect_networks(PAYMENT_CONTAINER, networks),
+        "network partition")
 
 
 def run_compensation_step_failure(scenario: dict, run_index: int) -> dict:
@@ -715,8 +965,15 @@ def run_inject_scenario(scenario: dict, run_index: int) -> dict:
         "USE_TS_AGO_3M": lambda: ts_ago(minutes=3),
         "USE_TS_AGO_2M": lambda: ts_ago(minutes=2),
         "USE_TS_AGO_1M": lambda: ts_ago(minutes=1),
+        "USE_TS_AGO_80S": lambda: ts_ago(seconds=80),
+        "USE_TS_AGO_60S": lambda: ts_ago(seconds=60),
         "USE_TS_AGO_30S": lambda: ts_ago(seconds=30),
+        "USE_TS_AGO_25S": lambda: ts_ago(seconds=25),
+        "USE_TS_AGO_12S": lambda: ts_ago(seconds=12),
         "USE_TS_AGO_10S": lambda: ts_ago(seconds=10),
+        "USE_TS_AGO_5S": lambda: ts_ago(seconds=5),
+        "USE_TS_AGO_2S": lambda: ts_ago(seconds=2),
+        "USE_TS_AGO_1S": lambda: ts_ago(seconds=1),
     }
 
     dup_key = f"dup-{sid[:12]}"
@@ -848,6 +1105,7 @@ BASIC_SCENARIOS = [
         "id": "SC01_HEALTHY",
         "category": "A",
         "split": "test",
+        "reproducibility": "real",
         "description": "Normal order — all steps succeed (negative class, TN)",
         "request": {"customerId": "eval-01", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 100.00},
@@ -860,6 +1118,7 @@ BASIC_SCENARIOS = [
         "id": "SC02_COMPENSATION_HAPPY_PATH",
         "category": "D",
         "split": "train",
+        "reproducibility": "real",
         "description": "Inventory stock-out → compensation succeeds (D1)",
         "request": {"customerId": "eval-02", "productId": "PRODUCT-1",
                     "quantity": 9999, "amount": 999900.00},
@@ -875,11 +1134,13 @@ ADVANCED_SCENARIOS = [
         "id": "SC03_STUCK_LIVE",
         "category": "A",
         "split": "train",
+        "reproducibility": "real",
         "description": "A2 STUCK_LIVE — inventory down, saga stuck (~65s wait)",
         "request": {"customerId": "eval-03", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 50.00},
         "expected_saga_status": "IN_PROGRESS",
-        "expected_rca": "STUCK_UNKNOWN_CAUSE",
+        "expected_rca_status": "INSUFFICIENT_EVIDENCE",
+        "expected_rca": None,
         "expected_anomalies": ["SAGA_STUCK"],
         "runner": run_stuck_saga,
         "stuck_wait_seconds": 65,
@@ -889,25 +1150,27 @@ ADVANCED_SCENARIOS = [
         "id": "SC04_STUCK_RECOVERED_BRIEF",
         "category": "A",
         "split": "train",
-        "description": "A3 STUCK_RECOVERED_BRIEF — stuck ~65s then restart → R06",
+        "reproducibility": "real",
+        "description": "A3 STUCK_RECOVERED_BRIEF — stuck ~45s then restart → R06",
         "request": {"customerId": "eval-04", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 60.00},
         "expected_saga_status": "COMPLETED",
         "expected_rca": "TRANSIENT_SERVICE_FAILURE",
         "expected_anomalies": ["SAGA_STUCK"],
         "runner": run_recovered_from_stuck,
-        "stuck_wait_seconds": 65,
+        "stuck_wait_seconds": 45,
         "n_runs": 2,
     },
     {
         "id": "SC05_COMPENSATION_STEP_FAILURE",
         "category": "D",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "D2 — refund never acknowledged → MISSING_COMPENSATION_ACK",
         "request": None,
         "expected_saga_status": "COMPENSATING",
         "expected_rca": "COMPENSATION_STEP_FAILURE",
-        "expected_anomalies": ["MISSING_COMPENSATION_ACK", "MISSING_TRACE_CONTEXT"],
+        "expected_anomalies": ["SAGA_STUCK", "MISSING_COMPENSATION_ACK"],
         "runner": run_compensation_step_failure,
         "n_runs": 2,
     },
@@ -915,13 +1178,14 @@ ADVANCED_SCENARIOS = [
         "id": "SC06_CIRCUIT_BREAKER_REAL",
         "category": "B",
         "split": "train",
+        "reproducibility": "real",
         "description": "B1 — REAL: fail-mode → 3 retries → R01 primary, R02 contributing",
         "request": {"customerId": "eval-06", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 75.00},
         "expected_saga_status": "FAILED",
         "expected_rca": "CIRCUIT_BREAKER_OPEN",
         # Multi-rule: R01 primary + R02 contributing (RETRY_BURST emitted by
-        # Resilience4j PAYMENT_RETRY listener after BURST_THRESHOLD=3 attempts).
+        # Resilience4j PAYMENT_RETRY listener after the configured retry-burst threshold).
         "expected_anomalies": ["RETRY_BURST"],
         "runner": run_circuit_breaker,
         "n_runs": 3,
@@ -933,6 +1197,7 @@ TOXIPROXY_SCENARIOS = [
         "id": "SC07_NETWORK_LATENCY_TOXIPROXY",
         "category": "B",
         "split": "test",
+        "reproducibility": "synthetic",
         # See docs/RCA_SCENARIO_TAXONOMY.md §B4: Toxiproxy proxy infrastructure
         # is provisioned but services connect to kafka:9092 directly. Marking
         # this scenario as partial-realism limitation rather than blocking.
@@ -951,6 +1216,7 @@ INJECT_SCENARIOS = [
         "id": "SC08_DUPLICATE_EVENT_FAST",
         "category": "E",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "E1 — duplicate eventId at ~1s gap → EXACT_DUPLICATE_EVENT",
         "request": None,
         "expected_saga_status": None,
@@ -977,6 +1243,7 @@ INJECT_SCENARIOS = [
         "id": "SC09_OUT_OF_ORDER",
         "category": "C",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "C1 — events with reverse-chronological timestamps → OUT_OF_ORDER",
         "request": None,
         "expected_saga_status": None,
@@ -984,15 +1251,15 @@ INJECT_SCENARIOS = [
         "expected_anomalies": ["OUT_OF_ORDER"],
         "runner": run_inject_scenario,
         "n_runs": 2,
-        "wait_seconds": 5,
+        "wait_seconds": 0,
         "inject_events": [
             {"eventType": "ORDER_CREATED", "stepName": "CREATE_ORDER",
              "serviceName": "order-service",
-             "timestamp": "USE_TS_AGO_10S",
+             "timestamp": "USE_TS_AGO_1S",
              "payload": {"traceId": "aaaa0000aaaa0000aaaa0000aaaa0009"}},
             {"eventType": "PAYMENT_COMPLETED", "stepName": "PROCESS_PAYMENT",
-             "serviceName": "payment-service", "delay": 1,
-             "timestamp": "USE_TS_AGO_30S",
+             "serviceName": "payment-service",
+             "timestamp": "USE_TS_AGO_2S",
              "payload": {"traceId": "aaaa0000aaaa0000aaaa0000aaaa0009"}},
         ],
     },
@@ -1000,6 +1267,7 @@ INJECT_SCENARIOS = [
         "id": "SC10_INVALID_TRANSITION",
         "category": "C",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "C2 — skip PAYMENT step → INVALID_TRANSITION",
         "request": None,
         "expected_saga_status": None,
@@ -1021,6 +1289,7 @@ INJECT_SCENARIOS = [
         "id": "SC11_ORPHAN_EVENT",
         "category": "E",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "E3 — first event for an unknown sagaId → ORPHAN_EVENT",
         "request": None,
         "expected_saga_status": None,
@@ -1045,6 +1314,7 @@ INJECT_SCENARIOS = [
         "id": "SC12_RETRY_STORM_NO_CB",
         "category": "B",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "B2 — 3× PAYMENT_RETRY only (no failure) → R02 isolated",
         "request": None,
         "expected_saga_status": None,
@@ -1084,11 +1354,12 @@ INJECT_SCENARIOS = [
         "id": "SC13_FORBIDDEN_POST_TERMINAL",
         "category": "C",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "C3 — event after COMPLETED terminal → FORBIDDEN_POST_TERMINAL",
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "TERMINAL_STATE_OVERWRITE",
-        "expected_anomalies": ["FORBIDDEN_POST_TERMINAL"],
+        "expected_anomalies": ["FORBIDDEN_POST_TERMINAL", "INVALID_TRANSITION"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 5,
@@ -1112,6 +1383,7 @@ INJECT_SCENARIOS = [
         "id": "SC14_MISSING_TRACE_CONTEXT",
         "category": "E",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "E4 — events without traceId field → MISSING_TRACE_CONTEXT",
         "request": None,
         "expected_saga_status": None,
@@ -1135,11 +1407,12 @@ INJECT_SCENARIOS = [
         "id": "SC15_STEP_TIMEOUT_INJECT",
         "category": "B",
         "split": "train",
+        "reproducibility": "synthetic",
         "description": "B3 — large gap between steps → STEP_TIMEOUT (scheduler)",
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "DOWNSTREAM_TIMEOUT",
-        "expected_anomalies": ["STEP_TIMEOUT"],
+        "expected_anomalies": ["SAGA_STUCK", "STEP_TIMEOUT"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 65,
@@ -1182,6 +1455,7 @@ NEW_SCENARIOS = [
         "id": "SC16_STUCK_RECOVERED_LONG",
         "category": "A",
         "split": "train",
+        "reproducibility": "real",
         # A4: wait long enough for both SAGA_STUCK (30s+ scheduler) AND
         # MISSING_TERMINAL_EVENT (60s+ scheduler), then recover. This
         # exercises R05's "recovered with MISSING_TERMINAL fired" branch.
@@ -1199,6 +1473,7 @@ NEW_SCENARIOS = [
         "id": "SC17_STUCK_DEAD_PERMANENT",
         "category": "A",
         "split": "test",
+        "reproducibility": "real",
         # A5: never restart inventory during the test (cleanup happens at
         # the end via run_stuck_saga's mandatory recovery). Saga stays
         # IN_PROGRESS through RCA — primary R05 with severity CRITICAL.
@@ -1218,6 +1493,7 @@ NEW_SCENARIOS = [
         "id": "SC19_TIMEOUT_THEN_RECOVER",
         "category": "B",
         "split": "test",
+        "reproducibility": "synthetic",
         # B5: STEP_TIMEOUT fires from scheduler, then a follow-up event
         # lets saga reach COMPLETED. Tests the "completed but had problems"
         # outcome-determination branch (outcome=SELF_HEALED).
@@ -1225,7 +1501,7 @@ NEW_SCENARIOS = [
         "request": None,
         "expected_saga_status": "COMPLETED",
         "expected_rca": "DOWNSTREAM_TIMEOUT",
-        "expected_anomalies": ["STEP_TIMEOUT"],
+        "expected_anomalies": ["SAGA_STUCK", "STEP_TIMEOUT"],
         "runner": run_timeout_then_recover,
         "wait_seconds": 65,
         "n_runs": 2,
@@ -1236,6 +1512,7 @@ NEW_SCENARIOS = [
         "id": "SC20_STATE_REGRESSION",
         "category": "C",
         "split": "test",
+        "reproducibility": "synthetic",
         # C4: route a STATE_REGRESSION → R04 cleanly, isolated from R03.
         #
         # Naïve approach (saga reaches COMPLETED via INVENTORY_RESERVED, then
@@ -1254,7 +1531,7 @@ NEW_SCENARIOS = [
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "TERMINAL_STATE_OVERWRITE",
-        "expected_anomalies": ["STATE_REGRESSION", "FORBIDDEN_POST_TERMINAL"],
+        "expected_anomalies": ["STATE_REGRESSION", "FORBIDDEN_POST_TERMINAL", "INVALID_TRANSITION"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 5,
@@ -1292,13 +1569,19 @@ NEW_SCENARIOS = [
         "id": "SC21_MULTI_TERMINAL_CONFLICT",
         "category": "C",
         "split": "test",
+        "reproducibility": "synthetic",
         # C5: both INVENTORY_RESERVED (success terminal) and PAYMENT_FAILED
         # (failure terminal) for the same saga → MULTI_TERMINAL_CONFLICT.
         "description": "C5 — both success+failure terminals → MULTI_TERMINAL_CONFLICT (R03)",
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "MULTI_TERMINAL_CONFLICT",
-        "expected_anomalies": ["MULTI_TERMINAL_CONFLICT"],
+        "expected_anomalies": [
+            "FORBIDDEN_POST_TERMINAL",
+            "STATE_REGRESSION",
+            "MULTI_TERMINAL_CONFLICT",
+            "INVALID_TRANSITION",
+        ],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 5,
@@ -1327,6 +1610,7 @@ NEW_SCENARIOS = [
         "id": "SC22_COMPENSATION_NOT_TRIGGERED",
         "category": "D",
         "split": "train",
+        "reproducibility": "synthetic",
         # D3: INVENTORY_FAILED moves saga to COMPENSATING but no REFUND_PAYMENT
         # is ever sent. detectCompensationMissing fires after lastUpdated > 30s
         # (scheduler runs every 60s). Wait 65s.
@@ -1334,7 +1618,7 @@ NEW_SCENARIOS = [
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "COMPENSATION_NOT_TRIGGERED",
-        "expected_anomalies": ["COMPENSATION_MISSING"],
+        "expected_anomalies": ["SAGA_STUCK", "COMPENSATION_MISSING"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 70,
@@ -1355,6 +1639,7 @@ NEW_SCENARIOS = [
         "id": "SC23_DUPLICATE_COMPENSATION",
         "category": "D",
         "split": "test",
+        "reproducibility": "synthetic",
         # D4: empirical finding — DUPLICATE_COMPENSATION cannot fire in
         # isolation. Triggering it requires ≥2 REFUND_PAYMENT events, which
         # places the saga in COMPENSATING, which in turn satisfies R10
@@ -1402,10 +1687,11 @@ NEW_SCENARIOS = [
         "id": "SC24_DELAYED_COMPENSATION",
         "category": "D",
         "split": "test",
-        # D5: Inject events with timestamps so REFUND_PAYMENT comes 90s after
+        "reproducibility": "synthetic",
+        # D5: Inject events with timestamps so REFUND_PAYMENT comes 35s after
         # INVENTORY_FAILED. detectDelayedCompensation threshold is
-        # REFUND_step_timeout (10s) × 1.5 = 15s — 90s easily exceeds it.
-        # Then PAYMENT_REFUNDED at +95s closes the saga to COMPENSATED, and
+        # REFUND_step_timeout (10s) × 1.5 = 15s — 35s exceeds it.
+        # Then PAYMENT_REFUNDED at +55s closes the saga to COMPENSATED, and
         # the 60s scheduler fires DELAYED_COMPENSATION.
         #
         # EMPIRICAL FINDING (smoke test 2026-05-06): just like SC23, R22
@@ -1422,36 +1708,36 @@ NEW_SCENARIOS = [
         # Expected primary therefore reflects the dominant rule (R11
         # FORWARD_STEP_FAILURE), and R22 is an *anomaly to verify* but not
         # the primary RCA. This empirically tests the `× 1.5` magic
-        # threshold (R22 firing means 90s > 15s = 10s × 1.5).
-        "description": "D5 — 90s-late refund → DELAYED_COMPENSATION fires; R11 primary (multi-rule)",
+        # threshold (R22 firing means 35s > 15s = 10s × 1.5).
+        "description": "D5 — 35s-late refund → DELAYED_COMPENSATION fires; R11 primary (multi-rule)",
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "FORWARD_STEP_FAILURE",
-        "expected_anomalies": ["DELAYED_COMPENSATION"],
+        "expected_anomalies": ["STEP_TIMEOUT", "DELAYED_COMPENSATION"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 70,
         "inject_events": [
             {"eventType": "ORDER_CREATED", "stepName": "CREATE_ORDER",
              "serviceName": "order-service",
-             "timestamp": "USE_TS_AGO_3M",
+             "timestamp": "USE_TS_AGO_80S",
              "payload": {"traceId": "USE_UNIQUE"}},
             {"eventType": "PAYMENT_COMPLETED", "stepName": "PROCESS_PAYMENT",
              "serviceName": "payment-service", "delay": 0.5,
-             "timestamp": "USE_TS_AGO_2M",
+             "timestamp": "USE_TS_AGO_60S",
              "payload": {"traceId": "USE_UNIQUE"}},
             {"eventType": "INVENTORY_FAILED", "stepName": "RESERVE_INVENTORY",
              "serviceName": "inventory-service", "delay": 0.5,
-             # 2min ago → 90s gap before REFUND_PAYMENT (30s ago)
-             "timestamp": "USE_TS_AGO_2M",
+             # 60s ago -> 35s gap before REFUND_PAYMENT (25s ago)
+             "timestamp": "USE_TS_AGO_60S",
              "payload": {"traceId": "USE_UNIQUE"}},
             {"eventType": "REFUND_PAYMENT", "stepName": "REFUND_PAYMENT",
              "serviceName": "payment-service", "delay": 0.5,
-             "timestamp": "USE_TS_AGO_30S",
+             "timestamp": "USE_TS_AGO_25S",
              "payload": {"traceId": "USE_UNIQUE"}},
             {"eventType": "PAYMENT_REFUNDED", "stepName": "REFUND_PAYMENT",
              "serviceName": "payment-service", "delay": 0.5,
-             "timestamp": "USE_TS_AGO_10S",
+             "timestamp": "USE_TS_AGO_5S",
              "payload": {"traceId": "USE_UNIQUE"}},
         ],
     },
@@ -1461,6 +1747,7 @@ NEW_SCENARIOS = [
         "id": "SC25_DUPLICATE_EVENT_DELAYED",
         "category": "E",
         "split": "test",
+        "reproducibility": "synthetic",
         # E2: same dup-event scenario as E1 but with a 30s gap between the
         # two duplicate events. Tests that DeduplicationCache TTL (1h) does
         # NOT cause the duplicate to be missed at the 30s mark.
@@ -1468,7 +1755,7 @@ NEW_SCENARIOS = [
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "DUPLICATE_DELIVERY",
-        "expected_anomalies": ["EXACT_DUPLICATE_EVENT"],
+        "expected_anomalies": ["SAGA_STUCK", "EXACT_DUPLICATE_EVENT"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 5,
@@ -1490,6 +1777,7 @@ NEW_SCENARIOS = [
         "id": "SC26_PARTIAL_TRACE_PROPAGATION",
         "category": "E",
         "split": "test",
+        "reproducibility": "synthetic",
         # E5: ORDER_CREATED *with* traceId, PAYMENT_COMPLETED *without*
         # traceId, INVENTORY_RESERVED *with* traceId. The
         # detectMissingTraceContext noise-reduction guard requires that at
@@ -1520,9 +1808,61 @@ NEW_SCENARIOS = [
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+REAL_FAILURE_SCENARIOS = [
+    {
+        "id": "SC27_PAYMENT_PAUSE_RECOVERY",
+        "category": "B",
+        "split": "test",
+        "reproducibility": "real",
+        "description": "D9-1 payment-service docker pause then recover -> real STEP_TIMEOUT",
+        "request": {"customerId": "eval-27", "productId": "PRODUCT-1",
+                    "quantity": 1, "amount": 50.00},
+        "expected_saga_status": "COMPLETED",
+        "expected_rca": "DOWNSTREAM_TIMEOUT",
+        "expected_anomalies": ["SAGA_STUCK", "STEP_TIMEOUT"],
+        "runner": run_payment_pause_scenario,
+        "freeze_seconds": 45,
+        "post_recovery_wait_seconds": 20,
+        "n_runs": 2,
+    },
+    {
+        "id": "SC28_PAYMENT_SIGSTOP_RECOVERY",
+        "category": "B",
+        "split": "test",
+        "reproducibility": "real",
+        "description": "D9-2 payment-service PID 1 SIGSTOP then SIGCONT -> real STEP_TIMEOUT",
+        "request": {"customerId": "eval-28", "productId": "PRODUCT-1",
+                    "quantity": 1, "amount": 50.00},
+        "expected_saga_status": "COMPLETED",
+        "expected_rca": "DOWNSTREAM_TIMEOUT",
+        "expected_anomalies": ["SAGA_STUCK", "STEP_TIMEOUT"],
+        "runner": run_payment_sigstop_scenario,
+        "freeze_seconds": 45,
+        "post_recovery_wait_seconds": 20,
+        "n_runs": 2,
+    },
+    {
+        "id": "SC29_PAYMENT_NETWORK_PARTITION",
+        "category": "B",
+        "split": "test",
+        "reproducibility": "real",
+        "description": "D9-3 disconnect payment-service from Docker network then recover -> real STEP_TIMEOUT",
+        "request": {"customerId": "eval-29", "productId": "PRODUCT-1",
+                    "quantity": 1, "amount": 50.00},
+        "expected_saga_status": "COMPLETED",
+        "expected_rca": "DOWNSTREAM_TIMEOUT",
+        "expected_anomalies": ["SAGA_STUCK", "STEP_TIMEOUT"],
+        "runner": run_payment_network_partition_scenario,
+        "freeze_seconds": 45,
+        "post_recovery_wait_seconds": 20,
+        "n_runs": 2,
+    },
+]
+
+
 ALL_SCENARIO_LISTS = [
     BASIC_SCENARIOS, ADVANCED_SCENARIOS, TOXIPROXY_SCENARIOS,
-    INJECT_SCENARIOS, NEW_SCENARIOS,
+    INJECT_SCENARIOS, NEW_SCENARIOS, REAL_FAILURE_SCENARIOS,
 ]
 
 ALL_SCENARIOS_MAP = {}
@@ -1550,15 +1890,19 @@ def list_scenarios():
 
     train = [s for s in all_scenarios if s.get("split") == "train"]
     test = [s for s in all_scenarios if s.get("split") == "test"]
+    real = [s for s in all_scenarios if s.get("reproducibility") == "real"]
+    synthetic = [s for s in all_scenarios if s.get("reproducibility") == "synthetic"]
 
     print(f"\nAvailable scenarios — {len(all_scenarios)} total "
-          f"({len(train)} train, {len(test)} test):")
-    print(f"  {'ID':<32} {'Cat':<3} {'Split':<5} {'Description'}")
-    print(f"  {'-'*78}")
+          f"({len(train)} train, {len(test)} test; "
+          f"{len(real)} real, {len(synthetic)} synthetic):")
+    print(f"  {'ID':<32} {'Cat':<3} {'Split':<5} {'Repro':<9} {'Description'}")
+    print(f"  {'-'*90}")
     for s in all_scenarios:
         cat = s.get("category", "-")
         split = s.get("split", "-")
-        print(f"  {s['id']:<32} {cat:<3} {split:<5} {s['description']}")
+        repro = s.get("reproducibility", "-")
+        print(f"  {s['id']:<32} {cat:<3} {split:<5} {repro:<9} {s['description']}")
 
     # Per-category summary
     print(f"\n  Per category:")
@@ -1567,14 +1911,15 @@ def list_scenarios():
         cat_train = sum(1 for s in cat_scenarios if s.get("split") == "train")
         cat_test = sum(1 for s in cat_scenarios if s.get("split") == "test")
         print(f"    {cat}: {len(cat_scenarios)} ({cat_train} train, {cat_test} test)")
-    print(f"\nShort IDs supported: SC01–SC26 (skipping SC18; see NEW_SCENARIOS comment).")
+    print("\nShort IDs supported: SC01-SC29 "
+          "(skipping SC18; SC27-SC29 are D9 real-failure scenarios).")
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Saga Platform Evaluation (Tier 2)")
     parser.add_argument("--full", action="store_true",
-                        help="Run all 25 taxonomy scenarios")
+                        help="Run all taxonomy and D9 real-failure scenarios")
     parser.add_argument("--runs", type=int, default=N_RUNS,
                         help="Runs per basic scenario (default: 5)")
     parser.add_argument("--no-toxiproxy", action="store_true",
@@ -1586,6 +1931,8 @@ def main():
                              "Use 'train' to tune; 'test' for held-out evaluation.")
     parser.add_argument("--category", choices=["A", "B", "C", "D", "E"], action="append",
                         help="Filter by category (repeatable, e.g. --category B --category D)")
+    parser.add_argument("--repro", choices=["all", "real", "synthetic"], default="all",
+                        help="Filter by reproducibility class (default: all)")
     parser.add_argument("--list", action="store_true",
                         help="List all available scenarios and exit")
     args = parser.parse_args()
@@ -1645,6 +1992,7 @@ def main():
             print("\n  ⚠️  Toxiproxy not available — skipping SC07")
         scenarios.extend(INJECT_SCENARIOS)
         scenarios.extend(NEW_SCENARIOS)
+        scenarios.extend(REAL_FAILURE_SCENARIOS)
     else:
         scenarios = list(BASIC_SCENARIOS)
 
@@ -1662,6 +2010,11 @@ def main():
             scenarios = [s for s in scenarios if s.get("category") in cats]
             print(f"  Filtered to categories {sorted(cats)}: "
                   f"{len(scenarios)} of {before} scenarios.")
+        if args.repro != "all":
+            before = len(scenarios)
+            scenarios = [s for s in scenarios if s.get("reproducibility") == args.repro]
+            print(f"  Filtered to reproducibility='{args.repro}': "
+                  f"{len(scenarios)} of {before} scenarios.")
         if not scenarios:
             print("\n❌ No scenarios match the current filters.")
             return
@@ -1677,7 +2030,7 @@ def main():
         print(f"▶ {scenario['id']} ({n} runs)")
         print(f"  {scenario['description']}")
         print(f"  Expected: status={scenario['expected_saga_status']}, "
-              f"rca={scenario['expected_rca']}")
+              f"rca={scenario['expected_rca']}, rcaStatus={expected_rca_status(scenario)}")
 
         # Reset inventory before scenarios that need stock
         req = scenario.get("request")
@@ -1708,25 +2061,41 @@ def compute_classification_metrics(all_runs):
         if r.get("error"):
             continue
 
+        expected_status = r.get("rca_expected_status") or (
+            "SELECTED" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
+        )
         expected = r.get("rca_expected")
         actual = r.get("rca_root_cause")
+        actual_roots = r.get("rca_primary_roots") or []
 
-        if expected == actual:
-            if expected is None:
-                tn += 1
+        # Root-cause classification only applies when the scenario expects a
+        # concrete selected diagnosis. Abstention/healthy semantics are reported
+        # separately via rcaStatus accuracy.
+        if expected_status != "SELECTED":
+            if r.get("rca_status") == "SELECTED" and actual is not None:
+                fp += 1
+                per_class.setdefault(actual, {"tp": 0, "fp": 0, "fn": 0})
+                per_class[actual]["fp"] += 1
             else:
-                tp += 1
-                per_class.setdefault(expected, {"tp": 0, "fp": 0, "fn": 0})
-                per_class[expected]["tp"] += 1
+                tn += 1
+            continue
+
+        if expected_root_matches(expected, actual, actual_roots):
+            tp += 1
+            labels = expected if isinstance(expected, list) else [expected]
+            for label in labels:
+                per_class.setdefault(label, {"tp": 0, "fp": 0, "fn": 0})
+                per_class[label]["tp"] += 1
         else:
             if actual is not None:
                 fp += 1
                 per_class.setdefault(actual, {"tp": 0, "fp": 0, "fn": 0})
                 per_class[actual]["fp"] += 1
-            if expected is not None:
-                fn += 1
-                per_class.setdefault(expected, {"tp": 0, "fp": 0, "fn": 0})
-                per_class[expected]["fn"] += 1
+            fn += 1
+            labels = expected if isinstance(expected, list) else [expected]
+            for label in labels:
+                per_class.setdefault(label, {"tp": 0, "fp": 0, "fn": 0})
+                per_class[label]["fn"] += 1
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -1750,6 +2119,43 @@ def compute_classification_metrics(all_runs):
         "recall": round(recall, 3),
         "f1": round(f1, 3),
         "per_class": class_report,
+    }
+
+
+def compute_rca_status_metrics(all_runs):
+    counts = {}
+    total = correct = 0
+
+    for r in all_runs:
+        if r.get("error"):
+            continue
+        expected = r.get("rca_expected_status") or (
+            "SELECTED" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
+        )
+        actual = r.get("rca_status")
+        counts.setdefault(expected, {"total": 0, "correct": 0, "actual": {}})
+        counts[expected]["total"] += 1
+        counts[expected]["actual"][actual] = counts[expected]["actual"].get(actual, 0) + 1
+        total += 1
+        if r.get("rca_accurate"):
+            counts[expected]["correct"] += 1
+            correct += 1
+
+    by_expected = {}
+    for status, data in sorted(counts.items()):
+        by_expected[status] = {
+            "total": data["total"],
+            "correct": data["correct"],
+            "accuracy_pct": round(data["correct"] / data["total"] * 100, 1)
+                    if data["total"] else 0.0,
+            "actual": data["actual"],
+        }
+
+    return {
+        "total": total,
+        "correct": correct,
+        "accuracy_pct": round(correct / total * 100, 1) if total else 0.0,
+        "by_expected": by_expected,
     }
 
 
@@ -1793,6 +2199,7 @@ def print_summary(scenarios, all_runs, args):
         "scenarios": [],
         "overall": {},
         "classification_metrics": {},
+        "rca_status_metrics": {},
         "anomaly_metrics": {},
         "raw_runs": all_runs,
     }
@@ -1814,7 +2221,9 @@ def print_summary(scenarios, all_runs, args):
         summary = {
             "scenario_id":        scenario["id"],
             "description":        scenario["description"],
+            "reproducibility":    scenario.get("reproducibility"),
             "expected_rca":       scenario["expected_rca"],
+            "expected_rca_status": expected_rca_status(scenario),
             "runs_total":         len(runs),
             "runs_ok":            len(ok),
             "runs_error":         len(runs) - len(ok),
@@ -1855,6 +2264,9 @@ def print_summary(scenarios, all_runs, args):
     rca_metrics = compute_classification_metrics(all_runs)
     report["classification_metrics"] = rca_metrics
 
+    rca_status_metrics = compute_rca_status_metrics(all_runs)
+    report["rca_status_metrics"] = rca_status_metrics
+
     anomaly_metrics = compute_anomaly_metrics(all_runs)
     report["anomaly_metrics"] = anomaly_metrics
 
@@ -1883,6 +2295,14 @@ def print_summary(scenarios, all_runs, args):
         for label, m in sorted(rca_metrics["per_class"].items()):
             print(f"  {label:<35} {m['precision']:>6.3f} {m['recall']:>6.3f} "
                   f"{m['f1']:>6.3f} {m['support']:>7}")
+
+    print(f"\n{'='*60}")
+    print("RCA STATUS METRICS")
+    print(f"  Status Accuracy : {rca_status_metrics['accuracy_pct']:.1f}%  "
+          f"({rca_status_metrics['correct']}/{rca_status_metrics['total']})")
+    for status, m in rca_status_metrics.get("by_expected", {}).items():
+        print(f"  {status:<24} : {m['accuracy_pct']:>5.1f}%  "
+              f"({m['correct']}/{m['total']}) actual={m['actual']}")
 
     print(f"\n{'='*60}")
     print("ANOMALY DETECTION METRICS")
@@ -1914,6 +2334,29 @@ def print_summary(scenarios, all_runs, args):
             print(f"  {split.upper():<6} : {m['accuracy_pct']:>5.1f}%   "
                   f"({m['scenarios']} scenarios, {m['runs']} runs)")
         report["split_breakdown"] = split_breakdown
+
+    # Reproducibility breakdown: real service behavior vs admin-injected fixtures.
+    repro_breakdown = {}
+    for repro in ("real", "synthetic"):
+        runs = [r for r in all_runs
+                if not r.get("error")
+                and ALL_SCENARIOS_MAP.get(r["scenario_id"], {}).get("reproducibility") == repro]
+        if not runs:
+            continue
+        acc = [r["rca_accurate"] for r in runs]
+        acc_pct = sum(acc) / len(acc) * 100 if acc else 0
+        repro_breakdown[repro] = {
+            "scenarios": len({r["scenario_id"] for r in runs}),
+            "runs": len(runs),
+            "accuracy_pct": round(acc_pct, 1),
+        }
+    if repro_breakdown:
+        print(f"\n{'='*60}")
+        print("PER-REPRODUCIBILITY ACCURACY")
+        for repro, m in repro_breakdown.items():
+            print(f"  {repro.upper():<9} : {m['accuracy_pct']:>5.1f}%   "
+                  f"({m['scenarios']} scenarios, {m['runs']} runs)")
+        report["reproducibility_breakdown"] = repro_breakdown
 
     # ── Per-category accuracy ─────────────────────────────────────────────
     category_breakdown = {}
@@ -1959,7 +2402,8 @@ def print_summary(scenarios, all_runs, args):
         for s in report["scenarios"]:
             f.write(f"{s['scenario_id']}\n")
             f.write(f"  {s['description']}\n")
-            f.write(f"  Expected RCA: {s['expected_rca']}\n")
+            f.write(f"  Expected RCA: {s['expected_rca']} "
+                    f"(status={s['expected_rca_status']})\n")
             f.write(f"  Accuracy: {s['rca_accuracy_pct']}%  "
                     f"({s['runs_ok']}/{s['runs_total']} runs OK)\n")
             if s['avg_tti_s']:
@@ -1976,6 +2420,14 @@ def print_summary(scenarios, all_runs, args):
         f.write(f"  F1-Score:  {rca_metrics['f1']:.3f}\n")
         f.write(f"  TP={rca_metrics['tp']}  FP={rca_metrics['fp']}  "
                 f"FN={rca_metrics['fn']}  TN={rca_metrics['tn']}\n\n")
+
+        f.write("RCA STATUS METRICS\n")
+        f.write(f"  Status Accuracy: {rca_status_metrics['accuracy_pct']:.1f}% "
+                f"({rca_status_metrics['correct']}/{rca_status_metrics['total']})\n")
+        for status, m in rca_status_metrics.get("by_expected", {}).items():
+            f.write(f"  {status}: {m['accuracy_pct']:.1f}% "
+                    f"({m['correct']}/{m['total']}) actual={m['actual']}\n")
+        f.write("\n")
 
         if rca_metrics.get("per_class"):
             f.write("  Per-class breakdown:\n")

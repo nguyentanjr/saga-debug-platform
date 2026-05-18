@@ -37,23 +37,23 @@ management:
       exposure:
         include: health,info
 
-# ============================================================================
-# RCA rule-ranking weights.
-#
-# Default profile: "confidence-only" — reproduces the legacy "sort by confidence"
-# behaviour exactly (w_c=1.0, others=0). This makes adding the ranking scaffold
-# behaviour-preserving for existing tests.
-#
-# Override via Spring profile during ablation:
-#   --spring.profiles.active=rca-equal-weight
-#   --spring.profiles.active=rca-confidence-heavy
-#   --spring.profiles.active=rca-severity-heavy
-#   --spring.profiles.active=rca-evidence-heavy
-# (corresponding application-rca-*.yml files supply the alternative weights)
-# ============================================================================
+anomaly:
+  detection:
+    clock-skew-tolerance: 500ms
+    retry-burst-threshold: 3
+    retry-burst-window: 60s
+    schedule-rate-ms: 15000
+    default-step-timeout-seconds: 60
+    completed-saga-lookback: 1h
+    missing-terminal-timeout-multiplier: 10
+    compensation-missing-cutoff: 30s
+    compensation-ack-cutoff: 30s
+    delayed-compensation-multiplier: 1.5
+    compensation-recent-lookback: 10m
+    service-crash-timeout-multiplier: 3
+
 rca:
-  ranking:
-    profile-name: confidence-only
-    confidence-weight: 1.0
-    severity-weight: 0.0
-    evidence-weight: 0.0
+  auto-analysis:
+    fixed-rate-ms: 30000
+  alert:
+    file: ${RCA_ALERT_FILE:/app/results/alerts-realtime.log}

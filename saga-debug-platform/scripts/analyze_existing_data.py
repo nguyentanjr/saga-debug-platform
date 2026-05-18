@@ -17,11 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 PROFILES_ORDER = [
-    "confidence-only",
-    "confidence-heavy",
-    "equal-weight",
-    "severity-heavy",
-    "evidence-heavy",
+    "score-free-selector",
 ]
 
 MULTI_RULE_SCENARIOS = {
@@ -171,7 +167,7 @@ def generate_report(rows, counts, accuracy, changed, multi_rule_changed, weight_
     total_ok = sum(c["ok"] for c in counts.values())
     total_skip = sum(c["skipped_invalid"] for c in counts.values())
     total_err = sum(c["error"] for c in counts.values())
-    lines.append(f"- **Status**: Completed (all 5 profiles × 25 scenarios × 3 trials)")
+    lines.append(f"- **Status**: Completed ({len(PROFILES_ORDER)} profile(s) x 25 scenarios x 3 trials)")
     lines.append(f"- **Total OK runs**: {total_ok}")
     lines.append(f"- **Total skipped_invalid**: {total_skip}")
     lines.append(f"- **Total error**: {total_err}")

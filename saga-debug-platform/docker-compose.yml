@@ -105,6 +105,8 @@ services:
       CORRELATION_DB_PASSWORD: demo
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+    volumes:
+      - ./results:/app/results
     ports:
       - "8084:8084"
 

@@ -13,11 +13,7 @@ import evaluate as ev
 
 
 PROFILES = [
-    ("confidence-only", None),
-    ("confidence-heavy", "rca-confidence-heavy"),
-    ("equal-weight", "rca-equal-weight"),
-    ("severity-heavy", "rca-severity-heavy"),
-    ("evidence-heavy", "rca-evidence-heavy"),
+    ("score-free-selector", None),
 ]
 
 TRIALS = 3

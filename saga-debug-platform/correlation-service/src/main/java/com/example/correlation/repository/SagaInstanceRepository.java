@@ -12,6 +12,8 @@ import java.util.List;
 public interface SagaInstanceRepository extends JpaRepository<SagaInstance, String> {
     List<SagaInstance> findByStatus(SagaStatus status);
     List<SagaInstance> findByStatusAndLastUpdatedBefore(SagaStatus status, Instant before);
+    long countByStartTimeAfter(Instant startTime);
+    long countByStatusAndStartTimeAfter(SagaStatus status, Instant startTime);
     Page<SagaInstance> findByStatus(SagaStatus status, Pageable pageable);
     Page<SagaInstance> findByStartTimeBetween(Instant start, Instant end, Pageable pageable);
     Page<SagaInstance> findByStatusAndStartTimeBetween(SagaStatus status, Instant start, Instant end, Pageable pageable);

@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,50 +37,61 @@ public class AnomalyDetectionService {
     // caused false RETRY_BURST under flash-sale load).
     private static final java.util.Set<String> RETRY_EVENT_TYPES = java.util.Set.of(
             "PAYMENT_RETRY");
-    private static final Duration BURST_WINDOW = Duration.ofSeconds(60);
-    private static final int BURST_THRESHOLD = 3;
-
     private final SagaInstanceRepository sagaInstanceRepository;
     private final SagaEventRepository sagaEventRepository;
     private final AnomalyRepository anomalyRepository;
     private final WorkflowLoader workflowLoader;
     private final ObjectMapper objectMapper;
+    private final DetectionProperties detectionProperties;
 
     public AnomalyDetectionService(
             SagaInstanceRepository sagaInstanceRepository,
             SagaEventRepository sagaEventRepository,
             AnomalyRepository anomalyRepository,
             WorkflowLoader workflowLoader,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            DetectionProperties detectionProperties) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
         this.workflowLoader = workflowLoader;
         this.objectMapper = objectMapper;
+        this.detectionProperties = detectionProperties;
     }
 
 
     // Clock skew tolerance: events from different services may have clocks that
     // differ by a few hundred ms. Only flag as out-of-order if the gap exceeds
     // this threshold to avoid false positives from infrastructure artifacts.
-    private static final Duration CLOCK_SKEW_TOLERANCE = Duration.ofMillis(500);
-
     public void detectOutOfOrder(String sagaId) {
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByReceivedAtAsc(sagaId);
         if (events.size() < 2) return;
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.OUT_OF_ORDER)) return;
 
         for (int i = 1; i < events.size(); i++) {
-            Instant prevCreated = events.get(i - 1).getTimestamp();
-            Instant currCreated = events.get(i).getTimestamp();
+            SagaEvent previousEvent = events.get(i - 1);
+            SagaEvent currentEvent = events.get(i);
+            Instant prevCreated = previousEvent.getTimestamp();
+            Instant currCreated = currentEvent.getTimestamp();
             Duration timeDiff = Duration.between(currCreated, prevCreated);
             // Only flag if currCreated is BEFORE prevCreated by more than clock skew tolerance
-            if (currCreated.isBefore(prevCreated) && timeDiff.compareTo(CLOCK_SKEW_TOLERANCE) > 0) {
+            Duration clockSkewTolerance = detectionProperties.getClockSkewTolerance();
+            if (currCreated.isBefore(prevCreated) && timeDiff.compareTo(clockSkewTolerance) > 0) {
                 createAnomaly(sagaId, AnomalyType.OUT_OF_ORDER,
                         String.format("Event '%s' arrived after '%s' but has earlier timestamp (%s < %s, gap: %dms)",
-                                events.get(i).getEventType(),
-                                events.get(i - 1).getEventType(),
-                                currCreated, prevCreated, timeDiff.toMillis()));
+                                currentEvent.getEventType(),
+                                previousEvent.getEventType(),
+                                currCreated, prevCreated, timeDiff.toMillis()),
+                        details()
+                                .observedValue(String.format("%s timestamp %s before %s timestamp %s by %dms",
+                                        currentEvent.getEventType(), currCreated,
+                                        previousEvent.getEventType(), prevCreated,
+                                        timeDiff.toMillis()))
+                                .expectedValue(String.format("event timestamp >= previous timestamp minus %dms clock skew",
+                                        clockSkewTolerance.toMillis()))
+                                .thresholdSource("config:anomaly.detection.clock-skew-tolerance")
+                                .evidenceEvents(previousEvent, currentEvent)
+                                .measuredAt(currCreated));
                 return;
             }
         }
@@ -86,7 +99,7 @@ public class AnomalyDetectionService {
 
 
     public void detectInvalidTransition(String sagaId, String previousStep,
-            String currentStep, String condition) {
+            String currentStep, String condition, String eventId, Instant eventTimestamp) {
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         if (workflow == null || workflow.getTransitions() == null) return;
 
@@ -107,29 +120,46 @@ public class AnomalyDetectionService {
             createAnomaly(sagaId, AnomalyType.INVALID_TRANSITION,
                     String.format("%s: %s → %s (condition: %s). Expected from %s: [%s]",
                             transitionType, previousStep, currentStep, condition, previousStep,
-                            expected.isEmpty() ? "none defined" : expected));
+                            expected.isEmpty() ? "none defined" : expected),
+                    details()
+                            .observedValue(String.format("%s -> %s on %s", previousStep, currentStep, condition))
+                            .expectedValue(expected.isEmpty() ? "no transition defined from " + previousStep : expected)
+                            .thresholdSource("workflow:order-saga.transitions")
+                            .evidenceEventIds(eventId)
+                            .measuredAt(eventTimestamp));
         }
     }
 
     public void detectRetryBurst(String sagaId) {
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
-        if (events.size() < BURST_THRESHOLD) return;
+        int burstThreshold = detectionProperties.getRetryBurstThreshold();
+        Duration burstWindow = detectionProperties.getRetryBurstWindow();
+        if (events.size() < burstThreshold) return;
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.RETRY_BURST)) return;
 
         List<SagaEvent> retryEvents = events.stream()
                 .filter(e -> RETRY_EVENT_TYPES.contains(e.getEventType()))
                 .collect(Collectors.toList());
-        if (retryEvents.size() < BURST_THRESHOLD) return;
+        if (retryEvents.size() < burstThreshold) return;
 
-        for (int i = 0; i <= retryEvents.size() - BURST_THRESHOLD; i++) {
+        for (int i = 0; i <= retryEvents.size() - burstThreshold; i++) {
             SagaEvent first = retryEvents.get(i);
-            SagaEvent last = retryEvents.get(i + BURST_THRESHOLD - 1);
+            SagaEvent last = retryEvents.get(i + burstThreshold - 1);
 
             Duration gap = Duration.between(first.getTimestamp(), last.getTimestamp());
-            if (gap.compareTo(BURST_WINDOW) <= 0) {
+            if (gap.compareTo(burstWindow) <= 0) {
+                List<SagaEvent> burstEvents = retryEvents.subList(i, i + burstThreshold);
                 createAnomaly(sagaId, AnomalyType.RETRY_BURST,
                         String.format("%d retry events in %ds — possible retry storm",
-                                BURST_THRESHOLD, gap.getSeconds()));
+                                burstThreshold, gap.getSeconds()),
+                        details()
+                                .observedValue(String.format("%d retry events in %dms",
+                                        burstEvents.size(), gap.toMillis()))
+                                .expectedValue(String.format("fewer than %d retry events within %ds",
+                                        burstThreshold, burstWindow.toSeconds()))
+                                .thresholdSource("config:anomaly.detection.retry-burst")
+                                .evidenceEvents(burstEvents)
+                                .measuredAt(last.getTimestamp()));
                 return;
             }
         }
@@ -139,25 +169,45 @@ public class AnomalyDetectionService {
         // Called when dedup detects a duplicate — create anomaly instead of silent drop
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.EXACT_DUPLICATE_EVENT)) return;
         createAnomaly(sagaId, AnomalyType.EXACT_DUPLICATE_EVENT,
-                String.format("Duplicate event detected: eventId=%s, type=%s", eventId, eventType));
+                String.format("Duplicate event detected: eventId=%s, type=%s", eventId, eventType),
+                details()
+                        .observedValue(String.format("eventId=%s, eventType=%s", eventId, eventType))
+                        .expectedValue("event_id appears once per saga event stream")
+                        .thresholdSource("db:saga_events.event_id")
+                        .evidenceEventIds(eventId)
+                        .measuredAt(Instant.now()));
     }
 
-    public void detectStateRegression(String sagaId, SagaStatus oldStatus, SagaStatus newStatus) {
+    public void detectStateRegression(String sagaId, SagaStatus oldStatus, SagaStatus newStatus,
+            String eventId, Instant eventTimestamp) {
         if (statusRank(newStatus) < statusRank(oldStatus)) {
             if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.STATE_REGRESSION)) return;
             createAnomaly(sagaId, AnomalyType.STATE_REGRESSION,
                     String.format("State regression: %s → %s (rank %d → %d)",
-                            oldStatus, newStatus, statusRank(oldStatus), statusRank(newStatus)));
+                            oldStatus, newStatus, statusRank(oldStatus), statusRank(newStatus)),
+                    details()
+                            .observedValue(String.format("%s -> %s", oldStatus, newStatus))
+                            .expectedValue("saga status rank is monotonic non-decreasing")
+                            .thresholdSource("code:SagaStatus.rank")
+                            .evidenceEventIds(eventId)
+                            .measuredAt(eventTimestamp));
         }
     }
 
-    public void detectForbiddenPostTerminal(String sagaId, SagaStatus currentStatus, String eventType) {
+    public void detectForbiddenPostTerminal(String sagaId, SagaStatus currentStatus, String eventType,
+            String eventId, Instant eventTimestamp) {
         if (currentStatus == SagaStatus.COMPLETED || currentStatus == SagaStatus.COMPENSATED
                 || currentStatus == SagaStatus.FAILED) {
             if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL)) return;
             createAnomaly(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL,
                     String.format("Event '%s' received after saga reached terminal status %s",
-                            eventType, currentStatus));
+                            eventType, currentStatus),
+                    details()
+                            .observedValue(String.format("%s after terminal status %s", eventType, currentStatus))
+                            .expectedValue("no events after terminal saga status")
+                            .thresholdSource("code:terminal-status-guard")
+                            .evidenceEventIds(eventId)
+                            .measuredAt(eventTimestamp));
         }
     }
 
@@ -171,6 +221,10 @@ public class AnomalyDetectionService {
                 .anyMatch(e -> FAILED_EVENTS.contains(e.getEventType()));
 
         if (hasSuccess && hasFail) {
+            List<SagaEvent> terminalEvents = events.stream()
+                    .filter(e -> COMPLETED_EVENTS.contains(e.getEventType())
+                            || FAILED_EVENTS.contains(e.getEventType()))
+                    .toList();
             String successTypes = events.stream()
                     .map(SagaEvent::getEventType).filter(COMPLETED_EVENTS::contains)
                     .collect(Collectors.joining(", "));
@@ -179,19 +233,32 @@ public class AnomalyDetectionService {
                     .collect(Collectors.joining(", "));
             createAnomaly(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT,
                     String.format("Both success [%s] and failure [%s] events present in same saga",
-                            successTypes, failTypes));
+                            successTypes, failTypes),
+                    details()
+                            .observedValue(String.format("success=[%s], failure=[%s]", successTypes, failTypes))
+                            .expectedValue("only one terminal event family per saga")
+                            .thresholdSource("code:terminal-event-sets")
+                            .evidenceEvents(terminalEvents)
+                            .measuredAt(lastTimestamp(terminalEvents)));
         }
     }
 
     public void detectDuplicateCompensation(String sagaId) {
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
-        long refundCount = events.stream()
+        List<SagaEvent> refundEvents = events.stream()
                 .filter(e -> "REFUND_PAYMENT".equals(e.getEventType()))
-                .count();
+                .toList();
+        long refundCount = refundEvents.size();
         if (refundCount > 1 && !anomalyRepository.existsBySagaIdAndAnomalyType(
                 sagaId, AnomalyType.DUPLICATE_COMPENSATION)) {
             createAnomaly(sagaId, AnomalyType.DUPLICATE_COMPENSATION,
-                    String.format("REFUND_PAYMENT appeared %d times — duplicate compensation", refundCount));
+                    String.format("REFUND_PAYMENT appeared %d times - duplicate compensation", refundCount),
+                    details()
+                            .observedValue(String.format("REFUND_PAYMENT count=%d", refundCount))
+                            .expectedValue("REFUND_PAYMENT appears once per compensation attempt")
+                            .thresholdSource("workflow:REFUND_PAYMENT.cardinality")
+                            .evidenceEvents(refundEvents)
+                            .measuredAt(lastTimestamp(refundEvents)));
         }
     }
 
@@ -201,17 +268,24 @@ public class AnomalyDetectionService {
      * The old logic (check sagaInstance exists) never triggered because
      * CorrelationService creates the saga before running detection.
      */
-    public void detectOrphanEvent(String sagaId, String eventType) {
+    public void detectOrphanEvent(String sagaId, String eventId, String eventType, Instant eventTimestamp) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) return;
         createAnomaly(sagaId, AnomalyType.ORPHAN_EVENT,
                 String.format("Event '%s' arrived for saga %s but no ORDER_CREATED was received first — possible wrong correlation key",
-                        eventType, sagaId));
+                        eventType, sagaId),
+                details()
+                        .observedValue(String.format("first observed event is %s", eventType))
+                        .expectedValue("first event is ORDER_CREATED")
+                        .thresholdSource("workflow:ORDER_SAGA.start_event")
+                        .evidenceEventIds(eventId)
+                        .measuredAt(eventTimestamp));
     }
 
     /**
      * Detect events missing trace context (traceId). Enables R19 RCA rule.
      */
-    public void detectMissingTraceContext(String sagaId, String eventType, String payload) {
+    public void detectMissingTraceContext(String sagaId, String eventType, String eventId, String payload,
+            Instant eventTimestamp) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_TRACE_CONTEXT)) return;
         boolean hasTraceId = false;
         if (payload != null && !payload.isBlank()) {
@@ -235,10 +309,16 @@ public class AnomalyDetectionService {
                             return n.has("traceId") && !n.get("traceId").isNull()
                                     && !n.get("traceId").asText().isBlank();
                         } catch (Exception ex) { return false; }
-                    });
+            });
             if (sagaHasAnyTrace) {
                 createAnomaly(sagaId, AnomalyType.MISSING_TRACE_CONTEXT,
-                        String.format("Event '%s' missing traceId — trace propagation broken", eventType));
+                        String.format("Event '%s' missing traceId - trace propagation broken", eventType),
+                        details()
+                                .observedValue(String.format("event '%s' payload has no traceId", eventType))
+                                .expectedValue("payload contains non-empty traceId")
+                                .thresholdSource("otel:trace-context-propagation")
+                                .evidenceEventIds(eventId)
+                                .measuredAt(eventTimestamp));
             }
         }
     }
@@ -247,7 +327,7 @@ public class AnomalyDetectionService {
     // Scheduled detection — runs periodically
     // =========================================================================
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStuckSagas() {
         List<SagaInstance> runningSagas = new java.util.ArrayList<>(
                 sagaInstanceRepository.findByStatus(SagaStatus.STARTED));
@@ -263,7 +343,7 @@ public class AnomalyDetectionService {
                     .orElse(null);
             if (lastEvent == null) continue;
 
-            int timeoutSeconds = 60;
+            int timeoutSeconds = detectionProperties.getDefaultStepTimeoutSeconds();
             if (workflow != null) {
                 String stepName = workflow.getExpectedStepForEvent(lastEvent.getEventType());
                 if (stepName != null) {
@@ -278,19 +358,26 @@ public class AnomalyDetectionService {
                 if (!alreadyDetected) {
                     createAnomaly(saga.getSagaId(), AnomalyType.SAGA_STUCK,
                             String.format("Saga stuck: no event since %s (last: %s, timeout: %ds)",
-                                    lastEvent.getTimestamp(), lastEvent.getEventType(), timeoutSeconds));
+                                    lastEvent.getTimestamp(), lastEvent.getEventType(), timeoutSeconds),
+                            details()
+                                    .observedValue(String.format("no event since %s after %s",
+                                            lastEvent.getTimestamp(), lastEvent.getEventType()))
+                                    .expectedValue(String.format("next event within %ds", timeoutSeconds))
+                                    .thresholdSource(timeoutSource(workflow, lastEvent.getEventType()))
+                                    .evidenceEvents(lastEvent)
+                                    .measuredAt(now));
                 }
             }
         }
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStepTimeouts() {
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         if (workflow == null) return;
 
         // Only check active + recently completed sagas (last 1h) to avoid N+1 on all historical data
-        Instant recentCutoff = Instant.now().minus(1, ChronoUnit.HOURS);
+        Instant recentCutoff = Instant.now().minus(detectionProperties.getCompletedSagaLookback());
         List<SagaInstance> activeSagas = new java.util.ArrayList<>(
                 sagaInstanceRepository.findByStatus(SagaStatus.IN_PROGRESS));
         activeSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
@@ -311,11 +398,13 @@ public class AnomalyDetectionService {
             if (events.size() < 2) continue;
 
             for (int i = 1; i < events.size(); i++) {
+                SagaEvent previousEvent = events.get(i - 1);
+                SagaEvent currentEvent = events.get(i);
                 long stepDurationMs = Duration.between(
-                        events.get(i - 1).getTimestamp(),
-                        events.get(i).getTimestamp()).toMillis();
+                        previousEvent.getTimestamp(),
+                        currentEvent.getTimestamp()).toMillis();
 
-                String stepName = workflow.getExpectedStepForEvent(events.get(i).getEventType());
+                String stepName = workflow.getExpectedStepForEvent(currentEvent.getEventType());
                 if (stepName == null) continue;
                 int expectedTimeoutMs = workflow.getStepTimeoutSeconds(stepName) * 1000;
 
@@ -323,24 +412,30 @@ public class AnomalyDetectionService {
                     createAnomaly(saga.getSagaId(), AnomalyType.STEP_TIMEOUT,
                             String.format("Step '%s' took %dms (timeout: %dms). Previous event: %s",
                                     stepName, stepDurationMs, expectedTimeoutMs,
-                                    events.get(i - 1).getEventType()));
+                                    previousEvent.getEventType()),
+                            details()
+                                    .observedValue(String.format("%s took %dms", stepName, stepDurationMs))
+                                    .expectedValue(String.format("<= %dms", expectedTimeoutMs))
+                                    .thresholdSource("workflow:" + stepName + ".timeout")
+                                    .evidenceEvents(previousEvent, currentEvent)
+                                    .measuredAt(currentEvent.getTimestamp()));
                     break;
                 }
             }
         }
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectMissingTerminalEvents() {
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         // Bug 5 fix: null guard for workflow.getSteps()
-        int maxStepTimeout = 60; // default
+        int maxStepTimeout = detectionProperties.getDefaultStepTimeoutSeconds();
         if (workflow != null && workflow.getSteps() != null) {
             maxStepTimeout = workflow.getSteps().stream()
                     .mapToInt(s -> workflow.getStepTimeoutSeconds(s.getId()))
-                    .max().orElse(60);
+                    .max().orElse(detectionProperties.getDefaultStepTimeoutSeconds());
         }
-        int maxTimeout = maxStepTimeout * 2; // 2× max step timeout
+        int maxTimeout = maxStepTimeout * detectionProperties.getMissingTerminalTimeoutMultiplier();
 
         Instant cutoff = Instant.now().minus(maxTimeout, ChronoUnit.SECONDS);
 
@@ -355,16 +450,25 @@ public class AnomalyDetectionService {
 
             long eventCount = sagaEventRepository.countBySagaId(saga.getSagaId());
             if (eventCount >= 2) {
+                SagaEvent lastEvent = sagaEventRepository
+                        .findTopBySagaIdOrderByTimestampDesc(saga.getSagaId())
+                        .orElse(null);
                 createAnomaly(saga.getSagaId(), AnomalyType.MISSING_TERMINAL_EVENT,
                         String.format("Saga has %d events but no terminal event after %ds",
-                                eventCount, maxTimeout));
+                                eventCount, maxTimeout),
+                        details()
+                                .observedValue(String.format("%d events and no terminal event", eventCount))
+                                .expectedValue(String.format("terminal event within %ds", maxTimeout))
+                                .thresholdSource("config:anomaly.detection.missing-terminal-timeout-multiplier")
+                                .evidenceEvents(lastEvent)
+                                .measuredAt(Instant.now()));
             }
         }
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectCompensationMissing() {
-        Instant cutoff = Instant.now().minus(30, ChronoUnit.SECONDS);
+        Instant cutoff = Instant.now().minus(detectionProperties.getCompensationMissingCutoff());
 
         // INVENTORY_FAILED sets status to COMPENSATING (not FAILED),
         // so we must query COMPENSATING sagas to find missing compensation.
@@ -378,21 +482,29 @@ public class AnomalyDetectionService {
 
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            boolean hasFailure = events.stream().anyMatch(e ->
-                    "INVENTORY_FAILED".equals(e.getEventType()));
+            List<SagaEvent> failureEvents = events.stream()
+                    .filter(e -> "INVENTORY_FAILED".equals(e.getEventType()))
+                    .toList();
+            boolean hasFailure = !failureEvents.isEmpty();
             boolean hasCompStart = events.stream().anyMatch(e ->
                     "REFUND_PAYMENT".equals(e.getEventType()));
 
             if (hasFailure && !hasCompStart) {
                 createAnomaly(saga.getSagaId(), AnomalyType.COMPENSATION_MISSING,
-                        "Failure detected (INVENTORY_FAILED) but no compensation started");
+                        "Failure detected (INVENTORY_FAILED) but no compensation started",
+                        details()
+                                .observedValue("INVENTORY_FAILED without REFUND_PAYMENT")
+                                .expectedValue("REFUND_PAYMENT starts compensation after INVENTORY_FAILED")
+                                .thresholdSource("workflow:INVENTORY_FAILED.compensation")
+                                .evidenceEvents(failureEvents)
+                                .measuredAt(Instant.now()));
             }
         }
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectMissingCompensationAck() {
-        Instant cutoff = Instant.now().minus(30, ChronoUnit.SECONDS);
+        Instant cutoff = Instant.now().minus(detectionProperties.getCompensationAckCutoff());
 
         List<SagaInstance> compensatingSagas =
                 sagaInstanceRepository.findByStatusAndLastUpdatedBefore(SagaStatus.COMPENSATING, cutoff);
@@ -403,31 +515,39 @@ public class AnomalyDetectionService {
 
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            boolean hasRefundCmd = events.stream().anyMatch(e ->
-                    "REFUND_PAYMENT".equals(e.getEventType()));
+            List<SagaEvent> refundCommandEvents = events.stream()
+                    .filter(e -> "REFUND_PAYMENT".equals(e.getEventType()))
+                    .toList();
+            boolean hasRefundCmd = !refundCommandEvents.isEmpty();
             boolean hasRefundDone = events.stream().anyMatch(e ->
                     "PAYMENT_REFUNDED".equals(e.getEventType()));
 
             if (hasRefundCmd && !hasRefundDone) {
                 createAnomaly(saga.getSagaId(), AnomalyType.MISSING_COMPENSATION_ACK,
-                        "Compensation started (REFUND_PAYMENT) but no acknowledgement (PAYMENT_REFUNDED)");
+                        "Compensation started (REFUND_PAYMENT) but no acknowledgement (PAYMENT_REFUNDED)",
+                        details()
+                                .observedValue("REFUND_PAYMENT without PAYMENT_REFUNDED")
+                                .expectedValue("PAYMENT_REFUNDED acknowledges compensation")
+                                .thresholdSource("workflow:REFUND_PAYMENT.ack")
+                                .evidenceEvents(refundCommandEvents)
+                                .measuredAt(Instant.now()));
             }
         }
     }
 
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectDelayedCompensation() {
-        // Derive threshold from workflow compensation step timeout × 1.5.
-        // REFUND_PAYMENT step timeout = 10s in YAML → threshold = 15s.
-        // Falls back to 15s if workflow not loaded.
+        // Derive threshold from the workflow compensation timeout multiplied by
+        // the configured delayed-compensation multiplier.
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
-        int compensationTimeoutSeconds = 10; // default
+        int compensationTimeoutSeconds = detectionProperties.getDefaultStepTimeoutSeconds();
         if (workflow != null) {
             compensationTimeoutSeconds = workflow.getStepTimeoutSeconds("REFUND_PAYMENT");
         }
-        int compensationThresholdMs = (int) (compensationTimeoutSeconds * 1.5 * 1000);
+        int compensationThresholdMs = (int) (compensationTimeoutSeconds
+                * detectionProperties.getDelayedCompensationMultiplier() * 1000);
 
-        Instant recentCutoff = Instant.now().minus(10, ChronoUnit.MINUTES);
+        Instant recentCutoff = Instant.now().minus(detectionProperties.getCompensationRecentLookback());
 
         // Check sagas that completed compensation recently
         List<SagaInstance> compensatedSagas = new java.util.ArrayList<>(
@@ -443,23 +563,29 @@ public class AnomalyDetectionService {
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
 
             // Find failure event and first compensation event
-            Instant failureTime = null;
-            Instant compensationStartTime = null;
+            SagaEvent failureEvent = null;
+            SagaEvent compensationStartEvent = null;
             for (SagaEvent event : events) {
-                if ("INVENTORY_FAILED".equals(event.getEventType()) && failureTime == null) {
-                    failureTime = event.getTimestamp();
+                if ("INVENTORY_FAILED".equals(event.getEventType()) && failureEvent == null) {
+                    failureEvent = event;
                 }
-                if ("REFUND_PAYMENT".equals(event.getEventType()) && compensationStartTime == null) {
-                    compensationStartTime = event.getTimestamp();
+                if ("REFUND_PAYMENT".equals(event.getEventType()) && compensationStartEvent == null) {
+                    compensationStartEvent = event;
                 }
             }
 
-            if (failureTime != null && compensationStartTime != null) {
-                long gapMs = Duration.between(failureTime, compensationStartTime).toMillis();
+            if (failureEvent != null && compensationStartEvent != null) {
+                long gapMs = Duration.between(failureEvent.getTimestamp(), compensationStartEvent.getTimestamp()).toMillis();
                 if (gapMs > compensationThresholdMs) {
                     createAnomaly(saga.getSagaId(), AnomalyType.DELAYED_COMPENSATION,
                             String.format("Compensation delayed: %dms gap between INVENTORY_FAILED and REFUND_PAYMENT (threshold: %dms)",
-                                    gapMs, compensationThresholdMs));
+                                    gapMs, compensationThresholdMs),
+                            details()
+                                    .observedValue(String.format("%dms gap from INVENTORY_FAILED to REFUND_PAYMENT", gapMs))
+                                    .expectedValue(String.format("<= %dms", compensationThresholdMs))
+                                    .thresholdSource("config:anomaly.detection.delayed-compensation-multiplier")
+                                    .evidenceEvents(failureEvent, compensationStartEvent)
+                                    .measuredAt(compensationStartEvent.getTimestamp()));
                 }
             }
         }
@@ -480,13 +606,88 @@ public class AnomalyDetectionService {
         };
     }
 
-    private void createAnomaly(String sagaId, AnomalyType type, String description) {
+    private void createAnomaly(String sagaId, AnomalyType type, String description, AnomalyDetails details) {
         Anomaly anomaly = new Anomaly();
         anomaly.setSagaId(sagaId);
         anomaly.setAnomalyType(type);
         anomaly.setDescription(description);
         anomaly.setDetectedAt(Instant.now());
+        anomaly.setObservedValue(details.observedValue);
+        anomaly.setExpectedValue(details.expectedValue);
+        anomaly.setThresholdSource(details.thresholdSource);
+        anomaly.setEvidenceEventIds(details.evidenceEventIds);
+        anomaly.setMeasuredAt(details.measuredAt);
         anomalyRepository.save(anomaly);
         log.warn("Anomaly detected: [{}] {} - {}", type, sagaId, description);
+    }
+
+    private static AnomalyDetails details() {
+        return new AnomalyDetails();
+    }
+
+    private static Instant lastTimestamp(List<SagaEvent> events) {
+        if (events == null || events.isEmpty()) return null;
+        return events.get(events.size() - 1).getTimestamp();
+    }
+
+    private static String timeoutSource(WorkflowSpec workflow, String eventType) {
+        if (workflow == null) return "config:anomaly.detection.default-step-timeout-seconds";
+        String stepName = workflow.getExpectedStepForEvent(eventType);
+        if (stepName == null) return "config:anomaly.detection.default-step-timeout-seconds";
+        return "workflow:" + stepName + ".timeout";
+    }
+
+    private static class AnomalyDetails {
+        private String observedValue;
+        private String expectedValue;
+        private String thresholdSource;
+        private List<String> evidenceEventIds;
+        private Instant measuredAt;
+
+        private AnomalyDetails observedValue(String observedValue) {
+            this.observedValue = observedValue;
+            return this;
+        }
+
+        private AnomalyDetails expectedValue(String expectedValue) {
+            this.expectedValue = expectedValue;
+            return this;
+        }
+
+        private AnomalyDetails thresholdSource(String thresholdSource) {
+            this.thresholdSource = thresholdSource;
+            return this;
+        }
+
+        private AnomalyDetails evidenceEventIds(String... eventIds) {
+            this.evidenceEventIds = Arrays.stream(eventIds == null ? new String[0] : eventIds)
+                    .filter(Objects::nonNull)
+                    .filter(id -> !id.isBlank())
+                    .toList();
+            return this;
+        }
+
+        private AnomalyDetails evidenceEvents(SagaEvent... events) {
+            return evidenceEvents(Arrays.asList(events == null ? new SagaEvent[0] : events));
+        }
+
+        private AnomalyDetails evidenceEvents(List<SagaEvent> events) {
+            if (events == null) {
+                this.evidenceEventIds = List.of();
+                return this;
+            }
+            this.evidenceEventIds = events.stream()
+                    .filter(Objects::nonNull)
+                    .map(SagaEvent::getEventId)
+                    .filter(Objects::nonNull)
+                    .filter(id -> !id.isBlank())
+                    .toList();
+            return this;
+        }
+
+        private AnomalyDetails measuredAt(Instant measuredAt) {
+            this.measuredAt = measuredAt;
+            return this;
+        }
     }
 }

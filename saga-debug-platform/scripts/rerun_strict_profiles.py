@@ -16,8 +16,7 @@ from run_strict_controlled_ablation import (
 
 
 TARGET_PROFILES = [
-    ("severity-heavy", "rca-severity-heavy"),
-    ("evidence-heavy", "rca-evidence-heavy"),
+    ("score-free-selector", None),
 ]
 TRIALS = 3
 
@@ -140,11 +139,7 @@ def main():
 
     # Sort and persist
     profile_order = {
-        "confidence-only": 0,
-        "confidence-heavy": 1,
-        "equal-weight": 2,
-        "severity-heavy": 3,
-        "evidence-heavy": 4,
+        "score-free-selector": 0,
     }
     rows.sort(key=lambda r: (profile_order.get(r["profile"], 99), r["trial"], int(r["scenarioId"].split("_")[0][2:])))
 
