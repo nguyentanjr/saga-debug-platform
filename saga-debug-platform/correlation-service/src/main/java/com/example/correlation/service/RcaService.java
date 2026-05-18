@@ -5,10 +5,8 @@ import com.example.correlation.domain.rca.CandidateStatus;
 import com.example.correlation.domain.rca.CandidateAssessment;
 import com.example.correlation.domain.rca.Directness;
 import com.example.correlation.domain.rca.Evidence;
-import com.example.correlation.domain.rca.EvidenceSource;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
-import com.example.correlation.domain.rca.Specificity;
 import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
@@ -291,12 +289,11 @@ public class RcaService {
                 String payload = event.getPayload() != null ? event.getPayload().toLowerCase() : "";
                 if (payload.contains("circuit breaker") || payload.contains("retry exhausted")) {
                     CandidateAssessment rr = candidate("CIRCUIT_BREAKER_OPEN", "CRITICAL", "R01",
-                            Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                            Directness.DIRECT_SIGNATURE);
                     rr.getEvidence().add(Evidence.ofEvent("Payment failed with circuit breaker/retry exhaustion",
                             event.getPayload(), "payment succeeds or reports business failure",
-                            EvidenceSource.EVENT_PAYLOAD, event.getEventId()));
-                    rr.getEvidence().add(Evidence.of("Payload: " + event.getPayload(),
-                            EvidenceSource.EVENT_PAYLOAD, null));
+                            event.getEventId()));
+                    rr.getEvidence().add(Evidence.of("Payload: " + event.getPayload(), null));
                     rr.getSuggestions().add("Check downstream service health");
                     rr.getSuggestions().add("Review Resilience4j metrics at /actuator/circuitbreakers");
                     return rr;
@@ -322,8 +319,7 @@ public class RcaService {
                         .collect(Collectors.toList());
                 boolean hasTimeoutEvidence = !timeoutRetryEvents.isEmpty();
                 CandidateAssessment rr = candidate("TIMEOUT_RETRY_STORM", "CRITICAL", "R02",
-                        hasTimeoutEvidence ? Directness.DIRECT_SIGNATURE : Directness.HEURISTIC_INFERENCE,
-                        hasTimeoutEvidence ? Specificity.LABEL_IS_SIGNATURE : Specificity.LABEL_HEURISTIC);
+                        hasTimeoutEvidence ? Directness.DIRECT_SIGNATURE : Directness.HEURISTIC_INFERENCE);
                 rr.getEvidence().add(evidence(a));
                 if (hasTimeoutEvidence) {
                     rr.getEvidence().add(Evidence.of(
@@ -334,14 +330,13 @@ public class RcaService {
                                     .limit(3)
                                     .collect(Collectors.joining("; ")),
                             "retry burst should not be caused by timeout exceptions",
-                            EvidenceSource.EVENT_PAYLOAD,
                             null,
                             timeoutRetryEvents.stream()
                                     .map(SagaEvent::getEventId)
                                     .filter(Objects::nonNull)
                                     .collect(Collectors.toList())));
                 } else {
-                    rr.setMissingForStronger("Retry events do not record timeout exception class.");
+                    rr.setStatusReason("Retry events do not record timeout exception class.");
                 }
                 rr.getSuggestions().add("Reduce retry count or increase backoff");
                 rr.getSuggestions().add("Check service logs for timeout root cause");
@@ -365,7 +360,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.MULTI_TERMINAL_CONFLICT) {
                 CandidateAssessment rr = candidate("MULTI_TERMINAL_CONFLICT", "CRITICAL", "R03",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Enforce final-state immutability");
                 rr.getSuggestions().add("Check for duplicate terminal event delivery");
@@ -383,7 +378,7 @@ public class RcaService {
             if (a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL
                     || a.getAnomalyType() == AnomalyType.STATE_REGRESSION) {
                 CandidateAssessment rr = candidate("TERMINAL_STATE_OVERWRITE", "HIGH", "R04",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Implement compare-and-set for saga state updates");
                 rr.getSuggestions().add("Reject events arriving after terminal state");
@@ -449,7 +444,7 @@ public class RcaService {
                     // specificity. The cause label is equally inferred either way.
                     CandidateAssessment rr = candidate("SERVICE_CRASH",
                             isRecovered ? "MEDIUM" : "CRITICAL", "R05",
-                            Directness.CORROBORATED_INFERENCE, Specificity.LABEL_INFERS_FROM_SIGNATURE);
+                            Directness.CORROBORATED_INFERENCE);
                     rr.getEvidence().add(evidence("Saga stuck for " + stuckSeconds + "s (>"
                             + serviceCrashTimeoutSeconds + "s threshold)"));
                     rr.getEvidence().add(evidence("Both SAGA_STUCK and MISSING_TERMINAL_EVENT anomalies present"));
@@ -492,7 +487,7 @@ public class RcaService {
         // If hasMissingTerminal is true, R05 covers this case (even after recovery).
         if (hasStuck && !hasMissingTerminal && !hasStepTimeoutBeforeRecovery && isTerminal) {
             CandidateAssessment rr = candidate("TRANSIENT_SERVICE_FAILURE", "LOW", "R06",
-                    Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                    Directness.DIRECT_SIGNATURE);
             rr.getEvidence().add(evidence("Saga was previously stuck (SAGA_STUCK anomaly detected)"));
             rr.getEvidence().add(evidence("Saga has since recovered → final status: " + saga.getStatus()));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
@@ -525,7 +520,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.STEP_TIMEOUT) {
                 CandidateAssessment rr = candidate("DOWNSTREAM_TIMEOUT", "HIGH", "R07",
-                        Directness.THRESHOLD_VIOLATION, Specificity.LABEL_HEURISTIC);
+                        Directness.THRESHOLD_VIOLATION);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Tune step timeout thresholds in workflow spec");
                 rr.getSuggestions().add("Check downstream service performance");
@@ -542,7 +537,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.COMPENSATION_MISSING) {
                 CandidateAssessment rr = candidate("COMPENSATION_NOT_TRIGGERED", "HIGH", "R09",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Check if orchestrator (order-service) is running");
                 rr.getSuggestions().add("Verify compensation trigger logic");
@@ -568,7 +563,7 @@ public class RcaService {
         if (hasRefundCommand && !hasRefundCompleted
                 && (saga.getStatus() == SagaStatus.COMPENSATING || hasMissingCompAck)) {
             CandidateAssessment rr = candidate("COMPENSATION_STEP_FAILURE", "HIGH", "R10",
-                    Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                    Directness.DIRECT_SIGNATURE);
             rr.getEvidence().add(evidence("Compensation started (REFUND_PAYMENT) but no PAYMENT_REFUNDED received"));
             rr.getEvidence().add(evidence("Saga stuck in COMPENSATING status"));
             rr.getSuggestions().add("Check payment-service logs for refund errors");
@@ -590,7 +585,7 @@ public class RcaService {
 
         if (saga.getStatus() == SagaStatus.COMPENSATED && hasRefundCommand && hasRefundCompleted) {
             CandidateAssessment rr = candidate("FORWARD_STEP_FAILURE", "LOW", "R11",
-                    Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                    Directness.DIRECT_SIGNATURE);
             rr.getEvidence().add(evidence("Compensation completed: REFUND_PAYMENT → PAYMENT_REFUNDED"));
             rr.getEvidence().add(evidence("Saga status: COMPENSATED"));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
@@ -610,7 +605,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.INVALID_TRANSITION) {
                 CandidateAssessment rr = candidate("INVALID_TRANSITION", "MEDIUM", "R12",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Verify event routing in upstream services");
                 rr.getSuggestions().add("Review workflow spec transitions");
@@ -627,7 +622,7 @@ public class RcaService {
             if (a.getAnomalyType() == AnomalyType.EXACT_DUPLICATE_EVENT
                     || a.getAnomalyType() == AnomalyType.DUPLICATE_COMPENSATION) {
                 CandidateAssessment rr = candidate("DUPLICATE_DELIVERY", "LOW", "R13",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Verify producer idempotency configuration");
                 rr.getSuggestions().add("Check consumer deduplication mechanisms");
@@ -648,7 +643,7 @@ public class RcaService {
             if (a.getAnomalyType() == AnomalyType.OUT_OF_ORDER) {
                 CandidateAssessment rr = candidate("OUT_OF_ORDER_DELIVERY",
                         isTerminal ? "LOW" : "MEDIUM", "R14",
-                        Directness.THRESHOLD_VIOLATION, Specificity.LABEL_INFERS_FROM_SIGNATURE);
+                        Directness.THRESHOLD_VIOLATION);
                 rr.getEvidence().add(evidence(a));
                 if (isTerminal) {
                     rr.getEvidence().add(evidence("Saga completed despite out-of-order events"));
@@ -671,7 +666,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.ORPHAN_EVENT) {
                 CandidateAssessment rr = candidate("WRONG_SAGA_CORRELATION_KEY", "HIGH", "R15",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_NARROWS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Verify sagaId propagation across services");
                 rr.getSuggestions().add("Check Kafka header saga-id configuration");
@@ -687,7 +682,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.MISSING_TRACE_CONTEXT) {
                 CandidateAssessment rr = candidate("MISSING_TRACE_PROPAGATION", "MEDIUM", "R19",
-                        Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE);
+                        Directness.DIRECT_SIGNATURE);
                 rr.getEvidence().add(evidence(a));
                 rr.getEvidence().add(evidence("Events missing traceId cannot be correlated in Jaeger"));
                 rr.getSuggestions().add("Verify trace context propagation in service configuration");
@@ -707,7 +702,7 @@ public class RcaService {
     private CandidateAssessment ruleObservabilityGap(List<Anomaly> anomalies) {
         if (!anomalies.isEmpty()) {
             CandidateAssessment rr = candidate("OBSERVABILITY_GAP", "LOW", "R20",
-                    Directness.HEURISTIC_INFERENCE, Specificity.LABEL_HEURISTIC);
+                    Directness.HEURISTIC_INFERENCE);
             rr.getEvidence().add(evidence("Anomalies detected but insufficient evidence to determine root cause"));
             rr.getEvidence().add(evidence("Anomaly types: " + anomalies.stream()
                     .map(a -> a.getAnomalyType().name())
@@ -734,7 +729,7 @@ public class RcaService {
 
         if (hasStuck && isNonTerminal) {
             CandidateAssessment rr = candidate("STUCK_UNKNOWN_CAUSE", "HIGH", "R21",
-                    Directness.HEURISTIC_INFERENCE, Specificity.LABEL_HEURISTIC);
+                    Directness.HEURISTIC_INFERENCE);
             rr.getEvidence().add(evidence("Saga stuck in " + saga.getStatus() + " status"));
             rr.getEvidence().add(evidence("No specific root cause identified — insufficient evidence"));
             rr.getSuggestions().add("Check all downstream service health");
@@ -753,7 +748,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.DELAYED_COMPENSATION) {
                 CandidateAssessment rr = candidate("DELAYED_COMPENSATION", "MEDIUM", "R22",
-                        Directness.THRESHOLD_VIOLATION, Specificity.LABEL_INFERS_FROM_SIGNATURE);
+                        Directness.THRESHOLD_VIOLATION);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Review orchestrator compensation trigger latency");
                 rr.getSuggestions().add("Check message broker throughput during compensation");
@@ -767,18 +762,17 @@ public class RcaService {
     // Utility
     // =========================================================================
     private CandidateAssessment candidate(String rootCause, String severity, String ruleId,
-            Directness directness, Specificity specificity) {
+            Directness directness) {
         return CandidateAssessment.builder()
                 .rootCause(rootCause)
                 .severity(severity)
                 .ruleId(ruleId)
                 .directness(directness)
-                .specificity(specificity)
                 .build();
     }
 
     private Evidence evidence(String fact) {
-        return Evidence.of(fact, EvidenceSource.CODE_CONSTANT, null);
+        return Evidence.of(fact, null);
     }
 
     private Evidence evidence(Anomaly anomaly) {
@@ -787,19 +781,8 @@ public class RcaService {
                 anomaly.getDescription(),
                 anomaly.getObservedValue(),
                 anomaly.getExpectedValue(),
-                sourceFrom(anomaly.getThresholdSource()),
                 anomaly.getId(),
                 anomaly.getEvidenceEventIds());
-    }
-
-    private EvidenceSource sourceFrom(String thresholdSource) {
-        if (thresholdSource == null) return EvidenceSource.CODE_CONSTANT;
-        if (thresholdSource.startsWith("workflow:")) return EvidenceSource.WORKFLOW_SPEC;
-        if (thresholdSource.startsWith("config:")) return EvidenceSource.CONFIG;
-        if (thresholdSource.startsWith("state:") || thresholdSource.startsWith("db:")) {
-            return EvidenceSource.STATE_MACHINE;
-        }
-        return EvidenceSource.CODE_CONSTANT;
     }
 
     private List<RcaCandidate> candidatesWithStatus(SelectionResult selection, CandidateStatus status) {
@@ -811,8 +794,6 @@ public class RcaService {
     private int compareCandidateStrength(RcaCandidate first, RcaCandidate second) {
         int directness = Integer.compare(enumRank(first.getDirectness()), enumRank(second.getDirectness()));
         if (directness != 0) return directness;
-        int specificity = Integer.compare(enumRank(first.getSpecificity()), enumRank(second.getSpecificity()));
-        if (specificity != 0) return specificity;
         return Comparator.nullsLast(String::compareTo).compare(first.getRuleId(), second.getRuleId());
     }
 
