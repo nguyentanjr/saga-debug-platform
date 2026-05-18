@@ -1,8 +1,11 @@
 package com.example.correlation.domain.rca;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.ArrayList;
 import java.util.List;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class RcaCandidate {
 
     private String ruleId;
@@ -10,13 +13,9 @@ public class RcaCandidate {
     private String severity;
     private CandidateStatus status;
     private Directness directness;
-    private Specificity specificity;
     private List<Evidence> evidence = new ArrayList<>();
     private List<String> suggestions = new ArrayList<>();
-    private String selectionReason;
-    private String contributionReason;
-    private String ruledOutReason;
-    private String missingForStronger;
+    private String statusReason;
 
     public static RcaCandidate from(CandidateAssessment assessment) {
         RcaCandidate candidate = new RcaCandidate();
@@ -25,13 +24,9 @@ public class RcaCandidate {
         candidate.setSeverity(assessment.getSeverity());
         candidate.setStatus(assessment.getStatus());
         candidate.setDirectness(assessment.getDirectness());
-        candidate.setSpecificity(assessment.getSpecificity());
         candidate.setEvidence(assessment.getEvidence());
         candidate.setSuggestions(assessment.getSuggestions());
-        candidate.setSelectionReason(assessment.getSelectionReason());
-        candidate.setContributionReason(assessment.getContributionReason());
-        candidate.setRuledOutReason(assessment.getRuledOutReason());
-        candidate.setMissingForStronger(assessment.getMissingForStronger());
+        candidate.setStatusReason(assessment.getStatusReason());
         return candidate;
     }
 
@@ -50,9 +45,6 @@ public class RcaCandidate {
     public Directness getDirectness() { return directness; }
     public void setDirectness(Directness directness) { this.directness = directness; }
 
-    public Specificity getSpecificity() { return specificity; }
-    public void setSpecificity(Specificity specificity) { this.specificity = specificity; }
-
     public List<Evidence> getEvidence() { return evidence; }
     public void setEvidence(List<Evidence> evidence) {
         this.evidence = evidence != null ? new ArrayList<>(evidence) : new ArrayList<>();
@@ -63,15 +55,6 @@ public class RcaCandidate {
         this.suggestions = suggestions != null ? new ArrayList<>(suggestions) : new ArrayList<>();
     }
 
-    public String getSelectionReason() { return selectionReason; }
-    public void setSelectionReason(String selectionReason) { this.selectionReason = selectionReason; }
-
-    public String getContributionReason() { return contributionReason; }
-    public void setContributionReason(String contributionReason) { this.contributionReason = contributionReason; }
-
-    public String getRuledOutReason() { return ruledOutReason; }
-    public void setRuledOutReason(String ruledOutReason) { this.ruledOutReason = ruledOutReason; }
-
-    public String getMissingForStronger() { return missingForStronger; }
-    public void setMissingForStronger(String missingForStronger) { this.missingForStronger = missingForStronger; }
+    public String getStatusReason() { return statusReason; }
+    public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
 }
