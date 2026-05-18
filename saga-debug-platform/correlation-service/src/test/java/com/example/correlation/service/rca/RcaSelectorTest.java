@@ -8,10 +8,8 @@ import com.example.correlation.domain.rca.CandidateAssessment;
 import com.example.correlation.domain.rca.CandidateStatus;
 import com.example.correlation.domain.rca.Directness;
 import com.example.correlation.domain.rca.Evidence;
-import com.example.correlation.domain.rca.EvidenceSource;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
-import com.example.correlation.domain.rca.Specificity;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -25,7 +23,7 @@ class RcaSelectorTest {
     @Test
     void singleDirectSignature_isSelected() {
         CandidateAssessment direct = candidate("R03", "MULTI_TERMINAL_CONFLICT",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 1L);
+                Directness.DIRECT_SIGNATURE, 1L);
 
         SelectionResult result = selector.select(List.of(direct), List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT)), saga(SagaStatus.FAILED));
 
@@ -37,7 +35,7 @@ class RcaSelectorTest {
     @Test
     void singleThresholdViolation_isSelected() {
         CandidateAssessment threshold = candidate("R07", "DOWNSTREAM_TIMEOUT",
-                Directness.THRESHOLD_VIOLATION, Specificity.LABEL_HEURISTIC, 7L);
+                Directness.THRESHOLD_VIOLATION, 7L);
 
         SelectionResult result = selector.select(List.of(threshold), List.of(anomaly(7L, AnomalyType.STEP_TIMEOUT)), saga(SagaStatus.IN_PROGRESS));
 
@@ -49,9 +47,9 @@ class RcaSelectorTest {
     @Test
     void sameTierDisjointEvidence_allSelectedAsMultiCause() {
         CandidateAssessment first = candidate("R03", "MULTI_TERMINAL_CONFLICT",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 1L);
+                Directness.DIRECT_SIGNATURE, 1L);
         CandidateAssessment second = candidate("R12", "INVALID_TRANSITION",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 2L);
+                Directness.DIRECT_SIGNATURE, 2L);
 
         SelectionResult result = selector.select(List.of(first, second),
                 List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT),
@@ -60,35 +58,17 @@ class RcaSelectorTest {
 
         assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.SELECTED);
         assertThat(result.getPrimaryRootCauses())
-                .containsExactly("MULTI_TERMINAL_CONFLICT", "INVALID_TRANSITION");
+                .containsExactlyInAnyOrder("MULTI_TERMINAL_CONFLICT", "INVALID_TRANSITION");
         assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
         assertThat(find(result, "R12").getStatus()).isEqualTo(CandidateStatus.SELECTED);
     }
 
     @Test
-    void sameTierDisjointEvidence_primaryOrderUsesSpecificity() {
-        CandidateAssessment timeout = candidate("R07", "DOWNSTREAM_TIMEOUT",
-                Directness.THRESHOLD_VIOLATION, Specificity.LABEL_HEURISTIC, 7L);
-        CandidateAssessment outOfOrder = candidate("R14", "OUT_OF_ORDER_DELIVERY",
-                Directness.THRESHOLD_VIOLATION, Specificity.LABEL_INFERS_FROM_SIGNATURE, 14L);
-
-        SelectionResult result = selector.select(List.of(timeout, outOfOrder),
-                List.of(anomaly(7L, AnomalyType.STEP_TIMEOUT),
-                        anomaly(14L, AnomalyType.OUT_OF_ORDER)),
-                saga(SagaStatus.IN_PROGRESS));
-
-        assertThat(result.getPrimaryRootCauses())
-                .containsExactly("OUT_OF_ORDER_DELIVERY", "DOWNSTREAM_TIMEOUT");
-        assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.SELECTED);
-        assertThat(find(result, "R14").getStatus()).isEqualTo(CandidateStatus.SELECTED);
-    }
-
-    @Test
     void crossTierIndependentEvidence_lowerTierIsContributingNotSelected() {
         CandidateAssessment direct = candidate("R03", "MULTI_TERMINAL_CONFLICT",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 1L);
+                Directness.DIRECT_SIGNATURE, 1L);
         CandidateAssessment threshold = candidate("R07", "DOWNSTREAM_TIMEOUT",
-                Directness.THRESHOLD_VIOLATION, Specificity.LABEL_HEURISTIC, 2L);
+                Directness.THRESHOLD_VIOLATION, 2L);
 
         SelectionResult result = selector.select(List.of(direct, threshold),
                 List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT),
@@ -103,8 +83,8 @@ class RcaSelectorTest {
     @Test
     void heuristicOnly_abstainsWithPossibleCandidate() {
         CandidateAssessment heuristic = candidateBuilder("R02", "TIMEOUT_RETRY_STORM",
-                Directness.HEURISTIC_INFERENCE, Specificity.LABEL_HEURISTIC, 2L)
-                .missingForStronger("Retry events do not record exception class")
+                Directness.HEURISTIC_INFERENCE, 2L)
+                .statusReason("Retry events do not record exception class")
                 .build();
 
         SelectionResult result = selector.select(List.of(heuristic),
@@ -120,49 +100,32 @@ class RcaSelectorTest {
     @Test
     void exclusionRule_rulesOutServiceCrashWhenStepTimeoutPresent() {
         CandidateAssessment r05 = candidate("R05", "SERVICE_CRASH",
-                Directness.CORROBORATED_INFERENCE, Specificity.LABEL_INFERS_FROM_SIGNATURE, 5L);
+                Directness.CORROBORATED_INFERENCE, 5L);
         CandidateAssessment r07 = candidate("R07", "DOWNSTREAM_TIMEOUT",
-                Directness.THRESHOLD_VIOLATION, Specificity.LABEL_HEURISTIC, 7L);
+                Directness.THRESHOLD_VIOLATION, 7L);
 
         SelectionResult result = selector.select(List.of(r05, r07),
                 List.of(anomaly(7L, AnomalyType.STEP_TIMEOUT)),
                 saga(SagaStatus.IN_PROGRESS));
 
         assertThat(find(result, "R05").getStatus()).isEqualTo(CandidateStatus.RULED_OUT);
-        assertThat(find(result, "R05").getRuledOutReason()).contains("STEP_TIMEOUT");
+        assertThat(find(result, "R05").getStatusReason()).contains("STEP_TIMEOUT");
         assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.SELECTED);
     }
 
     @Test
-    void sameTierSameEvidenceDifferentSpecificity_lessSpecificBecomesContributing() {
-        CandidateAssessment specific = candidate("R03", "MULTI_TERMINAL_CONFLICT",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 1L);
-        CandidateAssessment narrower = candidate("RXX", "STATE_OVERWRITE",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_NARROWS_SIGNATURE, 1L);
-
-        SelectionResult result = selector.select(List.of(specific, narrower),
-                List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT)),
-                saga(SagaStatus.FAILED));
-
-        assertThat(result.getPrimaryRootCauses()).containsExactly("MULTI_TERMINAL_CONFLICT");
-        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
-        assertThat(find(result, "RXX").getStatus()).isEqualTo(CandidateStatus.CONTRIBUTING);
-        assertThat(find(result, "RXX").getContributionReason()).contains("less specific");
-    }
-
-    @Test
-    void sameTierSameEvidenceSameSpecificity_allSelected() {
+    void sameTierSameEvidence_allSelected() {
         CandidateAssessment first = candidate("R03", "MULTI_TERMINAL_CONFLICT",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 1L);
+                Directness.DIRECT_SIGNATURE, 1L);
         CandidateAssessment second = candidate("R03B", "TERMINAL_CONFLICT_ALT",
-                Directness.DIRECT_SIGNATURE, Specificity.LABEL_IS_SIGNATURE, 1L);
+                Directness.DIRECT_SIGNATURE, 1L);
 
         SelectionResult result = selector.select(List.of(first, second),
                 List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT)),
                 saga(SagaStatus.FAILED));
 
         assertThat(result.getPrimaryRootCauses())
-                .containsExactly("MULTI_TERMINAL_CONFLICT", "TERMINAL_CONFLICT_ALT");
+                .containsExactlyInAnyOrder("MULTI_TERMINAL_CONFLICT", "TERMINAL_CONFLICT_ALT");
         assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
         assertThat(find(result, "R03B").getStatus()).isEqualTo(CandidateStatus.SELECTED);
     }
@@ -185,19 +148,18 @@ class RcaSelectorTest {
     }
 
     private CandidateAssessment candidate(String ruleId, String rootCause,
-            Directness directness, Specificity specificity, Long anomalyId) {
-        return candidateBuilder(ruleId, rootCause, directness, specificity, anomalyId).build();
+            Directness directness, Long anomalyId) {
+        return candidateBuilder(ruleId, rootCause, directness, anomalyId).build();
     }
 
     private CandidateAssessment.Builder candidateBuilder(String ruleId, String rootCause,
-            Directness directness, Specificity specificity, Long anomalyId) {
+            Directness directness, Long anomalyId) {
         return CandidateAssessment.builder()
                 .ruleId(ruleId)
                 .rootCause(rootCause)
                 .severity("HIGH")
                 .directness(directness)
-                .specificity(specificity)
-                .evidence(Evidence.of("fact-" + anomalyId, EvidenceSource.STATE_MACHINE, anomalyId));
+                .evidence(Evidence.of("fact-" + anomalyId, anomalyId));
     }
 
     private Anomaly anomaly(Long id, AnomalyType type) {
