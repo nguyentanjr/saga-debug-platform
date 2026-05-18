@@ -239,10 +239,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   }
 
   getCandidateReason(candidate: RcaCandidate): string | undefined {
-    return candidate.selectionReason ||
-      candidate.contributionReason ||
-      candidate.ruledOutReason ||
-      candidate.missingForStronger;
+    return candidate.statusReason;
   }
 
   getReasonLabel(status: string): string {
@@ -265,10 +262,6 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   formatDirectness(directness: string): string {
     return this.formatEnumLabel(directness);
-  }
-
-  formatSpecificity(specificity: string): string {
-    return this.formatEnumLabel(specificity.replace('LABEL_', ''));
   }
 
   formatEnumLabel(value: string): string {
