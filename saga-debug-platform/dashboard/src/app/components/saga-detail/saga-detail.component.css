@@ -277,9 +277,7 @@
 }
 
 .anomaly-type-badge,
-.source-tag,
 .directness-tag,
-.specificity-tag,
 .candidate-status-badge,
 .rule-id-tag {
   display: inline-flex;
@@ -502,18 +500,6 @@
 .directness-threshold_violation { background: #bbdefb; color: #1565c0; }
 .directness-corroborated_inference { background: #d1c4e9; color: #4527a0; }
 .directness-heuristic_inference { background: #ffe0b2; color: #e65100; }
-
-.specificity-tag {
-  background: #eeeeee;
-  color: #424242;
-}
-
-.source-workflow_spec { background: #e8f5e9; color: #2e7d32; }
-.source-event_payload { background: #e3f2fd; color: #1565c0; }
-.source-state_machine { background: #f3e5f5; color: #6a1b9a; }
-.source-config { background: #fff8e1; color: #f57f17; }
-.source-code_constant { background: #ffcdd2; color: #c62828; }
-.source-unknown { background: #eeeeee; color: #616161; }
 
 .ev-fact {
   min-width: 220px;
