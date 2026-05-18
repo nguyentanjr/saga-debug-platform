@@ -38,14 +38,11 @@ export interface Anomaly {
 export type RcaStatus = 'SELECTED' | 'INSUFFICIENT_EVIDENCE' | 'NO_DIAGNOSIS_NEEDED';
 export type CandidateStatus = 'SELECTED' | 'CONTRIBUTING' | 'RULED_OUT' | 'POSSIBLE_BUT_UNSUPPORTED';
 export type Directness = 'DIRECT_SIGNATURE' | 'THRESHOLD_VIOLATION' | 'CORROBORATED_INFERENCE' | 'HEURISTIC_INFERENCE';
-export type Specificity = 'LABEL_IS_SIGNATURE' | 'LABEL_NARROWS_SIGNATURE' | 'LABEL_INFERS_FROM_SIGNATURE' | 'LABEL_HEURISTIC';
-export type EvidenceSource = 'WORKFLOW_SPEC' | 'EVENT_PAYLOAD' | 'STATE_MACHINE' | 'CONFIG' | 'CODE_CONSTANT';
 
 export interface Evidence {
   fact: string;
   observedValue?: string;
   expectedValue?: string;
-  source: EvidenceSource;
   anomalyId?: number;
   eventIds?: string[];
 }
@@ -56,13 +53,9 @@ export interface RcaCandidate {
   severity: string;
   status: CandidateStatus;
   directness: Directness;
-  specificity: Specificity;
   evidence: Evidence[];
   suggestions?: string[];
-  selectionReason?: string;
-  contributionReason?: string;
-  ruledOutReason?: string;
-  missingForStronger?: string;
+  statusReason?: string;
 }
 
 export interface RcaResult {
