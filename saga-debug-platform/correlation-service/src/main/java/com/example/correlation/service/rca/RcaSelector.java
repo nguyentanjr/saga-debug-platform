@@ -10,15 +10,12 @@ import com.example.correlation.domain.rca.Directness;
 import com.example.correlation.domain.rca.Evidence;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
-import com.example.correlation.domain.rca.Specificity;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -60,18 +57,16 @@ public class RcaSelector {
                     .min(Comparator.comparingInt(Directness::ordinal))
                     .orElse(Directness.HEURISTIC_INFERENCE);
 
-            if (topTier == Directness.DIRECT_SIGNATURE || topTier == Directness.THRESHOLD_VIOLATION) {
-                selected.addAll(selectTopTier(remaining, topTier));
-                markLowerTierCandidates(remaining, selected, topTier);
-            } else if (topTier == Directness.CORROBORATED_INFERENCE) {
+            if (topTier == Directness.DIRECT_SIGNATURE
+                    || topTier == Directness.THRESHOLD_VIOLATION
+                    || topTier == Directness.CORROBORATED_INFERENCE) {
                 for (CandidateAssessment candidate : remaining) {
-                    if (candidate.getSpecificity().ordinal() <= Specificity.LABEL_INFERS_FROM_SIGNATURE.ordinal()) {
-                        markSelected(candidate, "Corroborated evidence is specific enough to select.");
+                    if (candidate.getDirectness() == topTier) {
+                        markSelected(candidate, "Selected from top evidence tier " + topTier + ".");
                         selected.add(candidate);
-                    } else {
-                        markPossible(candidate, "Corroborated evidence still has only a heuristic label.");
                     }
                 }
+                markLowerTierCandidates(remaining, selected, topTier);
             } else {
                 remaining.forEach(c -> markPossible(c, defaultMissingEvidence(c)));
             }
@@ -97,39 +92,11 @@ public class RcaSelector {
             for (ExclusionRule exclusion : EXCLUSIONS) {
                 if (exclusion.appliesTo(candidate, context)) {
                     candidate.setStatus(CandidateStatus.RULED_OUT);
-                    candidate.setRuledOutReason(exclusion.getReason());
+                    candidate.setStatusReason(exclusion.getReason());
                     break;
                 }
             }
         }
-    }
-
-    private List<CandidateAssessment> selectTopTier(List<CandidateAssessment> remaining, Directness topTier) {
-        List<CandidateAssessment> selected = new ArrayList<>();
-        Map<Set<String>, List<CandidateAssessment>> groups = remaining.stream()
-                .filter(c -> c.getDirectness() == topTier)
-                .collect(Collectors.groupingBy(this::fingerprint, LinkedHashMap::new, Collectors.toList()));
-
-        for (List<CandidateAssessment> group : groups.values()) {
-            Specificity best = group.stream()
-                    .map(CandidateAssessment::getSpecificity)
-                    .min(Comparator.comparingInt(Specificity::ordinal))
-                    .orElse(Specificity.LABEL_HEURISTIC);
-            List<CandidateAssessment> winners = group.stream()
-                    .filter(c -> c.getSpecificity() == best)
-                    .collect(Collectors.toList());
-            for (CandidateAssessment winner : winners) {
-                markSelected(winner, "Selected from top evidence tier " + topTier + ".");
-                selected.add(winner);
-            }
-            for (CandidateAssessment loser : group) {
-                if (!winners.contains(loser)) {
-                    loser.setStatus(CandidateStatus.CONTRIBUTING);
-                    loser.setContributionReason("Same evidence base as a selected candidate, but less specific label.");
-                }
-            }
-        }
-        return selected;
     }
 
     private void markLowerTierCandidates(List<CandidateAssessment> remaining,
@@ -141,7 +108,7 @@ public class RcaSelector {
             }
             if (hasDisjointEvidence(candidate, selected)) {
                 candidate.setStatus(CandidateStatus.CONTRIBUTING);
-                candidate.setContributionReason("Independent evidence below selected tier.");
+                candidate.setStatusReason("Independent evidence below selected tier.");
             } else {
                 markPossible(candidate, defaultMissingEvidence(candidate));
             }
@@ -185,8 +152,6 @@ public class RcaSelector {
     private int compareCandidateStrength(CandidateAssessment first, CandidateAssessment second) {
         int directness = Integer.compare(enumRank(first.getDirectness()), enumRank(second.getDirectness()));
         if (directness != 0) return directness;
-        int specificity = Integer.compare(enumRank(first.getSpecificity()), enumRank(second.getSpecificity()));
-        if (specificity != 0) return specificity;
         return Comparator.nullsLast(String::compareTo).compare(first.getRuleId(), second.getRuleId());
     }
 
@@ -196,17 +161,17 @@ public class RcaSelector {
 
     private void markSelected(CandidateAssessment candidate, String reason) {
         candidate.setStatus(CandidateStatus.SELECTED);
-        candidate.setSelectionReason(reason);
+        candidate.setStatusReason(reason);
     }
 
     private void markPossible(CandidateAssessment candidate, String reason) {
         candidate.setStatus(CandidateStatus.POSSIBLE_BUT_UNSUPPORTED);
-        candidate.setMissingForStronger(reason);
+        candidate.setStatusReason(reason);
     }
 
     private String defaultMissingEvidence(CandidateAssessment candidate) {
-        if (candidate.getMissingForStronger() != null && !candidate.getMissingForStronger().isBlank()) {
-            return candidate.getMissingForStronger();
+        if (candidate.getStatusReason() != null && !candidate.getStatusReason().isBlank()) {
+            return candidate.getStatusReason();
         }
         return "Evidence is not specific enough to promote " + candidate.getRootCause() + ".";
     }
@@ -230,7 +195,8 @@ public class RcaSelector {
             return List.of();
         }
         List<String> missing = candidates.stream()
-                .map(CandidateAssessment::getMissingForStronger)
+                .filter(c -> c.getStatus() == CandidateStatus.POSSIBLE_BUT_UNSUPPORTED)
+                .map(CandidateAssessment::getStatusReason)
                 .filter(reason -> reason != null && !reason.isBlank())
                 .distinct()
                 .collect(Collectors.toCollection(ArrayList::new));
