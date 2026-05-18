@@ -214,7 +214,6 @@
               <span class="directness-tag" [ngClass]="'directness-' + candidate.directness.toLowerCase()">
                 {{ formatDirectness(candidate.directness) }}
               </span>
-              <span class="specificity-tag">{{ formatSpecificity(candidate.specificity) }}</span>
             </div>
 
             <div class="candidate-reason" *ngIf="getCandidateReason(candidate)">
@@ -233,18 +232,9 @@
                     <td class="ev-expected" *ngIf="evidence.expectedValue">
                       Expected: <code>{{ evidence.expectedValue }}</code>
                     </td>
-                    <td class="ev-source">
-                      <span class="source-tag" [ngClass]="'source-' + evidence.source.toLowerCase()">
-                        {{ evidence.source }}
-                      </span>
-                    </td>
                   </tr>
                 </table>
               </div>
-            </div>
-
-            <div class="candidate-missing" *ngIf="candidate.missingForStronger">
-              <strong>Missing for stronger evidence:</strong> {{ candidate.missingForStronger }}
             </div>
 
             <div class="candidate-suggestions" *ngIf="getCandidateSuggestions(candidate).length > 0">
