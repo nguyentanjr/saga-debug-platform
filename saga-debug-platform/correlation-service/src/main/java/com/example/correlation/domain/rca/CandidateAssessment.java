@@ -9,14 +9,10 @@ public class CandidateAssessment {
     private String rootCause;
     private String severity;
     private Directness directness;
-    private Specificity specificity;
     private CandidateStatus status;
     private List<Evidence> evidence = new ArrayList<>();
     private List<String> suggestions = new ArrayList<>();
-    private String selectionReason;
-    private String contributionReason;
-    private String ruledOutReason;
-    private String missingForStronger;
+    private String statusReason;
 
     public static Builder builder() {
         return new Builder();
@@ -34,9 +30,6 @@ public class CandidateAssessment {
     public Directness getDirectness() { return directness; }
     public void setDirectness(Directness directness) { this.directness = directness; }
 
-    public Specificity getSpecificity() { return specificity; }
-    public void setSpecificity(Specificity specificity) { this.specificity = specificity; }
-
     public CandidateStatus getStatus() { return status; }
     public void setStatus(CandidateStatus status) { this.status = status; }
 
@@ -50,17 +43,8 @@ public class CandidateAssessment {
         this.suggestions = suggestions != null ? new ArrayList<>(suggestions) : new ArrayList<>();
     }
 
-    public String getSelectionReason() { return selectionReason; }
-    public void setSelectionReason(String selectionReason) { this.selectionReason = selectionReason; }
-
-    public String getContributionReason() { return contributionReason; }
-    public void setContributionReason(String contributionReason) { this.contributionReason = contributionReason; }
-
-    public String getRuledOutReason() { return ruledOutReason; }
-    public void setRuledOutReason(String ruledOutReason) { this.ruledOutReason = ruledOutReason; }
-
-    public String getMissingForStronger() { return missingForStronger; }
-    public void setMissingForStronger(String missingForStronger) { this.missingForStronger = missingForStronger; }
+    public String getStatusReason() { return statusReason; }
+    public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
 
     public static class Builder {
         private final CandidateAssessment candidate = new CandidateAssessment();
@@ -82,11 +66,6 @@ public class CandidateAssessment {
 
         public Builder directness(Directness directness) {
             candidate.setDirectness(directness);
-            return this;
-        }
-
-        public Builder specificity(Specificity specificity) {
-            candidate.setSpecificity(specificity);
             return this;
         }
 
@@ -119,8 +98,8 @@ public class CandidateAssessment {
             return this;
         }
 
-        public Builder missingForStronger(String missingForStronger) {
-            candidate.setMissingForStronger(missingForStronger);
+        public Builder statusReason(String statusReason) {
+            candidate.setStatusReason(statusReason);
             return this;
         }
 
