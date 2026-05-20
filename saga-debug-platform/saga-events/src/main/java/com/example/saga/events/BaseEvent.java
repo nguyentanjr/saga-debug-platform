@@ -6,39 +6,27 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Base event schema for all saga business events.
- * Follows business-events-spec: every event MUST have these fields.
- */
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public abstract class BaseEvent {
 
-    /** Unique identifier for this event instance (UUID v4) */
     private String eventId;
 
-    /** Event type enum string, e.g. ORDER_CREATED, PAYMENT_COMPLETED */
     private String eventType;
 
-    /** Saga instance identifier — links all events in one saga */
     private UUID sagaId;
 
-    /** ISO 8601 timestamp of when the event was created */
     private Instant timestamp;
 
-    /** Name of the saga step, e.g. CREATE_ORDER, PROCESS_PAYMENT */
     private String stepName;
 
-    /** Name of the service that produced this event */
     private String serviceName;
 
-    /** W3C trace context — trace ID from OpenTelemetry */
     private String traceId;
 
-    /** W3C trace context — span ID from OpenTelemetry */
     private String spanId;
 
-    // --- Constructors ---
 
     protected BaseEvent() {
         this.eventId = UUID.randomUUID().toString();
