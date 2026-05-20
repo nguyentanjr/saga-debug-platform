@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -70,7 +71,6 @@ public class SagaEventConsumer {
             "refund-payment", "payment-refunded"
     }, groupId = "correlation-engine-group")
     public void handleEvent(ConsumerRecord<String, String> record) {
-        // Capture arrival time IMMEDIATELY — before any processing
         Instant receivedAt = Instant.now();
         try {
             String topic = record.topic();
@@ -80,7 +80,7 @@ public class SagaEventConsumer {
 
             JsonNode payload = objectMapper.readTree(record.value());
 
-            java.util.List<String> violations = schemaValidator.validate(payload);
+            List<String> violations = schemaValidator.validate(payload);
             if (!violations.isEmpty()) {
                 log.warn("Event from topic {} has schema violations: {}. Processing anyway.", topic, violations);
             }
