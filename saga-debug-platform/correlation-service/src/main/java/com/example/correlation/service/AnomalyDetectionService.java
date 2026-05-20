@@ -1,6 +1,7 @@
 package com.example.correlation.service;
 
 import com.example.correlation.domain.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.correlation.repository.AnomalyRepository;
@@ -16,26 +17,17 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class AnomalyDetectionService {
 
-    // Reference CorrelationService's definitions — single source of truth (no local duplicates)
-    private static final java.util.Set<String> COMPLETED_EVENTS = CorrelationService.COMPLETED_EVENTS;
-    private static final java.util.Set<String> FAILED_EVENTS = CorrelationService.FAILED_EVENTS;
+    private static final Set<String> COMPLETED_EVENTS = CorrelationService.COMPLETED_EVENTS;
+    private static final Set<String> FAILED_EVENTS = CorrelationService.FAILED_EVENTS;
 
     private static final Logger log = LoggerFactory.getLogger(AnomalyDetectionService.class);
-    // Retry-attempt events emitted by Resilience4j retry listeners in producer services.
-    // Currently only payment-service has @Retry; ORDER_RETRY/INVENTORY_RETRY are
-    // reserved for future expansion (no producer wired yet).
-    // PAYMENT_FAILED / INVENTORY_FAILED are deliberately EXCLUDED — they are
-    // business-level failures, not retry indicators (including them previously
-    // caused false RETRY_BURST under flash-sale load).
-    private static final java.util.Set<String> RETRY_EVENT_TYPES = java.util.Set.of(
+    private static final Set<String> RETRY_EVENT_TYPES = Set.of(
             "PAYMENT_RETRY");
     private final SagaInstanceRepository sagaInstanceRepository;
     private final SagaEventRepository sagaEventRepository;
@@ -98,6 +90,7 @@ public class AnomalyDetectionService {
     }
 
 
+
     public void detectInvalidTransition(String sagaId, String previousStep,
             String currentStep, String condition, String eventId, Instant eventTimestamp) {
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
@@ -107,19 +100,11 @@ public class AnomalyDetectionService {
             String expected = workflow.getTransitions().stream()
                     .filter(t -> t.getFrom().equals(previousStep))
                     .map(t -> t.getTo() + " (on: " + t.getCondition() + ")")
-                    .collect(java.util.stream.Collectors.joining(", "));
-
-            // Enrich: distinguish skipped step vs wrong order for better RCA.
-            // If currentStep exists in workflow but is not adjacent to previousStep,
-            // this is a SKIPPED_STEP pattern (more specific than generic invalid transition).
-            boolean isSkippedStep = workflow.getTransitions().stream()
-                    .anyMatch(t -> t.getTo().equals(currentStep)
-                            && !t.getFrom().equals(previousStep));
-            String transitionType = isSkippedStep ? "Skipped step" : "Invalid transition";
+                    .collect(Collectors.joining(", "));
 
             createAnomaly(sagaId, AnomalyType.INVALID_TRANSITION,
-                    String.format("%s: %s → %s (condition: %s). Expected from %s: [%s]",
-                            transitionType, previousStep, currentStep, condition, previousStep,
+                    String.format("Invalid transition: %s -> %s (condition: %s). Expected from %s: [%s]",
+                            previousStep, currentStep, condition, previousStep,
                             expected.isEmpty() ? "none defined" : expected),
                     details()
                             .observedValue(String.format("%s -> %s on %s", previousStep, currentStep, condition))
@@ -166,7 +151,6 @@ public class AnomalyDetectionService {
     }
 
     public void detectDuplicateEvent(String sagaId, String eventId, String eventType) {
-        // Called when dedup detects a duplicate — create anomaly instead of silent drop
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.EXACT_DUPLICATE_EVENT)) return;
         createAnomaly(sagaId, AnomalyType.EXACT_DUPLICATE_EVENT,
                 String.format("Duplicate event detected: eventId=%s, type=%s", eventId, eventType),
@@ -265,8 +249,6 @@ public class AnomalyDetectionService {
     /**
      * Detect orphan events: events that arrive for a sagaId where no ORDER_CREATED
      * was received first. Called BEFORE saga creation in CorrelationService.
-     * The old logic (check sagaInstance exists) never triggered because
-     * CorrelationService creates the saga before running detection.
      */
     public void detectOrphanEvent(String sagaId, String eventId, String eventType, Instant eventTimestamp) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) return;
@@ -294,13 +276,10 @@ public class AnomalyDetectionService {
                 hasTraceId = node.has("traceId") && !node.get("traceId").isNull()
                         && !node.get("traceId").asText().isBlank();
             } catch (Exception e) {
-                // invalid JSON — no trace context
+                //
             }
         }
         if (!hasTraceId) {
-            // Noise reduction: only flag missing traceId if at least one OTHER event
-            // in this saga HAS a traceId. This avoids false positives from admin-injected
-            // test events (e.g. evaluate.py scenarios) where no event has trace context.
             boolean sagaHasAnyTrace = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId).stream()
                     .anyMatch(e -> {
                         if (e.getPayload() == null || e.getPayload().isBlank()) return false;
@@ -323,13 +302,10 @@ public class AnomalyDetectionService {
         }
     }
 
-    // =========================================================================
-    // Scheduled detection — runs periodically
-    // =========================================================================
 
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStuckSagas() {
-        List<SagaInstance> runningSagas = new java.util.ArrayList<>(
+        List<SagaInstance> runningSagas = new ArrayList<>(
                 sagaInstanceRepository.findByStatus(SagaStatus.STARTED));
         runningSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.IN_PROGRESS));
         runningSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
