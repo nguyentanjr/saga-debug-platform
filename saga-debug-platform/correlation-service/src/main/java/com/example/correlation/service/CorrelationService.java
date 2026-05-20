@@ -83,22 +83,13 @@ public class CorrelationService {
                              Instant eventTimestamp, String payload,
                              Instant receivedAt) {
 
-        // 1. Deduplication — DB layer.
-        //
-        // NOTE: We deliberately DO NOT check the in-memory cache here. The cache's
-        // isDuplicate() method has mark-on-read semantics, and the Kafka consumer
-        // (SagaEventConsumer) already marks each eventId as seen. Calling it a
-        // second time would always return true, silently dropping every real Kafka
-        // event. The DB check below is sufficient as a cross-restart safety net,
-        // and admin-injected events (which bypass the consumer) are checked there
-        // too. The cache stays where it belongs: in the consumer's fast-path.
         if (sagaEventRepository.findByEventId(eventId).isPresent()) {
             log.info("Duplicate event {} for saga {} (DB hit). Skipping.", eventId, sagaId);
             anomalyDetectionService.detectDuplicateEvent(sagaId, eventId, eventType);
             return;
         }
 
-        // 3. Find or create saga
+        //  Find or create saga
         SagaInstance saga = sagaInstanceRepository.findById(sagaId).orElse(null);
         String previousStep = null;
         SagaStatus oldStatus = null;
@@ -123,15 +114,13 @@ public class CorrelationService {
             anomalyDetectionService.detectForbiddenPostTerminal(sagaId, oldStatus, eventType, eventId, eventTimestamp);
 
             // Track previous event for transition validation.
-            // NOTE: Uses timestamp order — may be inaccurate under out-of-order delivery,
-            // but acceptable for MVP since detectOutOfOrder flags this separately.
             var previousEvents = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
             if (!previousEvents.isEmpty()) {
                 previousStep = previousEvents.get(previousEvents.size() - 1).getEventType();
             }
         }
 
-        // 4. State machine transition
+        //  State machine transition
         SagaStatus newStatus = determineSagaStatus(eventType, saga.getStatus());
         saga.setStatus(newStatus);
         saga.setLastUpdated(eventTimestamp);
@@ -140,14 +129,14 @@ public class CorrelationService {
             saga.setEndTime(eventTimestamp);
         }
 
-        // 5. Detect state regression (before save)
+        //  Detect state regression (before save)
         if (oldStatus != null) {
             anomalyDetectionService.detectStateRegression(sagaId, oldStatus, newStatus, eventId, eventTimestamp);
         }
 
         sagaInstanceRepository.save(saga);
 
-        // 6. Save event
+        // Save event
         SagaEvent sagaEvent = new SagaEvent();
         sagaEvent.setEventId(eventId);
         sagaEvent.setSagaId(sagaId);
@@ -161,7 +150,7 @@ public class CorrelationService {
 
         log.info("Saga {} | event={} | step={} | status={}", sagaId, eventType, stepName, newStatus);
 
-        // 7. Inline anomaly detection
+        //  Inline anomaly detection
         anomalyDetectionService.detectOutOfOrder(sagaId);
         anomalyDetectionService.detectRetryBurst(sagaId);
         anomalyDetectionService.detectMultiTerminalConflict(sagaId);
