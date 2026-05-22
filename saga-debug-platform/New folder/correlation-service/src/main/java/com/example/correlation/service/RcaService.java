@@ -16,10 +16,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Simple Root Cause Analysis Service.
- * Checks saga status and events to determine root cause.
- */
+
+
+
+
 @Service
 public class RcaService {
 
@@ -56,7 +56,7 @@ public class RcaService {
         List<String> evidence = new ArrayList<>();
         List<String> suggestions = new ArrayList<>();
 
-        // Rule 1: Check if saga is stuck (non-terminal + last event too old)
+        
         if (rootCause == null && !isTerminal(saga.getStatus())) {
             SagaEvent lastEvent = events.isEmpty() ? null : events.get(events.size() - 1);
             if (lastEvent != null && lastEvent.getTimestamp()
@@ -70,7 +70,7 @@ public class RcaService {
             }
         }
 
-        // Rule 2: Check compensation status
+        
         if (rootCause == null) {
             boolean hasRefund = events.stream()
                     .anyMatch(e -> "REFUND_PAYMENT".equals(e.getEventType()));
@@ -91,7 +91,7 @@ public class RcaService {
             }
         }
 
-        // Fallback
+        
         if (rootCause == null) {
             if (saga.getStatus() == SagaStatus.COMPLETED) {
                 rootCause = "HEALTHY";
@@ -109,7 +109,7 @@ public class RcaService {
             }
         }
 
-        // Save result
+        
         try {
             RcaResult result = new RcaResult();
             result.setSagaId(sagaId);

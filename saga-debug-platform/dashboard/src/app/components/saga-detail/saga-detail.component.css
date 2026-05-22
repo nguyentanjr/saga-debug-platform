@@ -314,6 +314,7 @@
   font-size: 16px;
 }
 
+.rca-status-evidence,
 .rca-status-selected {
   background: #e8f5e9;
   color: #2e7d32;
@@ -415,14 +416,21 @@
   padding-top: 8px;
 }
 
+.candidate-strong_evidence,
 .candidate-selected {
   background: #e8f5e9;
   border-left: 4px solid #4caf50;
 }
 
+.candidate-supporting_evidence,
 .candidate-contributing {
   background: #f3e5f5;
   border-left: 4px solid #9c27b0;
+}
+
+.candidate-weak_evidence {
+  background: #fff8e1;
+  border-left: 4px solid #ffb300;
 }
 
 .candidate-ruled_out {
@@ -478,8 +486,11 @@
   font-size: 13px;
 }
 
+.cstatus-strong_evidence,
 .cstatus-selected { background: #c8e6c9; color: #2e7d32; }
+.cstatus-supporting_evidence,
 .cstatus-contributing { background: #e1bee7; color: #6a1b9a; }
+.cstatus-weak_evidence { background: #fff3cd; color: #8a5a00; }
 .cstatus-ruled_out { background: #eeeeee; color: #616161; }
 .cstatus-possible_but_unsupported { background: #ffe0b2; color: #e65100; }
 

@@ -14,19 +14,19 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
 
-/**
- * Consumes business events from Kafka topics and maps them to generic saga operations.
- *
- * Mapping:
- *   Kafka Topic           → eventType            → stepName            → serviceName
- *   order-created         → ORDER_CREATED        → CREATE_ORDER        → order-service
- *   payment-completed     → PAYMENT_COMPLETED    → PROCESS_PAYMENT     → payment-service
- *   payment-failed        → PAYMENT_FAILED       → PROCESS_PAYMENT     → payment-service
- *   inventory-reserved    → INVENTORY_RESERVED   → RESERVE_INVENTORY   → inventory-service
- *   inventory-failed      → INVENTORY_FAILED     → RESERVE_INVENTORY   → inventory-service
- *   refund-payment        → REFUND_PAYMENT       → REFUND_PAYMENT      → order-service
- *   payment-refunded      → PAYMENT_REFUNDED     → REFUND_PAYMENT      → payment-service
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
 @Component
 public class SagaEventConsumer {
 
@@ -81,7 +81,7 @@ public class SagaEventConsumer {
 
             JsonNode payload = objectMapper.readTree(record.value());
 
-            // Extract sagaId
+            
             String sagaId = extractField(payload, "sagaId");
             if (sagaId == null) {
                 Header header = record.headers().lastHeader("saga-id");

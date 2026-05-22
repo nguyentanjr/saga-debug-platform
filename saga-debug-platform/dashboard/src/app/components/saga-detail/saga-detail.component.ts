@@ -150,7 +150,13 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   }
 
   isSelected(rca: RcaResult): boolean {
-    return rca.rcaStatus === 'SELECTED' || (!rca.rcaStatus && !!rca.rootCause);
+    return this.isEvidenceAvailable(rca);
+  }
+
+  isEvidenceAvailable(rca: RcaResult): boolean {
+    return rca.rcaStatus === 'EVIDENCE_AVAILABLE'
+      || rca.rcaStatus === 'SELECTED'
+      || (!rca.rcaStatus && !!rca.rootCause);
   }
 
   isInsufficient(rca: RcaResult): boolean {
@@ -175,7 +181,22 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   getActiveCandidates(rca: RcaResult): RcaCandidate[] {
     return this.getCandidates(rca).filter(candidate =>
-      candidate.status === 'SELECTED' || candidate.status === 'CONTRIBUTING');
+      this.isEvidenceCandidate(candidate));
+  }
+
+  getStrongEvidenceCandidates(rca: RcaResult): RcaCandidate[] {
+    return this.getCandidates(rca).filter(candidate =>
+      candidate.status === 'STRONG_EVIDENCE' || candidate.status === 'SELECTED');
+  }
+
+  getSupportingEvidenceCandidates(rca: RcaResult): RcaCandidate[] {
+    return this.getCandidates(rca).filter(candidate =>
+      candidate.status === 'SUPPORTING_EVIDENCE' || candidate.status === 'CONTRIBUTING');
+  }
+
+  getWeakEvidenceCandidates(rca: RcaResult): RcaCandidate[] {
+    return this.getCandidates(rca).filter(candidate =>
+      candidate.status === 'WEAK_EVIDENCE');
   }
 
   getAlternativeCandidates(rca: RcaResult): RcaCandidate[] {
@@ -185,6 +206,18 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   hasActiveCandidates(rca: RcaResult): boolean {
     return this.getActiveCandidates(rca).length > 0;
+  }
+
+  hasStrongEvidenceCandidates(rca: RcaResult): boolean {
+    return this.getStrongEvidenceCandidates(rca).length > 0;
+  }
+
+  hasSupportingEvidenceCandidates(rca: RcaResult): boolean {
+    return this.getSupportingEvidenceCandidates(rca).length > 0;
+  }
+
+  hasWeakEvidenceCandidates(rca: RcaResult): boolean {
+    return this.getWeakEvidenceCandidates(rca).length > 0;
   }
 
   hasAlternativeCandidates(rca: RcaResult): boolean {
@@ -210,21 +243,21 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   }
 
   getRcaStatusClass(rca: RcaResult): string {
-    if (this.isSelected(rca)) return 'rca-status-selected';
+    if (this.isEvidenceAvailable(rca)) return 'rca-status-evidence';
     if (this.isInsufficient(rca)) return 'rca-status-insufficient';
     if (this.isHealthy(rca)) return 'rca-status-healthy';
     return 'rca-status-unknown';
   }
 
   getRcaStatusIcon(rca: RcaResult): string {
-    if (this.isSelected(rca)) return 'check_circle';
+    if (this.isEvidenceAvailable(rca)) return 'fact_check';
     if (this.isInsufficient(rca)) return 'help_outline';
     if (this.isHealthy(rca)) return 'verified';
     return 'help';
   }
 
   getDisplayStatus(rca: RcaResult): string {
-    if (this.isSelected(rca)) return 'Root Cause Identified';
+    if (this.isEvidenceAvailable(rca)) return this.isLegacyOnly(rca) ? 'Root Cause Identified' : 'RCA Evidence Summary';
     if (this.isInsufficient(rca)) return 'Insufficient Evidence';
     if (this.isHealthy(rca)) return 'No Diagnosis Needed';
     return 'Legacy Result';
@@ -238,14 +271,26 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     return 'candidate-' + status.toLowerCase();
   }
 
+  isEvidenceCandidate(candidate: RcaCandidate): boolean {
+    return candidate.status === 'STRONG_EVIDENCE'
+      || candidate.status === 'SUPPORTING_EVIDENCE'
+      || candidate.status === 'WEAK_EVIDENCE'
+      || candidate.status === 'SELECTED'
+      || candidate.status === 'CONTRIBUTING';
+  }
+
   getCandidateReason(candidate: RcaCandidate): string | undefined {
     return candidate.statusReason;
   }
 
   getReasonLabel(status: string): string {
     switch (status) {
-      case 'SELECTED': return 'Selection reason';
-      case 'CONTRIBUTING': return 'Contribution reason';
+      case 'STRONG_EVIDENCE':
+      case 'SUPPORTING_EVIDENCE':
+      case 'SELECTED':
+      case 'CONTRIBUTING':
+        return 'Evidence basis';
+      case 'WEAK_EVIDENCE': return 'Caution';
       case 'RULED_OUT': return 'Ruled out because';
       case 'POSSIBLE_BUT_UNSUPPORTED': return 'Possible but unsupported';
       default: return 'Reason';

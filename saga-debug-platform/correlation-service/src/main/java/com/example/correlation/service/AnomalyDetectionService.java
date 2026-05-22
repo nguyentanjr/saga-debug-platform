@@ -52,9 +52,6 @@ public class AnomalyDetectionService {
     }
 
 
-    // Clock skew tolerance: events from different services may have clocks that
-    // differ by a few hundred ms. Only flag as out-of-order if the gap exceeds
-    // this threshold to avoid false positives from infrastructure artifacts.
     public void detectOutOfOrder(String sagaId) {
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByReceivedAtAsc(sagaId);
         if (events.size() < 2) return;
@@ -66,7 +63,7 @@ public class AnomalyDetectionService {
             Instant prevCreated = previousEvent.getTimestamp();
             Instant currCreated = currentEvent.getTimestamp();
             Duration timeDiff = Duration.between(currCreated, prevCreated);
-            // Only flag if currCreated is BEFORE prevCreated by more than clock skew tolerance
+            
             Duration clockSkewTolerance = detectionProperties.getClockSkewTolerance();
             if (currCreated.isBefore(prevCreated) && timeDiff.compareTo(clockSkewTolerance) > 0) {
                 createAnomaly(sagaId, AnomalyType.OUT_OF_ORDER,
@@ -246,10 +243,10 @@ public class AnomalyDetectionService {
         }
     }
 
-    /**
-     * Detect orphan events: events that arrive for a sagaId where no ORDER_CREATED
-     * was received first. Called BEFORE saga creation in CorrelationService.
-     */
+    
+
+
+
     public void detectOrphanEvent(String sagaId, String eventId, String eventType, Instant eventTimestamp) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) return;
         createAnomaly(sagaId, AnomalyType.ORPHAN_EVENT,
@@ -263,9 +260,9 @@ public class AnomalyDetectionService {
                         .measuredAt(eventTimestamp));
     }
 
-    /**
-     * Detect events missing trace context (traceId). Enables R19 RCA rule.
-     */
+    
+
+
     public void detectMissingTraceContext(String sagaId, String eventType, String eventId, String payload,
             Instant eventTimestamp) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_TRACE_CONTEXT)) return;
@@ -276,7 +273,7 @@ public class AnomalyDetectionService {
                 hasTraceId = node.has("traceId") && !node.get("traceId").isNull()
                         && !node.get("traceId").asText().isBlank();
             } catch (Exception e) {
-                //
+                
             }
         }
         if (!hasTraceId) {
@@ -347,17 +344,18 @@ public class AnomalyDetectionService {
         }
     }
 
+
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStepTimeouts() {
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         if (workflow == null) return;
 
-        // Only check active + recently completed sagas (last 1h) to avoid N+1 on all historical data
+        
         Instant recentCutoff = Instant.now().minus(detectionProperties.getCompletedSagaLookback());
         List<SagaInstance> activeSagas = new java.util.ArrayList<>(
                 sagaInstanceRepository.findByStatus(SagaStatus.IN_PROGRESS));
         activeSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
-        // Check completed sagas only if recent
+        
         sagaInstanceRepository.findByStatus(SagaStatus.COMPLETED).stream()
                 .filter(s -> s.getEndTime() != null && s.getEndTime().isAfter(recentCutoff))
                 .forEach(activeSagas::add);
@@ -404,7 +402,7 @@ public class AnomalyDetectionService {
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectMissingTerminalEvents() {
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
-        // Bug 5 fix: null guard for workflow.getSteps()
+        
         int maxStepTimeout = detectionProperties.getDefaultStepTimeoutSeconds();
         if (workflow != null && workflow.getSteps() != null) {
             maxStepTimeout = workflow.getSteps().stream()
@@ -446,13 +444,13 @@ public class AnomalyDetectionService {
     public void detectCompensationMissing() {
         Instant cutoff = Instant.now().minus(detectionProperties.getCompensationMissingCutoff());
 
-        // INVENTORY_FAILED sets status to COMPENSATING (not FAILED),
-        // so we must query COMPENSATING sagas to find missing compensation.
+        
+        
         List<SagaInstance> compensatingSagas = new java.util.ArrayList<>(
                 sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
 
         for (SagaInstance saga : compensatingSagas) {
-            if (saga.getLastUpdated().isAfter(cutoff)) continue; // too recent
+            if (saga.getLastUpdated().isAfter(cutoff)) continue; 
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
                     saga.getSagaId(), AnomalyType.COMPENSATION_MISSING)) continue;
 
@@ -513,8 +511,8 @@ public class AnomalyDetectionService {
 
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectDelayedCompensation() {
-        // Derive threshold from the workflow compensation timeout multiplied by
-        // the configured delayed-compensation multiplier.
+        
+        
         WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         int compensationTimeoutSeconds = detectionProperties.getDefaultStepTimeoutSeconds();
         if (workflow != null) {
@@ -525,7 +523,7 @@ public class AnomalyDetectionService {
 
         Instant recentCutoff = Instant.now().minus(detectionProperties.getCompensationRecentLookback());
 
-        // Check sagas that completed compensation recently
+        
         List<SagaInstance> compensatedSagas = new java.util.ArrayList<>(
                 sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATED));
         compensatedSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
@@ -538,7 +536,7 @@ public class AnomalyDetectionService {
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
 
-            // Find failure event and first compensation event
+            
             SagaEvent failureEvent = null;
             SagaEvent compensationStartEvent = null;
             for (SagaEvent event : events) {
@@ -567,18 +565,14 @@ public class AnomalyDetectionService {
         }
     }
 
-    // =========================================================================
-    // Utility
-    // =========================================================================
-
     private int statusRank(SagaStatus status) {
         return switch (status) {
             case STARTED -> 1;
             case IN_PROGRESS -> 2;
             case COMPENSATING -> 3;
-            case FAILED -> 4;               // terminal but no rollback
-            case COMPENSATED -> 5;           // terminal with successful rollback (> FAILED)
-            case COMPLETED -> 6;             // highest terminal
+            case FAILED -> 4;               
+            case COMPENSATED -> 5;           
+            case COMPLETED -> 6;             
         };
     }
 

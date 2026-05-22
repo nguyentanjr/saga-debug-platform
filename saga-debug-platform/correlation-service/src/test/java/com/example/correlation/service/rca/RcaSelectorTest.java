@@ -21,31 +21,31 @@ class RcaSelectorTest {
     private final RcaSelector selector = new RcaSelector();
 
     @Test
-    void singleDirectSignature_isSelected() {
+    void singleDirectSignature_isStrongEvidence() {
         CandidateAssessment direct = candidate("R03", "MULTI_TERMINAL_CONFLICT",
                 Directness.DIRECT_SIGNATURE, 1L);
 
         SelectionResult result = selector.select(List.of(direct), List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT)), saga(SagaStatus.FAILED));
 
-        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.SELECTED);
-        assertThat(result.getPrimaryRootCauses()).containsExactly("MULTI_TERMINAL_CONFLICT");
-        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
+        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.EVIDENCE_AVAILABLE);
+        assertThat(result.getPrimaryRootCauses()).isEmpty();
+        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
     @Test
-    void singleThresholdViolation_isSelected() {
+    void singleThresholdViolation_isStrongEvidence() {
         CandidateAssessment threshold = candidate("R07", "DOWNSTREAM_TIMEOUT",
                 Directness.THRESHOLD_VIOLATION, 7L);
 
         SelectionResult result = selector.select(List.of(threshold), List.of(anomaly(7L, AnomalyType.STEP_TIMEOUT)), saga(SagaStatus.IN_PROGRESS));
 
-        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.SELECTED);
-        assertThat(result.getPrimaryRootCauses()).containsExactly("DOWNSTREAM_TIMEOUT");
-        assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.SELECTED);
+        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.EVIDENCE_AVAILABLE);
+        assertThat(result.getPrimaryRootCauses()).isEmpty();
+        assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
     @Test
-    void sameTierDisjointEvidence_allSelectedAsMultiCause() {
+    void sameTierDisjointEvidence_allGroupedAsEvidence() {
         CandidateAssessment first = candidate("R03", "MULTI_TERMINAL_CONFLICT",
                 Directness.DIRECT_SIGNATURE, 1L);
         CandidateAssessment second = candidate("R12", "INVALID_TRANSITION",
@@ -56,32 +56,31 @@ class RcaSelectorTest {
                         anomaly(2L, AnomalyType.INVALID_TRANSITION)),
                 saga(SagaStatus.FAILED));
 
-        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.SELECTED);
-        assertThat(result.getPrimaryRootCauses())
-                .containsExactlyInAnyOrder("MULTI_TERMINAL_CONFLICT", "INVALID_TRANSITION");
-        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
-        assertThat(find(result, "R12").getStatus()).isEqualTo(CandidateStatus.SELECTED);
+        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.EVIDENCE_AVAILABLE);
+        assertThat(result.getPrimaryRootCauses()).isEmpty();
+        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
+        assertThat(find(result, "R12").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
     @Test
-    void crossTierIndependentEvidence_lowerTierIsContributingNotSelected() {
+    void corroboratedEvidence_isGroupedAsSupporting() {
         CandidateAssessment direct = candidate("R03", "MULTI_TERMINAL_CONFLICT",
                 Directness.DIRECT_SIGNATURE, 1L);
-        CandidateAssessment threshold = candidate("R07", "DOWNSTREAM_TIMEOUT",
-                Directness.THRESHOLD_VIOLATION, 2L);
+        CandidateAssessment corroborated = candidate("R05", "SERVICE_CRASH",
+                Directness.CORROBORATED_INFERENCE, 2L);
 
-        SelectionResult result = selector.select(List.of(direct, threshold),
+        SelectionResult result = selector.select(List.of(direct, corroborated),
                 List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT),
-                        anomaly(2L, AnomalyType.STEP_TIMEOUT)),
+                        anomaly(2L, AnomalyType.SAGA_STUCK)),
                 saga(SagaStatus.FAILED));
 
-        assertThat(result.getPrimaryRootCauses()).containsExactly("MULTI_TERMINAL_CONFLICT");
-        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
-        assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.CONTRIBUTING);
+        assertThat(result.getPrimaryRootCauses()).isEmpty();
+        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
+        assertThat(find(result, "R05").getStatus()).isEqualTo(CandidateStatus.SUPPORTING_EVIDENCE);
     }
 
     @Test
-    void heuristicOnly_abstainsWithPossibleCandidate() {
+    void heuristicOnly_abstainsButKeepsWeakEvidenceGroup() {
         CandidateAssessment heuristic = candidateBuilder("R02", "TIMEOUT_RETRY_STORM",
                 Directness.HEURISTIC_INFERENCE, 2L)
                 .statusReason("Retry events do not record exception class")
@@ -93,28 +92,28 @@ class RcaSelectorTest {
 
         assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.INSUFFICIENT_EVIDENCE);
         assertThat(result.getPrimaryRootCauses()).isEmpty();
-        assertThat(find(result, "R02").getStatus()).isEqualTo(CandidateStatus.POSSIBLE_BUT_UNSUPPORTED);
+        assertThat(find(result, "R02").getStatus()).isEqualTo(CandidateStatus.WEAK_EVIDENCE);
         assertThat(result.getMissingEvidence()).contains("Retry events do not record exception class");
     }
 
     @Test
-    void exclusionRule_rulesOutServiceCrashWhenStepTimeoutPresent() {
-        CandidateAssessment r05 = candidate("R05", "SERVICE_CRASH",
-                Directness.CORROBORATED_INFERENCE, 5L);
+    void fallbackRulesAreRuledOutWhenSpecificEvidenceExists() {
+        CandidateAssessment r20 = candidate("R20", "OBSERVABILITY_GAP",
+                Directness.HEURISTIC_INFERENCE, 20L);
         CandidateAssessment r07 = candidate("R07", "DOWNSTREAM_TIMEOUT",
                 Directness.THRESHOLD_VIOLATION, 7L);
 
-        SelectionResult result = selector.select(List.of(r05, r07),
+        SelectionResult result = selector.select(List.of(r20, r07),
                 List.of(anomaly(7L, AnomalyType.STEP_TIMEOUT)),
                 saga(SagaStatus.IN_PROGRESS));
 
-        assertThat(find(result, "R05").getStatus()).isEqualTo(CandidateStatus.RULED_OUT);
-        assertThat(find(result, "R05").getStatusReason()).contains("STEP_TIMEOUT");
-        assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.SELECTED);
+        assertThat(find(result, "R20").getStatus()).isEqualTo(CandidateStatus.RULED_OUT);
+        assertThat(find(result, "R20").getStatusReason()).contains("fallback-only");
+        assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
     @Test
-    void sameTierSameEvidence_allSelected() {
+    void sameTierSameEvidence_allGroupedAsEvidence() {
         CandidateAssessment first = candidate("R03", "MULTI_TERMINAL_CONFLICT",
                 Directness.DIRECT_SIGNATURE, 1L);
         CandidateAssessment second = candidate("R03B", "TERMINAL_CONFLICT_ALT",
@@ -124,10 +123,9 @@ class RcaSelectorTest {
                 List.of(anomaly(1L, AnomalyType.MULTI_TERMINAL_CONFLICT)),
                 saga(SagaStatus.FAILED));
 
-        assertThat(result.getPrimaryRootCauses())
-                .containsExactlyInAnyOrder("MULTI_TERMINAL_CONFLICT", "TERMINAL_CONFLICT_ALT");
-        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.SELECTED);
-        assertThat(find(result, "R03B").getStatus()).isEqualTo(CandidateStatus.SELECTED);
+        assertThat(result.getPrimaryRootCauses()).isEmpty();
+        assertThat(find(result, "R03").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
+        assertThat(find(result, "R03B").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
     @Test

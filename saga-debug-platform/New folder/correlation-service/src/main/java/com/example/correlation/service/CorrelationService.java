@@ -13,9 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Set;
 
-/**
- * Correlates Kafka events into saga instances.
- */
+
+
+
 @Service
 public class CorrelationService {
 
@@ -40,13 +40,13 @@ public class CorrelationService {
                              String stepName, String serviceName,
                              Instant eventTimestamp, String payload) {
 
-        // Skip duplicate events
+        
         if (sagaEventRepository.findByEventId(eventId).isPresent()) {
             log.info("Duplicate event {}. Skipping.", eventId);
             return;
         }
 
-        // Upsert saga
+        
         SagaInstance saga = sagaInstanceRepository.findById(sagaId).orElse(null);
         if (saga == null) {
             saga = new SagaInstance();
@@ -57,7 +57,7 @@ public class CorrelationService {
             log.info("New saga: {}", sagaId);
         }
 
-        // Update status
+        
         SagaStatus newStatus = determineSagaStatus(eventType, saga.getStatus());
         saga.setStatus(newStatus);
         saga.setLastUpdated(eventTimestamp);
@@ -66,7 +66,7 @@ public class CorrelationService {
         }
         sagaInstanceRepository.save(saga);
 
-        // Store event
+        
         SagaEvent sagaEvent = new SagaEvent();
         sagaEvent.setEventId(eventId);
         sagaEvent.setSagaId(sagaId);

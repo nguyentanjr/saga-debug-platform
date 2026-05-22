@@ -47,7 +47,7 @@ public class PaymentService {
         Span.current().setAttribute("quantity", event.getQuantity());
         Span.current().setAttribute("amount", event.getAmount().toString());
 
-        // idempotency: if payment already exists for this order, skip
+        
         if (paymentRepository.findByOrderId(event.getOrderId()).isPresent()) {
             log.info("Payment already exists for order {}. Skipping.", event.getOrderId());
             return;
@@ -62,14 +62,14 @@ public class PaymentService {
 
         paymentRepository.save(payment);
 
-        // simple rule: always succeed for demo
+        
         payment.setStatus(PaymentStatus.COMPLETED);
         paymentRepository.save(payment);
 
         PaymentCompletedEvent completedEvent = new PaymentCompletedEvent();
         completedEvent.setOrderId(payment.getOrderId());
         completedEvent.setAmount(payment.getAmount());
-        // Passthrough: forward from OrderCreatedEvent, NOT stored in Payment DB
+        
         completedEvent.setSagaId(event.getSagaId());
         completedEvent.setProductId(event.getProductId());
         completedEvent.setQuantity(event.getQuantity());
@@ -108,7 +108,7 @@ public class PaymentService {
         PaymentRefundedEvent refundedEvent = new PaymentRefundedEvent();
         refundedEvent.setOrderId(payment.getOrderId());
         refundedEvent.setSagaId(command.getSagaId());
-        // amount included for observability — Correlation Engine / Dashboard will use it
+        
         refundedEvent.setAmount(payment.getAmount());
         paymentEventProducer.publishPaymentRefunded(refundedEvent);
 
@@ -132,9 +132,9 @@ public class PaymentService {
         return dto;
     }
 
-    /**
-     * Resilience4j fallback — invoked when circuit breaker is open or retries exhausted.
-     */
+    
+
+
     private void handleOrderCreatedFallback(OrderCreatedEvent event, Throwable t) {
         log.error("Payment processing failed for order {} after retries: {}", event.getOrderId(), t.getMessage());
 

@@ -22,10 +22,10 @@ public class OrderEventConsumer {
     @KafkaListener(topics = "order-created", groupId = "payment-service-group")
     public void handleOrderCreated(OrderCreatedEvent event) {
         log.info("Received OrderCreatedEvent for order {} [sagaId={}]", event.getOrderId(), event.getSagaId());
-        // MDC must be set BEFORE calling the @Retry-wrapped service method so that
-        // Resilience4j's onRetry listener (which fires between attempts) can read
-        // sagaId/orderId. Setting MDC inside the proxied method itself does not work,
-        // because the listener fires after the method's finally block has cleared MDC.
+        
+        
+        
+        
         MDC.put("sagaId", event.getSagaId().toString());
         MDC.put("orderId", event.getOrderId().toString());
         try {

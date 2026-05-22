@@ -152,7 +152,7 @@ public class ScenarioService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (RuntimeException ignored) {
-                // Demo helper only: the user can still restore via payment-service admin endpoint.
+                
             }
         });
     }

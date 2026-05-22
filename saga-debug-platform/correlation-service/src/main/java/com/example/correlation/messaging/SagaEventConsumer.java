@@ -102,8 +102,8 @@ public class SagaEventConsumer {
                 eventId = topic + "-" + record.partition() + "-" + record.offset();
             }
 
-            // Early dedup — skip all downstream processing if already seen.
-            // CorrelationService still has DB-level dedup as safety net.
+            
+            
             if (deduplicationCache.isDuplicate(eventId)) {
                 log.debug("Fast-path dedup in consumer: eventId={}, topic={}", eventId, topic);
                 return;

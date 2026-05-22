@@ -55,13 +55,13 @@ public class InventoryService {
         Span.current().setAttribute("product.id", event.getProductId());
         Span.current().setAttribute("quantity", event.getQuantity());
 
-        // Idempotency: skip if already processed
+        
         if (reservationRepository.findByOrderId(event.getOrderId()).isPresent()) {
             log.info("Inventory reservation already exists for order {}. Skipping.", event.getOrderId());
             return;
         }
 
-        // Fat event: productId and quantity come directly from the event (passthrough from order)
+        
         String productId = event.getProductId();
         int quantity = event.getQuantity();
 
@@ -120,9 +120,9 @@ public class InventoryService {
         return new InventoryResponse(inventory.getProductId(), inventory.getAvailableQuantity());
     }
 
-    /**
-     * Resilience4j fallback — publishes InventoryFailedEvent when circuit breaker opens.
-     */
+    
+
+
     public void handlePaymentCompletedFallback(PaymentCompletedEvent event, Throwable t) {
         log.error("Circuit breaker / retry fallback for order {}: {}", event.getOrderId(), t.getMessage());
 

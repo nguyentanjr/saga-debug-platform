@@ -144,7 +144,7 @@ public class OrderService {
                 log.info("Skipping: order {} already in final status {}", orderId, order.getStatus());
                 return;
             }
-            // Compensation: set REFUNDING and trigger refund
+            
             order.setStatus(OrderStatus.REFUNDING);
             order.setUpdatedAt(Instant.now());
             orderRepository.save(order);

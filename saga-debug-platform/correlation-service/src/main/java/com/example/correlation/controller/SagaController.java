@@ -60,7 +60,7 @@ public class SagaController {
             sagas = sagaInstanceRepository.findAll(pageRequest);
         }
 
-        // Bulk-fetch event counts to avoid N+1 query
+        
         List<String> sagaIds = sagas.getContent().stream()
                 .map(SagaInstance::getSagaId)
                 .collect(Collectors.toList());

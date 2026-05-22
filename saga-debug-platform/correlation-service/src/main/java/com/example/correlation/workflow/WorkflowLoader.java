@@ -35,7 +35,7 @@ public class WorkflowLoader {
             }
         } catch (Exception e) {
             log.error("Failed to load workflow spec: {}", e.getMessage(), e);
-            // Create a minimal fallback
+            
             orderSagaWorkflow = new WorkflowSpec();
             orderSagaWorkflow.setName("ORDER_SAGA");
             orderSagaWorkflow.setVersion("1.0-fallback");

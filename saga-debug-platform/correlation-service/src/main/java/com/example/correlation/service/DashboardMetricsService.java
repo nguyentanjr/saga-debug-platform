@@ -3,6 +3,8 @@ package com.example.correlation.service;
 import com.example.correlation.domain.Anomaly;
 import com.example.correlation.domain.RcaResult;
 import com.example.correlation.domain.SagaStatus;
+import com.example.correlation.domain.rca.CandidateStatus;
+import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
 import com.example.correlation.dto.DashboardSummaryResponse;
 import com.example.correlation.dto.MetricItem;
@@ -59,7 +61,7 @@ public class DashboardMetricsService {
                 countStatusSince(SagaStatus.COMPENSATED, since),
                 activeSagas,
                 anomalies.size(),
-                countRcaStatus(rcaResults, RcaStatus.SELECTED),
+                countEvidenceAvailable(rcaResults),
                 countRcaStatus(rcaResults, RcaStatus.INSUFFICIENT_EVIDENCE),
                 countRcaStatus(rcaResults, RcaStatus.NO_DIAGNOSIS_NEEDED),
                 topAnomalyTypes(anomalies),
@@ -77,6 +79,13 @@ public class DashboardMetricsService {
                 .count();
     }
 
+    private long countEvidenceAvailable(List<RcaResult> rcaResults) {
+        return rcaResults.stream()
+                .filter(result -> result.getRcaStatus() == RcaStatus.EVIDENCE_AVAILABLE
+                        || result.getRcaStatus() == RcaStatus.SELECTED)
+                .count();
+    }
+
     private List<MetricItem> topAnomalyTypes(List<Anomaly> anomalies) {
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Anomaly anomaly : anomalies) {
@@ -88,11 +97,12 @@ public class DashboardMetricsService {
     private List<MetricItem> topRootCauses(List<RcaResult> results) {
         Map<String, Long> counts = new LinkedHashMap<>();
         for (RcaResult result : results) {
-            if (result.getRcaStatus() != RcaStatus.SELECTED) {
+            if (result.getRcaStatus() != RcaStatus.EVIDENCE_AVAILABLE
+                    && result.getRcaStatus() != RcaStatus.SELECTED) {
                 continue;
             }
-            List<String> roots = result.getPrimaryRootCauses();
-            if (roots == null || roots.isEmpty()) {
+            List<String> roots = concreteEvidenceRootCauses(result);
+            if (roots.isEmpty()) {
                 if (result.getRootCause() != null && !result.getRootCause().isBlank()) {
                     counts.merge(result.getRootCause(), 1L, Long::sum);
                 }
@@ -105,6 +115,23 @@ public class DashboardMetricsService {
             }
         }
         return topItems(counts, 5);
+    }
+
+    private List<String> concreteEvidenceRootCauses(RcaResult result) {
+        if (result.getCandidates() != null && !result.getCandidates().isEmpty()) {
+            return result.getCandidates().stream()
+                    .filter(candidate -> candidate.getStatus() == CandidateStatus.STRONG_EVIDENCE
+                            || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE
+                            || candidate.getStatus() == CandidateStatus.SELECTED
+                            || candidate.getStatus() == CandidateStatus.CONTRIBUTING)
+                    .map(RcaCandidate::getRootCause)
+                    .filter(root -> root != null && !root.isBlank())
+                    .distinct()
+                    .toList();
+        }
+
+        List<String> roots = result.getPrimaryRootCauses();
+        return roots != null ? roots : List.of();
     }
 
     private List<MetricItem> topAffectedSteps(List<Anomaly> anomalies) {

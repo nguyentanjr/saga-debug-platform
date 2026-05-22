@@ -42,16 +42,16 @@ public class WorkflowSpec {
     public boolean isValidTransition(String fromStep, String toStep, String condition) {
         if (transitions == null) return true;
 
-        // Exact match: from → to with same condition
+        
         boolean exactMatch = transitions.stream().anyMatch(t ->
                 t.getFrom().equals(fromStep) &&
                 t.getTo().equals(toStep) &&
                 (condition == null || condition.equals(t.getCondition())));
         if (exactMatch) return true;
 
-        // A FAILED event at step X means the saga reached step X (valid forward
-        // transition) but X itself failed. Accept if from → to exists with any
-        // condition, since the step was legitimately reached.
+        
+        
+        
         if ("FAILED".equals(condition)) {
             return transitions.stream().anyMatch(t ->
                     t.getFrom().equals(fromStep) && t.getTo().equals(toStep));
@@ -76,7 +76,7 @@ public class WorkflowSpec {
                 }
             }
         }
-        return 30; // default 30s
+        return 30; 
     }
 
     private int parseTimeout(String timeout) {
@@ -90,7 +90,7 @@ public class WorkflowSpec {
         return 30;
     }
 
-    // --- Nested classes ---
+    
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class StepSpec {

@@ -8,19 +8,13 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Validates event schema according to business-events-spec.
- * Required fields: eventId, eventType, sagaId, timestamp
- */
+
 @Component
 public class EventSchemaValidator {
 
     private static final Logger log = LoggerFactory.getLogger(EventSchemaValidator.class);
 
-    /**
-     * Validate a parsed JSON event node.
-     * @return list of violations (empty = valid)
-     */
+
     public List<String> validate(JsonNode eventNode) {
         List<String> violations = new ArrayList<>();
 
@@ -37,16 +31,11 @@ public class EventSchemaValidator {
         return violations;
     }
 
-    /**
-     * Quick check — is the event valid?
-     */
     public boolean isValid(JsonNode eventNode) {
         return validate(eventNode).isEmpty();
     }
 
-    /**
-     * Validate and log warnings for missing optional but recommended fields.
-     */
+
     public void logWarnings(JsonNode eventNode, String topic) {
         if (eventNode == null) return;
 

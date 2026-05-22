@@ -173,22 +173,6 @@
           <span class="status-text">{{ getDisplayStatus(rca) }}</span>
         </div>
 
-        <div *ngIf="isSelected(rca) && !isLegacyOnly(rca)" class="primary-causes">
-          <h3>Root Cause{{ getPrimaryCauses(rca).length > 1 ? 's' : '' }}</h3>
-          <div *ngFor="let cause of getPrimaryCauses(rca)" class="primary-cause-item">
-            <mat-icon color="warn">flag</mat-icon>
-            <span class="cause-name">{{ cause }}</span>
-            <span *ngIf="getPrimaryCauseSeverity(rca, cause) as severity"
-                  class="severity-badge"
-                  [ngClass]="getSeverityClass(severity)">
-              {{ severity }}
-            </span>
-          </div>
-          <p *ngIf="getPrimaryCauses(rca).length > 1" class="multi-cause-note">
-            Multiple root causes have independent evidence.
-          </p>
-        </div>
-
         <div *ngIf="isInsufficient(rca)" class="missing-evidence">
           <h3>Why no diagnosis?</h3>
           <p>System abstained because evidence is insufficient.</p>
@@ -255,22 +239,76 @@
         </ng-template>
 
         <div *ngIf="hasCandidates(rca)" class="candidates-panel">
-          <mat-expansion-panel *ngIf="hasActiveCandidates(rca)" class="candidate-group active-candidates" [expanded]="true">
+          <mat-expansion-panel *ngIf="hasStrongEvidenceCandidates(rca)" class="candidate-group active-candidates" [expanded]="true">
             <mat-expansion-panel-header>
               <mat-panel-title>
-                <mat-icon>analytics</mat-icon> Active candidates ({{ getActiveCandidates(rca).length }})
+                <mat-icon>priority_high</mat-icon> Strong evidence ({{ getStrongEvidenceCandidates(rca).length }})
               </mat-panel-title>
             </mat-expansion-panel-header>
 
             <mat-accordion class="candidate-list">
-              <mat-expansion-panel *ngFor="let candidate of getActiveCandidates(rca)"
+              <mat-expansion-panel *ngFor="let candidate of getStrongEvidenceCandidates(rca)"
                                    class="candidate-item"
                                    [ngClass]="getCandidateClass(candidate.status)">
                 <mat-expansion-panel-header>
                   <mat-panel-title class="candidate-summary-main">
                     <span class="candidate-cause">{{ candidate.rootCause }}</span>
                     <span class="candidate-status-badge" [ngClass]="'cstatus-' + candidate.status.toLowerCase()">
-                      {{ candidate.status }}
+                      {{ formatEnumLabel(candidate.status) }}
+                    </span>
+                  </mat-panel-title>
+                  <mat-panel-description *ngIf="getCandidateReason(candidate)">
+                    <span class="candidate-summary-reason">{{ getCandidateReason(candidate) }}</span>
+                  </mat-panel-description>
+                </mat-expansion-panel-header>
+                <ng-container *ngTemplateOutlet="candidateDetails; context: { candidate: candidate }"></ng-container>
+              </mat-expansion-panel>
+            </mat-accordion>
+          </mat-expansion-panel>
+
+          <mat-expansion-panel *ngIf="hasSupportingEvidenceCandidates(rca)" class="candidate-group supporting-candidates" [expanded]="true">
+            <mat-expansion-panel-header>
+              <mat-panel-title>
+                <mat-icon>playlist_add_check</mat-icon> Supporting evidence ({{ getSupportingEvidenceCandidates(rca).length }})
+              </mat-panel-title>
+            </mat-expansion-panel-header>
+
+            <mat-accordion class="candidate-list">
+              <mat-expansion-panel *ngFor="let candidate of getSupportingEvidenceCandidates(rca)"
+                                   class="candidate-item"
+                                   [ngClass]="getCandidateClass(candidate.status)">
+                <mat-expansion-panel-header>
+                  <mat-panel-title class="candidate-summary-main">
+                    <span class="candidate-cause">{{ candidate.rootCause }}</span>
+                    <span class="candidate-status-badge" [ngClass]="'cstatus-' + candidate.status.toLowerCase()">
+                      {{ formatEnumLabel(candidate.status) }}
+                    </span>
+                  </mat-panel-title>
+                  <mat-panel-description *ngIf="getCandidateReason(candidate)">
+                    <span class="candidate-summary-reason">{{ getCandidateReason(candidate) }}</span>
+                  </mat-panel-description>
+                </mat-expansion-panel-header>
+                <ng-container *ngTemplateOutlet="candidateDetails; context: { candidate: candidate }"></ng-container>
+              </mat-expansion-panel>
+            </mat-accordion>
+          </mat-expansion-panel>
+
+          <mat-expansion-panel *ngIf="hasWeakEvidenceCandidates(rca)" class="candidate-group weak-candidates">
+            <mat-expansion-panel-header>
+              <mat-panel-title>
+                <mat-icon>help</mat-icon> Weak / fallback evidence ({{ getWeakEvidenceCandidates(rca).length }})
+              </mat-panel-title>
+            </mat-expansion-panel-header>
+
+            <mat-accordion class="candidate-list">
+              <mat-expansion-panel *ngFor="let candidate of getWeakEvidenceCandidates(rca)"
+                                   class="candidate-item"
+                                   [ngClass]="getCandidateClass(candidate.status)">
+                <mat-expansion-panel-header>
+                  <mat-panel-title class="candidate-summary-main">
+                    <span class="candidate-cause">{{ candidate.rootCause }}</span>
+                    <span class="candidate-status-badge" [ngClass]="'cstatus-' + candidate.status.toLowerCase()">
+                      {{ formatEnumLabel(candidate.status) }}
                     </span>
                   </mat-panel-title>
                   <mat-panel-description *ngIf="getCandidateReason(candidate)">
@@ -297,7 +335,7 @@
                   <mat-panel-title class="candidate-summary-main">
                     <span class="candidate-cause">{{ candidate.rootCause }}</span>
                     <span class="candidate-status-badge" [ngClass]="'cstatus-' + candidate.status.toLowerCase()">
-                      {{ candidate.status }}
+                      {{ formatEnumLabel(candidate.status) }}
                     </span>
                   </mat-panel-title>
                   <mat-panel-description *ngIf="getCandidateReason(candidate)">

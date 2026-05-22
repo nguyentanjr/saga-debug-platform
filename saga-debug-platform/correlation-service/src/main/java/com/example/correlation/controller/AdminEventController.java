@@ -11,10 +11,10 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Admin controller for injecting test events and triggering RCA.
- * Used in fault-injection scenarios for evaluation.
- */
+
+
+
+
 @RestController
 @RequestMapping("/api/admin")
 public class AdminEventController {
@@ -29,10 +29,10 @@ public class AdminEventController {
         this.rcaService = rcaService;
     }
 
-    /**
-     * Inject a test event directly into the correlation engine.
-     * Bypasses Kafka — useful for testing anomaly edge cases.
-     */
+    
+
+
+
     @PostMapping("/inject-event")
     public ResponseEntity<Map<String, String>> injectEvent(@RequestBody Map<String, String> body) {
         String sagaId = body.getOrDefault("sagaId", UUID.randomUUID().toString());
@@ -66,9 +66,9 @@ public class AdminEventController {
         ));
     }
 
-    /**
-     * Trigger RCA analysis for a specific saga.
-     */
+    
+
+
     @PostMapping("/analyze/{sagaId}")
     public ResponseEntity<?> triggerRca(@PathVariable("sagaId") String sagaId) {
         var result = rcaService.analyze(sagaId);

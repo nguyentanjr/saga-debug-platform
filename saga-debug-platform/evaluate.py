@@ -432,7 +432,7 @@ def expected_rca_status(scenario: dict) -> str:
     explicit = scenario.get("expected_rca_status")
     if explicit:
         return explicit
-    return "SELECTED" if scenario.get("expected_rca") is not None else "NO_DIAGNOSIS_NEEDED"
+    return "EVIDENCE_AVAILABLE" if scenario.get("expected_rca") is not None else "NO_DIAGNOSIS_NEEDED"
 
 
 def expected_root_matches(expected, actual_root, actual_roots) -> bool:
@@ -446,8 +446,8 @@ def rca_expectation_matches(result: dict, scenario: dict) -> bool:
     expected_status = expected_rca_status(scenario)
     actual_status = result.get("rca_status")
 
-    if expected_status == "SELECTED":
-        return actual_status == "SELECTED" and expected_root_matches(
+    if expected_status in ("EVIDENCE_AVAILABLE", "SELECTED"):
+        return actual_status in ("EVIDENCE_AVAILABLE", "SELECTED") and expected_root_matches(
             scenario.get("expected_rca"),
             result.get("rca_root_cause"),
             result.get("rca_primary_roots"),
@@ -486,10 +486,33 @@ def make_result(scenario: dict, run_index: int) -> dict:
 def selected_root_cause(rca: dict | None):
     if not rca:
         return None
+    if rca.get("rcaStatus") not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+        return None
     primary_roots = rca.get("primaryRootCauses") or []
     if primary_roots:
         return primary_roots[0]
-    return rca.get("rootCause")
+    if rca.get("rootCause"):
+        return rca.get("rootCause")
+    roots = evidence_root_causes(rca)
+    return roots[0] if roots else None
+
+
+def evidence_root_causes(rca: dict | None):
+    if not rca:
+        return []
+    roots = []
+    for candidate in rca.get("candidates") or []:
+        if candidate.get("status") in (
+            "STRONG_EVIDENCE",
+            "SUPPORTING_EVIDENCE",
+            "WEAK_EVIDENCE",
+            "SELECTED",
+            "CONTRIBUTING",
+        ):
+            root = candidate.get("rootCause")
+            if root and root not in roots:
+                roots.append(root)
+    return roots
 
 
 def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
@@ -507,7 +530,10 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
 
     if rca:
         result["rca_status"] = rca.get("rcaStatus")
-        result["rca_primary_roots"] = rca.get("primaryRootCauses") or []
+        if result["rca_status"] in ("EVIDENCE_AVAILABLE", "SELECTED"):
+            result["rca_primary_roots"] = rca.get("primaryRootCauses") or evidence_root_causes(rca)
+        else:
+            result["rca_primary_roots"] = rca.get("primaryRootCauses") or []
         result["rca_root_cause"] = selected_root_cause(rca)
         result["rca_severity"] = rca.get("severity")
 
@@ -2062,17 +2088,17 @@ def compute_classification_metrics(all_runs):
             continue
 
         expected_status = r.get("rca_expected_status") or (
-            "SELECTED" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
+            "EVIDENCE_AVAILABLE" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
         )
         expected = r.get("rca_expected")
         actual = r.get("rca_root_cause")
         actual_roots = r.get("rca_primary_roots") or []
 
-        # Root-cause classification only applies when the scenario expects a
-        # concrete selected diagnosis. Abstention/healthy semantics are reported
+        # Root-cause classification only applies when the scenario expects
+        # concrete RCA evidence. Abstention/healthy semantics are reported
         # separately via rcaStatus accuracy.
-        if expected_status != "SELECTED":
-            if r.get("rca_status") == "SELECTED" and actual is not None:
+        if expected_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+            if r.get("rca_status") in ("EVIDENCE_AVAILABLE", "SELECTED") and actual is not None:
                 fp += 1
                 per_class.setdefault(actual, {"tp": 0, "fp": 0, "fn": 0})
                 per_class[actual]["fp"] += 1
@@ -2130,7 +2156,7 @@ def compute_rca_status_metrics(all_runs):
         if r.get("error"):
             continue
         expected = r.get("rca_expected_status") or (
-            "SELECTED" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
+            "EVIDENCE_AVAILABLE" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
         )
         actual = r.get("rca_status")
         counts.setdefault(expected, {"total": 0, "correct": 0, "actual": {}})
