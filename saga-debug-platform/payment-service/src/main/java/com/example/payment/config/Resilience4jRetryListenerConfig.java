@@ -13,16 +13,16 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.UUID;
 
-/**
- * Registers a Resilience4j retry-event listener on the "paymentProcessing" Retry instance.
- *
- * <p>On each retry attempt, this listener emits a PAYMENT_RETRY event to Kafka so that
- * the correlation-service can observe retry behaviour and detect retry-storm anomalies.
- *
- * <p>Sagas are correlated via MDC: PaymentService.handleOrderCreated puts sagaId/orderId
- * into MDC at method entry; Resilience4j onRetry runs synchronously in the same thread,
- * so MDC values are visible.
- */
+
+
+
+
+
+
+
+
+
+
 @Configuration
 public class Resilience4jRetryListenerConfig {
 

@@ -1,10 +1,14 @@
 package com.example.correlation.domain;
 
+import com.example.correlation.domain.rca.RcaCandidate;
+import com.example.correlation.domain.rca.RcaStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.List;
 
 @Entity
 @Table(name = "rca_results")
@@ -26,7 +30,7 @@ public class RcaResult {
     @Column(nullable = false)
     private String severity;
 
-    @Column(name = "confidence", nullable = false)
+    @Column(name = "confidence")
     private Double confidence;
 
     @Column(name = "rule_id")
@@ -43,6 +47,22 @@ public class RcaResult {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "contributing_causes", columnDefinition = "jsonb")
     private String contributingCauses;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rca_status", nullable = false)
+    private RcaStatus rcaStatus = RcaStatus.NO_DIAGNOSIS_NEEDED;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "primary_root_causes", nullable = false, columnDefinition = "jsonb")
+    private List<String> primaryRootCauses = List.of();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "candidates", nullable = false, columnDefinition = "jsonb")
+    private List<RcaCandidate> candidates = List.of();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "missing_evidence", nullable = false, columnDefinition = "jsonb")
+    private List<String> missingEvidence = List.of();
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
@@ -62,6 +82,7 @@ public class RcaResult {
     public String getSeverity() { return severity; }
     public void setSeverity(String severity) { this.severity = severity; }
 
+    @JsonIgnore
     public Double getConfidence() { return confidence; }
     public void setConfidence(Double confidence) { this.confidence = confidence; }
 
@@ -74,8 +95,27 @@ public class RcaResult {
     public String getSuggestions() { return suggestions; }
     public void setSuggestions(String suggestions) { this.suggestions = suggestions; }
 
+    @JsonIgnore
     public String getContributingCauses() { return contributingCauses; }
     public void setContributingCauses(String contributingCauses) { this.contributingCauses = contributingCauses; }
+
+    public RcaStatus getRcaStatus() { return rcaStatus; }
+    public void setRcaStatus(RcaStatus rcaStatus) { this.rcaStatus = rcaStatus; }
+
+    public List<String> getPrimaryRootCauses() { return primaryRootCauses; }
+    public void setPrimaryRootCauses(List<String> primaryRootCauses) {
+        this.primaryRootCauses = primaryRootCauses != null ? primaryRootCauses : List.of();
+    }
+
+    public List<RcaCandidate> getCandidates() { return candidates; }
+    public void setCandidates(List<RcaCandidate> candidates) {
+        this.candidates = candidates != null ? candidates : List.of();
+    }
+
+    public List<String> getMissingEvidence() { return missingEvidence; }
+    public void setMissingEvidence(List<String> missingEvidence) {
+        this.missingEvidence = missingEvidence != null ? missingEvidence : List.of();
+    }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

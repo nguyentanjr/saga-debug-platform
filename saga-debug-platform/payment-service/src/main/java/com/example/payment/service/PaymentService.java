@@ -27,7 +27,7 @@ public class PaymentService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
-    // Toggle: khi true, payment sẽ throw exception → trigger Resilience4j fallback
+    
     private static volatile boolean failMode = false;
 
     public static void setFailMode(boolean enabled) { failMode = enabled; }
@@ -46,10 +46,10 @@ public class PaymentService {
     @CircuitBreaker(name = "paymentProcessing")
     @Retry(name = "paymentProcessing", fallbackMethod = "handleOrderCreatedFallback")
     public void handleOrderCreated(OrderCreatedEvent event) {
-        // NOTE: MDC values (sagaId, orderId) are populated by OrderEventConsumer
-        // BEFORE entering this @Retry-wrapped method, so that Resilience4j's
-        // onRetry listener sees them on every retry attempt. Do NOT clear MDC
-        // here — the consumer's finally block owns that lifecycle.
+        
+        
+        
+        
         Span.current().setAttribute("order.id", event.getOrderId().toString());
         Span.current().setAttribute("saga.id", event.getSagaId().toString());
         Span.current().setAttribute("product.id", event.getProductId());
@@ -119,7 +119,7 @@ public class PaymentService {
         PaymentRefundedEvent refundedEvent = new PaymentRefundedEvent();
         refundedEvent.setOrderId(payment.getOrderId());
         refundedEvent.setSagaId(command.getSagaId());
-        // amount included for observability — Correlation Engine / Dashboard will use it
+        
         refundedEvent.setAmount(payment.getAmount());
         paymentEventProducer.publishPaymentRefunded(refundedEvent);
 
@@ -143,9 +143,9 @@ public class PaymentService {
         return dto;
     }
 
-    /**
-     * Resilience4j fallback — invoked when circuit breaker is open or retries exhausted.
-     */
+    
+
+
     private void handleOrderCreatedFallback(OrderCreatedEvent event, Throwable t) {
         log.error("Payment processing failed for order {} after retries: {}", event.getOrderId(), t.getMessage());
 

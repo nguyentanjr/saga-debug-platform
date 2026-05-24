@@ -16,6 +16,128 @@
 
   <mat-progress-bar *ngIf="loading" mode="indeterminate"></mat-progress-bar>
 
+  <mat-card class="overview-card" *ngIf="dashboardSummary as summary">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>monitoring</mat-icon>
+        Anomaly / RCA Overview
+      </mat-card-title>
+      <mat-card-subtitle>Last {{ summary.windowHours }} hours</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="summary-grid">
+        <div class="summary-tile">
+          <span class="summary-label">Sagas</span>
+          <strong>{{ summary.totalSagas }}</strong>
+          <small>{{ completionRate(summary) }}% completed</small>
+        </div>
+        <div class="summary-tile">
+          <span class="summary-label">Active</span>
+          <strong>{{ summary.activeSagas }}</strong>
+          <small>started / in progress</small>
+        </div>
+        <div class="summary-tile warning">
+          <span class="summary-label">Failed</span>
+          <strong>{{ summary.failedSagas }}</strong>
+          <small>{{ summary.compensatedSagas }} compensated</small>
+        </div>
+        <div class="summary-tile">
+          <span class="summary-label">Anomalies</span>
+          <strong>{{ summary.totalAnomalies }}</strong>
+          <small>detected in window</small>
+        </div>
+        <div class="summary-tile">
+          <span class="summary-label">RCA Evidence</span>
+          <strong>{{ summary.rcaSelected }}</strong>
+          <small>{{ summary.rcaInsufficientEvidence }} insufficient</small>
+        </div>
+      </div>
+
+      <div class="metric-panels">
+        <div class="metric-panel">
+          <h3>Top anomaly types</h3>
+          <ng-container *ngIf="hasMetricItems(summary.topAnomalyTypes); else noAnomalies">
+            <div class="metric-row" *ngFor="let item of summary.topAnomalyTypes">
+              <span>{{ item.name }}</span>
+              <strong>{{ item.count }}</strong>
+            </div>
+          </ng-container>
+          <ng-template #noAnomalies>
+            <div class="metric-empty">No anomalies</div>
+          </ng-template>
+        </div>
+
+        <div class="metric-panel">
+          <h3>Top root causes</h3>
+          <ng-container *ngIf="hasMetricItems(summary.topRootCauses); else noRootCauses">
+            <div class="metric-row" *ngFor="let item of summary.topRootCauses">
+              <span>{{ item.name }}</span>
+              <strong>{{ item.count }}</strong>
+            </div>
+          </ng-container>
+          <ng-template #noRootCauses>
+            <div class="metric-empty">No RCA evidence</div>
+          </ng-template>
+        </div>
+
+        <div class="metric-panel">
+          <h3>Top affected steps</h3>
+          <ng-container *ngIf="hasMetricItems(summary.topAffectedSteps); else noSteps">
+            <div class="metric-row" *ngFor="let item of summary.topAffectedSteps">
+              <span>{{ item.name }}</span>
+              <strong>{{ item.count }}</strong>
+            </div>
+          </ng-container>
+          <ng-template #noSteps>
+            <div class="metric-empty">No step evidence</div>
+          </ng-template>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="scenario-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>science</mat-icon>
+        Scenario Launcher
+      </mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="scenario-grid">
+        <div class="scenario-item" *ngFor="let scenario of scenarios">
+          <div class="scenario-main">
+            <div class="scenario-title">
+              <span>{{ scenario.name }}</span>
+            </div>
+            <div class="scenario-description">{{ scenario.description }}</div>
+          </div>
+          <button mat-raised-button
+                  class="scenario-run-button"
+                  color="primary"
+                  (click)="runScenario(scenario)"
+                  [disabled]="!!scenarioLoadingId">
+            <mat-icon>{{ isScenarioRunning(scenario) ? 'hourglass_empty' : 'play_arrow' }}</mat-icon>
+            {{ isScenarioRunning(scenario) ? 'Running' : 'Run' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="scenario-message" *ngIf="scenarioMessage">
+        <mat-icon>check_circle</mat-icon>
+        <span>{{ scenarioMessage }}</span>
+      </div>
+
+      <div class="scenario-result" *ngIf="scenarioResult">
+        <span>Last saga:</span>
+        <code>{{ scenarioResult.sagaId }}</code>
+        <button mat-button color="primary" (click)="openSaga(scenarioResult.sagaId)">
+          Open now
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
   <!-- Error Banner -->
   <div class="error-banner" *ngIf="errorMessage">
     <mat-icon>error</mat-icon>

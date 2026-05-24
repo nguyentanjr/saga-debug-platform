@@ -6,10 +6,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
-/**
- * Admin endpoint to toggle payment failure simulation.
- * Used for circuit breaker demo scenario.
- */
+
+
+
+
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {

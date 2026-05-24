@@ -249,6 +249,284 @@
   background: #fafafa;
 }
 
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.anomaly-table,
+.evidence-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.anomaly-table th,
+.anomaly-table td,
+.evidence-table td {
+  padding: 8px;
+  border-bottom: 1px solid #eeeeee;
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.anomaly-table th {
+  color: #616161;
+  font-weight: 600;
+  background: #fafafa;
+}
+
+.anomaly-type-badge,
+.directness-tag,
+.candidate-status-badge,
+.rule-id-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.anomaly-type-badge {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.legacy-descriptions {
+  margin-top: 12px;
+}
+
+.muted {
+  color: #9e9e9e;
+}
+
+.rca-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+.rca-status-evidence,
+.rca-status-selected {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-left: 4px solid #4caf50;
+}
+
+.rca-status-insufficient {
+  background: #fff8e1;
+  color: #f57f17;
+  border-left: 4px solid #ff9800;
+}
+
+.rca-status-healthy {
+  background: #e3f2fd;
+  color: #1565c0;
+  border-left: 4px solid #2196f3;
+}
+
+.rca-status-unknown {
+  background: #f5f5f5;
+  color: #616161;
+  border-left: 4px solid #9e9e9e;
+}
+
+.status-text {
+  font-weight: 600;
+}
+
+.status-detail {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.primary-causes,
+.missing-evidence,
+.no-diagnosis,
+.legacy-rca {
+  margin-bottom: 16px;
+}
+
+.primary-causes h3,
+.missing-evidence h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #424242;
+}
+
+.primary-cause-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+
+.cause-name {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.multi-cause-note {
+  margin: 4px 0 0;
+  color: #616161;
+  font-size: 13px;
+}
+
+.no-diagnosis {
+  padding: 12px;
+  border-radius: 6px;
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.candidates-panel {
+  margin: 12px 0 16px;
+}
+
+.candidate-group {
+  margin: 10px 0;
+}
+
+.candidates-panel mat-panel-title,
+.candidate-summary-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.candidate-list {
+  display: block;
+}
+
+.candidate-item {
+  margin: 8px 0;
+  border-radius: 4px;
+}
+
+.candidate-details {
+  padding-top: 8px;
+}
+
+.candidate-strong_evidence,
+.candidate-selected {
+  background: #e8f5e9;
+  border-left: 4px solid #4caf50;
+}
+
+.candidate-supporting_evidence,
+.candidate-contributing {
+  background: #f3e5f5;
+  border-left: 4px solid #9c27b0;
+}
+
+.candidate-weak_evidence {
+  background: #fff8e1;
+  border-left: 4px solid #ffb300;
+}
+
+.candidate-ruled_out {
+  background: #f5f5f5;
+  opacity: 0.72;
+  border-left: 4px solid #bdbdbd;
+}
+
+.candidate-possible_but_unsupported {
+  background: #fff8e1;
+  border-left: 4px solid #ff9800;
+}
+
+.candidate-cause {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.candidate-summary-reason {
+  color: #616161;
+  display: inline-block;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.candidate-reason,
+.candidate-missing {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.candidate-evidence h4,
+.candidate-suggestions h4 {
+  margin: 12px 0 4px;
+}
+
+.candidate-suggestions ul {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+.candidate-suggestions li {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.cstatus-strong_evidence,
+.cstatus-selected { background: #c8e6c9; color: #2e7d32; }
+.cstatus-supporting_evidence,
+.cstatus-contributing { background: #e1bee7; color: #6a1b9a; }
+.cstatus-weak_evidence { background: #fff3cd; color: #8a5a00; }
+.cstatus-ruled_out { background: #eeeeee; color: #616161; }
+.cstatus-possible_but_unsupported { background: #ffe0b2; color: #e65100; }
+
+.rule-id-tag {
+  background: #eeeeee;
+  color: #424242;
+  font-family: monospace;
+}
+
+.candidate-severity {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.directness-direct_signature { background: #c8e6c9; color: #2e7d32; }
+.directness-threshold_violation { background: #bbdefb; color: #1565c0; }
+.directness-corroborated_inference { background: #d1c4e9; color: #4527a0; }
+.directness-heuristic_inference { background: #ffe0b2; color: #e65100; }
+
+.ev-fact {
+  min-width: 220px;
+}
+
+.ev-observed,
+.ev-expected {
+  min-width: 160px;
+}
+
+.anomaly-table code,
+.evidence-table code {
+  white-space: normal;
+  word-break: break-word;
+}
+
 .rca-header {
   display: flex;
   justify-content: space-between;
@@ -329,4 +607,16 @@
 .timestamp {
   font-size: 12px;
   color: #9e9e9e;
+}
+
+@media (max-width: 720px) {
+  .rca-status-banner,
+  .candidate-summary-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .candidate-summary-reason {
+    max-width: 220px;
+  }
 }

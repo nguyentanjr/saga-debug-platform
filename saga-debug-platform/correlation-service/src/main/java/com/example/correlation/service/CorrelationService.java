@@ -6,6 +6,7 @@ import com.example.correlation.domain.SagaStatus;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.workflow.WorkflowLoader;
+import com.example.correlation.workflow.WorkflowSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -29,27 +30,27 @@ public class CorrelationService {
     private final WorkflowLoader workflowLoader;
     private final ObjectMapper objectMapper;
 
-    // ============================================================================
-    // Shared event classification constants — single source of truth.
-    // AnomalyDetectionService references these to avoid definition drift.
-    //
-    // IMPORTANT naming note: these sets define which events trigger saga STATUS
-    // transitions, NOT "all success/failure events". For example,
-    // PAYMENT_COMPLETED is a success event but does NOT appear in COMPLETED_EVENTS
-    // because it is an intermediate step — only the FINAL step (INVENTORY_RESERVED)
-    // transitions the saga to COMPLETED status.
-    // ============================================================================
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
-    /** Events that transition saga → COMPLETED (final success step only). */
+    
     public static final Set<String> COMPLETED_EVENTS = Set.of("INVENTORY_RESERVED");
 
-    /** Events that transition saga → FAILED (unrecoverable failure). */
+    
     public static final Set<String> FAILED_EVENTS = Set.of("PAYMENT_FAILED");
 
-    /** Events that transition saga → COMPENSATING (trigger rollback). */
+    
     public static final Set<String> COMPENSATING_EVENTS = Set.of("INVENTORY_FAILED", "REFUND_PAYMENT");
 
-    /** Events that transition saga → COMPENSATED (rollback acknowledged). */
+    
     public static final Set<String> COMPENSATED_EVENTS = Set.of("PAYMENT_REFUNDED");
 
     private static final Map<String, String> EVENT_TO_CONDITION = Map.of(
@@ -58,8 +59,8 @@ public class CorrelationService {
             "INVENTORY_RESERVED", "SUCCESS",
             "PAYMENT_FAILED", "FAILED",
             "INVENTORY_FAILED", "FAILED",
-            "REFUND_PAYMENT", "COMPENSATION_START",       // command event (start compensation)
-            "PAYMENT_REFUNDED", "COMPENSATION_COMPLETE"   // ack event (compensation done)
+            "REFUND_PAYMENT", "COMPENSATION_START",       
+            "PAYMENT_REFUNDED", "COMPENSATION_COMPLETE"   
     );
 
     public CorrelationService(SagaInstanceRepository sagaInstanceRepository,
@@ -82,30 +83,21 @@ public class CorrelationService {
                              Instant eventTimestamp, String payload,
                              Instant receivedAt) {
 
-        // 1. Deduplication — DB layer.
-        //
-        // NOTE: We deliberately DO NOT check the in-memory cache here. The cache's
-        // isDuplicate() method has mark-on-read semantics, and the Kafka consumer
-        // (SagaEventConsumer) already marks each eventId as seen. Calling it a
-        // second time would always return true, silently dropping every real Kafka
-        // event. The DB check below is sufficient as a cross-restart safety net,
-        // and admin-injected events (which bypass the consumer) are checked there
-        // too. The cache stays where it belongs: in the consumer's fast-path.
         if (sagaEventRepository.findByEventId(eventId).isPresent()) {
             log.info("Duplicate event {} for saga {} (DB hit). Skipping.", eventId, sagaId);
             anomalyDetectionService.detectDuplicateEvent(sagaId, eventId, eventType);
             return;
         }
 
-        // 3. Find or create saga
+        
         SagaInstance saga = sagaInstanceRepository.findById(sagaId).orElse(null);
         String previousStep = null;
         SagaStatus oldStatus = null;
 
         if (saga == null) {
-            // Detect orphan: first event for this saga should be ORDER_CREATED
+            
             if (!"ORDER_CREATED".equals(eventType)) {
-                anomalyDetectionService.detectOrphanEvent(sagaId, eventType);
+                anomalyDetectionService.detectOrphanEvent(sagaId, eventId, eventType, eventTimestamp);
             }
 
             saga = new SagaInstance();
@@ -113,24 +105,22 @@ public class CorrelationService {
             saga.setStatus(SagaStatus.STARTED);
             saga.setStartTime(eventTimestamp);
             saga.setLastUpdated(eventTimestamp);
-            // Extract orderId from payload for multi-key correlation
+            
             saga.setOrderId(extractOrderId(payload));
             log.info("New saga detected: {}", sagaId);
         } else {
             oldStatus = saga.getStatus();
-            // Detect forbidden post-terminal event
-            anomalyDetectionService.detectForbiddenPostTerminal(sagaId, oldStatus, eventType);
+            
+            anomalyDetectionService.detectForbiddenPostTerminal(sagaId, oldStatus, eventType, eventId, eventTimestamp);
 
-            // Track previous event for transition validation.
-            // NOTE: Uses timestamp order — may be inaccurate under out-of-order delivery,
-            // but acceptable for MVP since detectOutOfOrder flags this separately.
+            
             var previousEvents = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
             if (!previousEvents.isEmpty()) {
                 previousStep = previousEvents.get(previousEvents.size() - 1).getEventType();
             }
         }
 
-        // 4. State machine transition
+        
         SagaStatus newStatus = determineSagaStatus(eventType, saga.getStatus());
         saga.setStatus(newStatus);
         saga.setLastUpdated(eventTimestamp);
@@ -139,14 +129,14 @@ public class CorrelationService {
             saga.setEndTime(eventTimestamp);
         }
 
-        // 5. Detect state regression (before save)
+        
         if (oldStatus != null) {
-            anomalyDetectionService.detectStateRegression(sagaId, oldStatus, newStatus);
+            anomalyDetectionService.detectStateRegression(sagaId, oldStatus, newStatus, eventId, eventTimestamp);
         }
 
         sagaInstanceRepository.save(saga);
 
-        // 6. Save event
+        
         SagaEvent sagaEvent = new SagaEvent();
         sagaEvent.setEventId(eventId);
         sagaEvent.setSagaId(sagaId);
@@ -160,24 +150,31 @@ public class CorrelationService {
 
         log.info("Saga {} | event={} | step={} | status={}", sagaId, eventType, stepName, newStatus);
 
-        // 7. Inline anomaly detection
+        
         anomalyDetectionService.detectOutOfOrder(sagaId);
         anomalyDetectionService.detectRetryBurst(sagaId);
         anomalyDetectionService.detectMultiTerminalConflict(sagaId);
         anomalyDetectionService.detectDuplicateCompensation(sagaId);
-        anomalyDetectionService.detectMissingTraceContext(sagaId, eventType, payload);
+        anomalyDetectionService.detectMissingTraceContext(sagaId, eventType, eventId, payload, eventTimestamp);
 
-        // 8. Workflow transition validation
+        
         var workflow = workflowLoader.getOrderSagaWorkflow();
-        if (workflow != null && previousStep != null) {
+        if (workflow != null && previousStep != null && !isCompensationStepEvent(workflow, eventType)) {
             String previousStepName = workflow.getExpectedStepForEvent(previousStep);
             String currentStepName = workflow.getExpectedStepForEvent(eventType);
             String condition = EVENT_TO_CONDITION.getOrDefault(eventType, "SUCCESS");
             if (previousStepName != null && currentStepName != null) {
                 anomalyDetectionService.detectInvalidTransition(
-                        sagaId, previousStepName, currentStepName, condition);
+                        sagaId, previousStepName, currentStepName, condition, eventId, eventTimestamp);
             }
         }
+    }
+
+    private boolean isCompensationStepEvent(WorkflowSpec workflow, String eventType) {
+        if (workflow.getCompensationSteps() == null) return false;
+        return workflow.getCompensationSteps().stream()
+                .filter(step -> step.getEvents() != null)
+                .anyMatch(step -> step.getEvents().containsValue(eventType));
     }
 
     private String extractOrderId(String payload) {
@@ -188,7 +185,7 @@ public class CorrelationService {
                 return node.get("orderId").asText();
             }
         } catch (Exception e) {
-            // ignore
+            
         }
         return null;
     }

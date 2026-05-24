@@ -1,0 +1,39 @@
+# Build outputs
+target/
+build/
+dist/
+node_modules/
+
+# IDE files
+.idea/
+.vscode/
+.claude/
+saga-debug-platform/.claude/
+*.iml
+*.iws
+*.ipr
+
+# Runtime logs and crash dumps
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# Local/generated experiment artifacts
+saga-debug-platform/results/
+saga-debug-platform/scripts/
+saga-debug-platform/benchmark.py
+saga-debug-platform/benchmark_results.csv
+saga-debug-platform/presentation.html
+saga-debug-platform/saga_observability_platform_2a8f3a61.plan.md
+saga_observability_platform_2a8f3a61.plan.md
+saga-debug-platform/New folder*/
+saga-debug-platform/New folder (2).zip
+
+# Local document/reference files
+saga-debug-platform/*.pdf
+saga-debug-platform/*.docx
+
+# Neighbor/local study projects under D:\KLTN\Code
+practice_code/
+saga-inbox-outbox/
+spring-kafka-microservices/

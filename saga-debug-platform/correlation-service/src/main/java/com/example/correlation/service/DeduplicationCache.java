@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 
-/**
- * In-memory deduplication cache using Caffeine.
- * TTL: 1 hour. Uses eventId as key.
- */
+
+
+
+
 @Component
 public class DeduplicationCache {
 
@@ -27,13 +27,13 @@ public class DeduplicationCache {
         log.info("DeduplicationCache initialized: maxSize=100000, TTL=1h");
     }
 
-    /**
-     * Check if eventId has been seen before.
-     * If not seen, mark as seen and return false.
-     * If already seen, return true (duplicate).
-     * Uses Caffeine's atomic get() to prevent race conditions between
-     * concurrent Kafka consumer threads.
-     */
+    
+
+
+
+
+
+
     public boolean isDuplicate(String eventId) {
         if (eventId == null) return false;
         boolean[] wasAbsent = {false};
@@ -44,9 +44,9 @@ public class DeduplicationCache {
         return !wasAbsent[0];
     }
 
-    /**
-     * Get approximate count of cached entries.
-     */
+    
+
+
     public long size() {
         return cache.estimatedSize();
     }
