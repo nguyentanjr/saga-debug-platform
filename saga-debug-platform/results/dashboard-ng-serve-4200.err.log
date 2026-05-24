@@ -1,3 +1,0 @@
-Warning: Running a server with --disable-host-check is a security risk. See https://medium.com/webpack/webpack-dev-server-middleware-security-issues-1489d950874a for more information.
-- Generating browser application bundles (phase: setup)...
-√ Browser application bundle generation complete.
