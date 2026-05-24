@@ -32,3 +32,8 @@ saga-debug-platform/New folder (2).zip
 # Local document/reference files
 saga-debug-platform/*.pdf
 saga-debug-platform/*.docx
+
+# Neighbor/local study projects under D:\KLTN\Code
+practice_code/
+saga-inbox-outbox/
+spring-kafka-microservices/
