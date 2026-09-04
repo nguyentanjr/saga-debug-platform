@@ -5,6 +5,14 @@ spring:
   application:
     name: correlation-service
 
+  task:
+    scheduling:
+      pool:
+        # Seven @Scheduled jobs share this pool. The Spring default is a single
+        # thread, so one slow detector pass delayed every other detector and the
+        # auto-RCA sweep behind it.
+        size: 4
+
   datasource:
     url: jdbc:postgresql://${CORRELATION_DB_HOST:localhost}:${CORRELATION_DB_PORT:5432}/correlation_db
     username: ${CORRELATION_DB_USERNAME:demo}
@@ -25,11 +33,26 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      # Events for one saga arrive on eight different topics, so partition assignment
+      # does not keep them on one thread — two threads can read-modify-write the same
+      # SagaInstance. That is now safe rather than silent: saga_instances carries a
+      # @Version column, so the losing writer fails and the listener rethrows, and the
+      # container retries with backoff. Conflicts cost a retry, not a lost update.
+      # Contention stays low because a saga only ever sees a handful of events.
+      concurrency: 3
     consumer:
       group-id: correlation-engine-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+correlation:
+  kafka:
+    # Which topics carry saga telemetry. Adding a workflow means extending this
+    # pattern, not editing SagaEventConsumer. Kafka picks up newly created matching
+    # topics within metadata.max.age.ms.
+    topic-pattern: "order-.*|payment-.*|inventory-.*|refund-.*"
 
 management:
   endpoints:
@@ -51,6 +74,19 @@ anomaly:
     delayed-compensation-multiplier: 1.5
     compensation-recent-lookback: 10m
     service-crash-timeout-multiplier: 3
+    # LEGACY    — duration = gap between positionally adjacent events (original)
+    # PROJECTION — duration = operation duration from the execution projection
+    # SHADOW     — run both, keep LEGACY authoritative, log every divergence
+    step-timeout-mode: SHADOW
+
+retention:
+  # Off by default: this deletes telemetry permanently, and evaluation runs in this
+  # repository depend on historical sagas being present. Enable it for any long-lived
+  # deployment — without it saga_events, anomalies and rca_results grow without bound.
+  enabled: false
+  max-age: 30d
+  batch-size: 5000
+  schedule-cron: "0 30 3 * * *"
 
 rca:
   auto-analysis:
