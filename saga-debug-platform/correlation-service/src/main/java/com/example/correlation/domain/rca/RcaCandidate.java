@@ -12,10 +12,24 @@ public class RcaCandidate {
     private String rootCause;
     private String severity;
     private CandidateStatus status;
-    private Directness directness;
     private List<Evidence> evidence = new ArrayList<>();
     private List<String> suggestions = new ArrayList<>();
     private String statusReason;
+
+    /** Step whose observations this candidate rests on, per the execution projection. */
+    private String anchorStepId;
+
+    /** Earliest evidence timestamp; the candidate's position in the execution. */
+    private java.time.Instant anchorAt;
+
+    /**
+     * Rule ids of candidates anchored at a step upstream of this one.
+     *
+     * <p>An ordering observation, not a causal claim: it records that the execution
+     * diverged earlier somewhere this candidate depends on, and leaves the reader to
+     * judge whether that explains it.
+     */
+    private List<String> precededBy = new ArrayList<>();
 
     public static RcaCandidate from(CandidateAssessment assessment) {
         RcaCandidate candidate = new RcaCandidate();
@@ -23,10 +37,12 @@ public class RcaCandidate {
         candidate.setRootCause(assessment.getRootCause());
         candidate.setSeverity(assessment.getSeverity());
         candidate.setStatus(assessment.getStatus());
-        candidate.setDirectness(assessment.getDirectness());
         candidate.setEvidence(assessment.getEvidence());
         candidate.setSuggestions(assessment.getSuggestions());
         candidate.setStatusReason(assessment.getStatusReason());
+        candidate.setAnchorStepId(assessment.getAnchorStepId());
+        candidate.setAnchorAt(assessment.getAnchorAt());
+        candidate.setPrecededBy(assessment.getPrecededBy());
         return candidate;
     }
 
@@ -42,9 +58,6 @@ public class RcaCandidate {
     public CandidateStatus getStatus() { return status; }
     public void setStatus(CandidateStatus status) { this.status = status; }
 
-    public Directness getDirectness() { return directness; }
-    public void setDirectness(Directness directness) { this.directness = directness; }
-
     public List<Evidence> getEvidence() { return evidence; }
     public void setEvidence(List<Evidence> evidence) {
         this.evidence = evidence != null ? new ArrayList<>(evidence) : new ArrayList<>();
@@ -53,6 +66,17 @@ public class RcaCandidate {
     public List<String> getSuggestions() { return suggestions; }
     public void setSuggestions(List<String> suggestions) {
         this.suggestions = suggestions != null ? new ArrayList<>(suggestions) : new ArrayList<>();
+    }
+
+    public String getAnchorStepId() { return anchorStepId; }
+    public void setAnchorStepId(String anchorStepId) { this.anchorStepId = anchorStepId; }
+
+    public java.time.Instant getAnchorAt() { return anchorAt; }
+    public void setAnchorAt(java.time.Instant anchorAt) { this.anchorAt = anchorAt; }
+
+    public List<String> getPrecededBy() { return precededBy; }
+    public void setPrecededBy(List<String> precededBy) {
+        this.precededBy = precededBy != null ? new ArrayList<>(precededBy) : new ArrayList<>();
     }
 
     public String getStatusReason() { return statusReason; }

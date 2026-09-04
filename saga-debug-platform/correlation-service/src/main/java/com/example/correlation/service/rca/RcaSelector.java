@@ -5,85 +5,167 @@ import com.example.correlation.domain.SagaInstance;
 import com.example.correlation.domain.SagaStatus;
 import com.example.correlation.domain.rca.CandidateAssessment;
 import com.example.correlation.domain.rca.CandidateStatus;
-import com.example.correlation.domain.rca.Directness;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.OptionalInt;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class RcaSelector {
 
-    private static final List<ExclusionRule> EXCLUSIONS = List.of(
-            new ExclusionRule("R20",
-                    (candidate, context) -> context.hasAnyNonFallbackCandidate(),
-                    "Specific evidence candidates are already available; OBSERVABILITY_GAP is fallback-only."),
-            new ExclusionRule("R21",
-                    (candidate, context) -> context.hasAnyNonFallbackCandidate(),
-                    "Specific evidence candidates are already available; STUCK_UNKNOWN_CAUSE is fallback-only.")
-    );
+    private static final Set<String> FALLBACK_RULES = Set.of("R20", "R21");
 
     public SelectionResult select(List<CandidateAssessment> input,
             List<Anomaly> anomalies,
             SagaInstance saga) {
+        return select(input, anomalies, saga, ExecutionOrder.unknown());
+    }
+
+
+    /**
+     * @param order where each candidate's anchor sits in the execution, used to order
+     *              candidates by when the execution first diverged instead of by rule id
+     */
+    public SelectionResult select(List<CandidateAssessment> input,
+            List<Anomaly> anomalies,
+            SagaInstance saga,
+            ExecutionOrder order) {
         List<CandidateAssessment> candidates = input != null ? new ArrayList<>(input) : new ArrayList<>();
         List<Anomaly> anomalyList = anomalies != null ? anomalies : List.of();
-        SelectionContext context = new SelectionContext(candidates, anomalyList);
 
-        applyExclusions(candidates, context);
+        applyExclusions(candidates);
+        recordPrecedence(candidates, order);
+        candidates.sort(comparator(order));
 
         List<CandidateAssessment> evidenceCandidates = candidates.stream()
                 .filter(c -> c.getStatus() != CandidateStatus.RULED_OUT)
-                .collect(Collectors.toCollection(ArrayList::new));
-        for (CandidateAssessment candidate : evidenceCandidates) {
-            markEvidenceGroup(candidate);
-        }
+                .collect(Collectors.toList());
 
         SelectionResult result = new SelectionResult();
         result.setRcaStatus(resolveStatus(evidenceCandidates, anomalyList, saga));
-        result.setPrimaryRootCauses(List.of());
         result.setCandidates(candidates.stream().map(RcaCandidate::from).collect(Collectors.toList()));
         result.setMissingEvidence(buildMissingEvidence(candidates, result.getRcaStatus()));
         return result;
     }
 
-    private void applyExclusions(List<CandidateAssessment> candidates, SelectionContext context) {
-        for (CandidateAssessment candidate : candidates) {
-            for (ExclusionRule exclusion : EXCLUSIONS) {
-                if (exclusion.appliesTo(candidate, context)) {
-                    candidate.setStatus(CandidateStatus.RULED_OUT);
-                    candidate.setStatusReason(exclusion.getReason());
-                    break;
-                }
-            }
+    /**
+     * Where a candidate sits in the execution, and which steps precede which.
+     *
+     * <p>Supplied by the caller because only it can build the execution projection; the
+     * selector stays free of persistence and of workflow lookups.
+     */
+    public interface ExecutionOrder {
+        /** Position of a step in this execution, or empty when it was never observed. */
+        OptionalInt positionOf(String stepId);
+
+        /** Whether {@code candidate} is on the dependency path leading into {@code step}. */
+        boolean isUpstream(String candidate, String step);
+
+        static ExecutionOrder unknown() {
+            return new ExecutionOrder() {
+                @Override public OptionalInt positionOf(String stepId) { return OptionalInt.empty(); }
+                @Override public boolean isUpstream(String candidate, String step) { return false; }
+            };
         }
     }
 
-    private void markEvidenceGroup(CandidateAssessment candidate) {
-        if (candidate.getStatus() != null) {
+
+    /**
+     * Records, for each candidate, which other candidates are anchored upstream of it.
+     *
+     * <p>Deliberately not phrased as causation. Being upstream and earlier is a reason
+     * for a reader to look at that candidate first; it does not establish that it
+     * produced this one, and the platform has no evidence that would.
+     */
+    private void recordPrecedence(List<CandidateAssessment> candidates, ExecutionOrder order) {
+        for (CandidateAssessment candidate : candidates) {
+            String step = candidate.getAnchorStepId();
+            if (step == null) continue;
+
+            List<String> upstream = candidates.stream()
+                    .filter(other -> other != candidate)
+                    .filter(other -> other.getStatus() != CandidateStatus.RULED_OUT)
+                    .filter(other -> other.getAnchorStepId() != null)
+                    .filter(other -> order.isUpstream(other.getAnchorStepId(), step))
+                    .map(CandidateAssessment::getRuleId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .sorted()
+                    .collect(Collectors.toList());
+
+            if (upstream.isEmpty()) continue;
+            candidate.setPrecededBy(upstream);
+
+            String note = "Anchored at " + step + ", downstream of " + upstream
+                    + "; ordering only, no causal link established.";
+            candidate.setStatusReason(candidate.getStatusReason() == null
+                    ? note
+                    : candidate.getStatusReason() + " " + note);
+        }
+    }
+
+
+    /**
+     * Evidence tier first, then position in the execution, then severity.
+     *
+     * <p>The previous ordering fell through from severity to a lexicographic comparison
+     * of rule ids, so whichever candidate happened to be named "R07" outranked "R10".
+     * Execution position is at least a property of the failure being diagnosed. Rule id
+     * remains last purely to keep the order deterministic.
+     */
+    private Comparator<CandidateAssessment> comparator(ExecutionOrder order) {
+        return Comparator
+                .comparingInt((CandidateAssessment c) -> statusRank(c.getStatus()))
+                .thenComparingInt(c -> anchorPosition(c, order))
+                .thenComparing(c -> c.getAnchorAt(),
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparingInt(c -> -severityRank(c.getSeverity()))
+                .thenComparing(CandidateAssessment::getRuleId,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
+    private int anchorPosition(CandidateAssessment candidate, ExecutionOrder order) {
+        if (candidate.getAnchorStepId() == null) return Integer.MAX_VALUE;
+        return order.positionOf(candidate.getAnchorStepId()).orElse(Integer.MAX_VALUE);
+    }
+
+    private static int statusRank(CandidateStatus status) {
+        if (status == CandidateStatus.STRONG_EVIDENCE) return 0;
+        if (status == CandidateStatus.SUPPORTING_EVIDENCE) return 1;
+        if (status == CandidateStatus.WEAK_EVIDENCE) return 2;
+        if (status == CandidateStatus.RULED_OUT) return 3;
+        return 4;
+    }
+
+    private static int severityRank(String severity) {
+        if ("CRITICAL".equals(severity)) return 4;
+        if ("HIGH".equals(severity)) return 3;
+        if ("MEDIUM".equals(severity)) return 2;
+        if ("LOW".equals(severity)) return 1;
+        return 0;
+    }
+
+
+    private void applyExclusions(List<CandidateAssessment> candidates) {
+        boolean hasSpecificEvidence = candidates.stream()
+                .anyMatch(c -> !FALLBACK_RULES.contains(c.getRuleId()));
+        if (!hasSpecificEvidence) {
             return;
         }
-        Directness directness = candidate.getDirectness();
-        if (directness == Directness.DIRECT_SIGNATURE || directness == Directness.THRESHOLD_VIOLATION) {
-            candidate.setStatus(CandidateStatus.STRONG_EVIDENCE);
-            candidate.setStatusReason("Strong evidence from " + directness + ".");
-        } else if (directness == Directness.CORROBORATED_INFERENCE) {
-            candidate.setStatus(CandidateStatus.SUPPORTING_EVIDENCE);
-            candidate.setStatusReason("Supporting evidence from corroborated signals.");
-        } else {
-            candidate.setStatus(CandidateStatus.WEAK_EVIDENCE);
-            candidate.setStatusReason(defaultMissingEvidence(candidate));
+        for (CandidateAssessment candidate : candidates) {
+            if (FALLBACK_RULES.contains(candidate.getRuleId())) {
+                candidate.setStatus(CandidateStatus.RULED_OUT);
+                candidate.setStatusReason("Specific evidence candidates are already available; "
+                        + candidate.getRootCause() + " is fallback-only.");
+            }
         }
-    }
-
-    private String defaultMissingEvidence(CandidateAssessment candidate) {
-        if (candidate.getStatusReason() != null && !candidate.getStatusReason().isBlank()) {
-            return candidate.getStatusReason();
-        }
-        return "Weak evidence only; treat " + candidate.getRootCause() + " as a fallback hypothesis.";
     }
 
     private RcaStatus resolveStatus(List<CandidateAssessment> evidenceCandidates,
@@ -91,9 +173,7 @@ public class RcaSelector {
             SagaInstance saga) {
         boolean hasActionableEvidence = evidenceCandidates.stream()
                 .anyMatch(candidate -> candidate.getStatus() == CandidateStatus.STRONG_EVIDENCE
-                        || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE
-                        || candidate.getStatus() == CandidateStatus.SELECTED
-                        || candidate.getStatus() == CandidateStatus.CONTRIBUTING);
+                        || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE);
         if (hasActionableEvidence) {
             return RcaStatus.EVIDENCE_AVAILABLE;
         }
@@ -110,8 +190,7 @@ public class RcaSelector {
             return List.of();
         }
         List<String> missing = candidates.stream()
-                .filter(c -> c.getStatus() == CandidateStatus.WEAK_EVIDENCE
-                        || c.getStatus() == CandidateStatus.POSSIBLE_BUT_UNSUPPORTED)
+                .filter(c -> c.getStatus() == CandidateStatus.WEAK_EVIDENCE)
                 .map(CandidateAssessment::getStatusReason)
                 .filter(reason -> reason != null && !reason.isBlank())
                 .distinct()
@@ -120,5 +199,24 @@ public class RcaSelector {
             missing.add("No RCA candidate could be built from the available evidence.");
         }
         return missing;
+    }
+    
+    public static class SelectionResult {
+        private RcaStatus rcaStatus;
+        private List<RcaCandidate> candidates = new ArrayList<>();
+        private List<String> missingEvidence = new ArrayList<>();
+
+        public RcaStatus getRcaStatus() { return rcaStatus; }
+        public void setRcaStatus(RcaStatus rcaStatus) { this.rcaStatus = rcaStatus; }
+
+        public List<RcaCandidate> getCandidates() { return candidates; }
+        public void setCandidates(List<RcaCandidate> candidates) {
+            this.candidates = candidates != null ? new ArrayList<>(candidates) : new ArrayList<>();
+        }
+
+        public List<String> getMissingEvidence() { return missingEvidence; }
+        public void setMissingEvidence(List<String> missingEvidence) {
+            this.missingEvidence = missingEvidence != null ? new ArrayList<>(missingEvidence) : new ArrayList<>();
+        }
     }
 }

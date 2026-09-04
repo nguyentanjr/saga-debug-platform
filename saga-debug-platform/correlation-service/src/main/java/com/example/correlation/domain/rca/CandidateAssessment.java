@@ -8,11 +8,18 @@ public class CandidateAssessment {
     private String ruleId;
     private String rootCause;
     private String severity;
-    private Directness directness;
     private CandidateStatus status;
     private List<Evidence> evidence = new ArrayList<>();
     private List<String> suggestions = new ArrayList<>();
     private String statusReason;
+
+    /**
+     * Where in the execution this candidate's evidence points, and what else the
+     * execution shows before it. Set during selection, not by the rule.
+     */
+    private String anchorStepId;
+    private java.time.Instant anchorAt;
+    private List<String> precededBy = new ArrayList<>();
 
     public static Builder builder() {
         return new Builder();
@@ -27,9 +34,6 @@ public class CandidateAssessment {
     public String getSeverity() { return severity; }
     public void setSeverity(String severity) { this.severity = severity; }
 
-    public Directness getDirectness() { return directness; }
-    public void setDirectness(Directness directness) { this.directness = directness; }
-
     public CandidateStatus getStatus() { return status; }
     public void setStatus(CandidateStatus status) { this.status = status; }
 
@@ -41,6 +45,17 @@ public class CandidateAssessment {
     public List<String> getSuggestions() { return suggestions; }
     public void setSuggestions(List<String> suggestions) {
         this.suggestions = suggestions != null ? new ArrayList<>(suggestions) : new ArrayList<>();
+    }
+
+    public String getAnchorStepId() { return anchorStepId; }
+    public void setAnchorStepId(String anchorStepId) { this.anchorStepId = anchorStepId; }
+
+    public java.time.Instant getAnchorAt() { return anchorAt; }
+    public void setAnchorAt(java.time.Instant anchorAt) { this.anchorAt = anchorAt; }
+
+    public List<String> getPrecededBy() { return precededBy; }
+    public void setPrecededBy(List<String> precededBy) {
+        this.precededBy = precededBy != null ? new ArrayList<>(precededBy) : new ArrayList<>();
     }
 
     public String getStatusReason() { return statusReason; }
@@ -61,11 +76,6 @@ public class CandidateAssessment {
 
         public Builder severity(String severity) {
             candidate.setSeverity(severity);
-            return this;
-        }
-
-        public Builder directness(Directness directness) {
-            candidate.setDirectness(directness);
             return this;
         }
 

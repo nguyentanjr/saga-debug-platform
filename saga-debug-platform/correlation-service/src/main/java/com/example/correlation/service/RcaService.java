@@ -1,9 +1,10 @@
 package com.example.correlation.service;
 
 import com.example.correlation.domain.*;
+import com.example.correlation.execution.ExecutionProjection;
+import com.example.correlation.execution.ExecutionProjectionService;
 import com.example.correlation.domain.rca.CandidateStatus;
 import com.example.correlation.domain.rca.CandidateAssessment;
-import com.example.correlation.domain.rca.Directness;
 import com.example.correlation.domain.rca.Evidence;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
@@ -14,19 +15,25 @@ import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertEvent;
 import com.example.correlation.service.alert.AlertSink;
 import com.example.correlation.service.rca.RcaSelector;
-import com.example.correlation.service.rca.SelectionResult;
-import com.example.correlation.workflow.WorkflowLoader;
+import com.example.correlation.workflow.WorkflowRegistry;
+import com.example.correlation.workflow.WorkflowSpec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.OptionalInt;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,35 +45,43 @@ public class RcaService {
     private final SagaEventRepository sagaEventRepository;
     private final AnomalyRepository anomalyRepository;
     private final RcaResultRepository rcaResultRepository;
-    private final WorkflowLoader workflowLoader;
+    private final WorkflowRegistry workflowRegistry;
     private final ObjectMapper objectMapper;
     private final RcaSelector rcaSelector;
     private final DetectionProperties detectionProperties;
     private final AlertSink alertSink;
+    private final ExecutionProjectionService executionProjectionService;
+    private final RcaService self;
 
     public RcaService(SagaInstanceRepository sagaInstanceRepository,
             SagaEventRepository sagaEventRepository,
             AnomalyRepository anomalyRepository,
             RcaResultRepository rcaResultRepository,
-            WorkflowLoader workflowLoader,
+            WorkflowRegistry workflowRegistry,
             ObjectMapper objectMapper,
             RcaSelector rcaSelector,
             DetectionProperties detectionProperties,
-            AlertSink alertSink) {
+            AlertSink alertSink,
+            ExecutionProjectionService executionProjectionService,
+            @Lazy RcaService self) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
         this.rcaResultRepository = rcaResultRepository;
-        this.workflowLoader = workflowLoader;
+        this.workflowRegistry = workflowRegistry;
         this.objectMapper = objectMapper;
         this.rcaSelector = rcaSelector;
         this.detectionProperties = detectionProperties;
         this.alertSink = alertSink;
+        this.executionProjectionService = executionProjectionService;
+        this.self = self;
     }
 
     @Transactional
     public RcaResult analyze(String sagaId) {
-        SagaInstance saga = sagaInstanceRepository.findById(sagaId).orElse(null);
+        // Locks the saga for this transaction so two concurrent analyses cannot both
+        // delete the previous result and both insert a new one.
+        SagaInstance saga = sagaInstanceRepository.findByIdForUpdate(sagaId).orElse(null);
         if (saga == null) {
             log.warn("Saga {} not found for RCA", sagaId);
             return null;
@@ -79,17 +94,19 @@ public class RcaService {
         List<Anomaly> anomalies = anomalyRepository.findBySagaId(sagaId);
 
         
+        WorkflowSpec workflow = workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
+
         List<CandidateAssessment> candidates = new ArrayList<>();
-        addIfPresent(candidates, ruleCircuitBreakerOpen(events));
-        addIfPresent(candidates, ruleTimeoutRetryStorm(anomalies, events));
+        addIfPresent(candidates, ruleCircuitBreakerOpen(workflow, events));
+        addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
         addIfPresent(candidates, ruleMultiTerminalConflict(anomalies));
         addIfPresent(candidates, ruleTerminalStateOverwrite(anomalies));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
         addIfPresent(candidates, ruleTransientServiceFailure(saga, anomalies));
         addIfPresent(candidates, ruleDownstreamTimeout(anomalies));
         addIfPresent(candidates, ruleCompensationNotTriggered(anomalies));
-        addIfPresent(candidates, ruleCompensationStepFailure(saga, events, anomalies));
-        addIfPresent(candidates, ruleForwardStepFailure(saga, events));
+        addIfPresent(candidates, ruleCompensationStepFailure(workflow, saga, events, anomalies));
+        addIfPresent(candidates, ruleForwardStepFailure(workflow, saga, events));
         addIfPresent(candidates, ruleInvalidTransition(anomalies));
         addIfPresent(candidates, ruleDuplicateDelivery(anomalies));
         addIfPresent(candidates, ruleOutOfOrderDelivery(saga, anomalies));
@@ -102,10 +119,19 @@ public class RcaService {
         addIfPresent(candidates, ruleStuckUnknownCause(saga, anomalies));
         addIfPresent(candidates, ruleObservabilityGap(anomalies));
 
-        SelectionResult selection = rcaSelector.select(candidates, anomalies, saga);
+        // Locate each candidate in the execution before ranking, so ordering reflects
+        // where the execution diverged rather than how the rules happen to be named.
+        ExecutionProjection projection =
+                executionProjectionService.project(sagaId, events, workflow);
+        anchorCandidates(candidates, events, projection, workflow);
+
+        RcaSelector.SelectionResult selection =
+                rcaSelector.select(candidates, anomalies, saga, executionOrder(projection, workflow));
         RcaStatus rcaStatus = selection.getRcaStatus();
         List<RcaCandidate> evidenceCandidates = evidenceCandidates(selection);
-        evidenceCandidates.sort(this::compareCandidateStrength);
+        // Order already established by the selector, which knows where each candidate
+        // sits in the execution. Re-sorting here on severity and rule id would throw
+        // that away and put the alphabetically-first rule back on top.
 
         
         String outcome = determineOutcome(saga, anomalies, rcaStatus);
@@ -121,10 +147,6 @@ public class RcaService {
         appendEvidenceGroup(evidence, suggestions, "Weak evidence",
                 candidatesWithStatus(selection, CandidateStatus.WEAK_EVIDENCE));
         
-        appendEvidenceGroup(evidence, suggestions, "Strong evidence",
-                candidatesWithStatus(selection, CandidateStatus.SELECTED));
-        appendEvidenceGroup(evidence, suggestions, "Supporting evidence",
-                candidatesWithStatus(selection, CandidateStatus.CONTRIBUTING));
         suggestions = suggestions.stream().distinct().collect(Collectors.toCollection(ArrayList::new));
 
         
@@ -195,12 +217,113 @@ public class RcaService {
         }
     }
 
+    /**
+     * Ties each candidate to the step its earliest piece of evidence belongs to.
+     *
+     * <p>Evidence already carries the event ids the rule relied on; the projection says
+     * which operation each of those events belongs to. Taking the earliest gives the
+     * point in the execution where this candidate's story starts, which is what makes
+     * "which of these came first" answerable at all.
+     *
+     * <p>Anomaly-derived evidence often carries no event ids, in which case the
+     * anomaly's own measurement time still positions it in time even though no step can
+     * be named. Candidates that cannot be placed keep a null anchor and sort last rather
+     * than being given a fabricated position.
+     */
+    private void anchorCandidates(List<CandidateAssessment> candidates,
+            List<SagaEvent> events,
+            ExecutionProjection projection,
+            WorkflowSpec workflow) {
+
+        Map<String, SagaEvent> eventsById = events.stream()
+                .filter(e -> e.getEventId() != null)
+                .collect(Collectors.toMap(SagaEvent::getEventId, e -> e, (a, b) -> a));
+
+        for (CandidateAssessment candidate : candidates) {
+            SagaEvent earliest = candidate.getEvidence().stream()
+                    .flatMap(evidence -> evidence.eventIds().stream())
+                    .map(eventsById::get)
+                    .filter(Objects::nonNull)
+                    .filter(e -> e.getTimestamp() != null)
+                    .min(Comparator.comparing(SagaEvent::getTimestamp))
+                    .orElse(null);
+
+            if (earliest == null) continue;
+
+            candidate.setAnchorAt(earliest.getTimestamp());
+            if (workflow != null) {
+                workflow.classifyEvent(earliest.getEventType())
+                        .map(WorkflowSpec.EventRole::stepId)
+                        .filter(stepId -> projection.operation(stepId).isPresent())
+                        .ifPresent(candidate::setAnchorStepId);
+            }
+        }
+    }
+
+    /**
+     * Execution position and dependency direction.
+     *
+     * <p>Dependency is answered from what was observed where the telemetry supports it,
+     * and from the specification otherwise. The distinction matters: the specification
+     * says which steps <em>can</em> depend on which, while the causal links say which
+     * ones <em>did</em> in this run. A step that the spec places downstream but that no
+     * observed chain connects to is not evidence of anything here.
+     */
+    private RcaSelector.ExecutionOrder executionOrder(ExecutionProjection projection,
+            WorkflowSpec workflow) {
+        List<String> stepOrder = projection.operations().stream()
+                .map(ExecutionProjection.Operation::stepId)
+                .toList();
+
+        Map<String, String> observedCause = new LinkedHashMap<>();
+        for (ExecutionProjection.Operation op : projection.operations()) {
+            if (op.startProvenance() != ExecutionProjection.StartProvenance.OBSERVED_CAUSAL_LINK) {
+                continue;
+            }
+            projection.operations().stream()
+                    .filter(other -> op.startEventId() != null
+                            && op.startEventId().equals(other.endEventId()))
+                    .findFirst()
+                    .ifPresent(cause -> observedCause.put(op.stepId(), cause.stepId()));
+        }
+
+        return new RcaSelector.ExecutionOrder() {
+            @Override
+            public OptionalInt positionOf(String stepId) {
+                int index = stepOrder.indexOf(stepId);
+                return index < 0 ? OptionalInt.empty() : OptionalInt.of(index);
+            }
+
+            @Override
+            public boolean isUpstream(String candidate, String step) {
+                if (walkObservedCauses(step).contains(candidate)) {
+                    return true;
+                }
+                return workflow != null && workflow.isUpstreamOf(candidate, step);
+            }
+
+            private Set<String> walkObservedCauses(String step) {
+                Set<String> seen = new LinkedHashSet<>();
+                String cursor = observedCause.get(step);
+                while (cursor != null && seen.add(cursor)) {
+                    cursor = observedCause.get(cursor);
+                }
+                return seen;
+            }
+        };
+    }
+
     public List<RcaResult> getResults(String sagaId) {
         return rcaResultRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
     }
 
+    /**
+     * Not transactional, and deliberately so: analysis of each saga runs in its own
+     * transaction via {@code self}. Wrapping the whole sweep in one transaction meant a
+     * single failing saga rolled back every result the pass had already produced, and
+     * held one long-lived transaction open across the entire batch.
+     */
     @Scheduled(fixedRateString = "${rca.auto-analysis.fixed-rate-ms:30000}")
-    @Transactional
     public void autoAnalyzeNewlyDetectedAnomalies() {
         Instant cutoff = Instant.now().minus(2, ChronoUnit.MINUTES);
         List<String> sagaIds = anomalyRepository.findSagaIdsWithAnomaliesSince(cutoff);
@@ -218,7 +341,8 @@ public class RcaService {
 
             if (needsAnalysis) {
                 try {
-                    RcaResult result = analyze(sagaId);
+                    // Through the proxy, so @Transactional applies per saga.
+                    RcaResult result = self.analyze(sagaId);
                     if (result != null) {
                         log.info("Auto-RCA triggered for saga {} with rcaStatus={} rootCause={}",
                                 sagaId, result.getRcaStatus(), result.getRootCause());
@@ -231,8 +355,7 @@ public class RcaService {
     }
 
     private void emitAlert(RcaResult result, List<String> evidenceSummary) {
-        if (result.getRcaStatus() != RcaStatus.EVIDENCE_AVAILABLE
-                && result.getRcaStatus() != RcaStatus.SELECTED) {
+        if (result.getRcaStatus() != RcaStatus.EVIDENCE_AVAILABLE) {
             return;
         }
 
@@ -244,17 +367,50 @@ public class RcaService {
             return;
         }
 
-        try {
-            alertSink.emit(new AlertEvent(
-                    Instant.now(),
-                    result.getSagaId(),
-                    result.getRcaStatus().name(),
-                    rootCauses,
-                    result.getSeverity(),
-                    evidenceSummary != null ? List.copyOf(evidenceSummary) : List.of()));
-        } catch (Exception e) {
-            log.error("Failed to emit RCA alert for saga {}: {}", result.getSagaId(), e.getMessage());
+        AlertEvent alert = new AlertEvent(
+                Instant.now(),
+                result.getSagaId(),
+                result.getRcaStatus().name(),
+                rootCauses,
+                result.getSeverity(),
+                evidenceSummary != null ? List.copyOf(evidenceSummary) : List.of());
+
+        // Deferred to commit. Emitting inline announced a diagnosis that the enclosing
+        // transaction could still roll back, leaving an alert on disk for a result that
+        // was never stored.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    writeAlert(alert);
+                }
+            });
+        } else {
+            writeAlert(alert);
         }
+    }
+
+    private void writeAlert(AlertEvent alert) {
+        try {
+            alertSink.emit(alert);
+        } catch (Exception e) {
+            log.error("Failed to emit RCA alert for saga {}: {}", alert.sagaId(), e.getMessage());
+        }
+    }
+
+    /** Events playing the given lifecycle role on any compensation step of this workflow. */
+    private List<SagaEvent> compensationEvents(WorkflowSpec workflow, List<SagaEvent> events,
+            WorkflowSpec.EventRole.Role role) {
+        if (workflow == null) return List.of();
+        return events.stream()
+                .filter(e -> workflow.classifyEvent(e.getEventType())
+                        .filter(r -> r.role() == role && workflow.isCompensationStep(r.stepId()))
+                        .isPresent())
+                .collect(Collectors.toList());
+    }
+
+    private static String eventTypes(List<SagaEvent> events) {
+        return events.stream().map(SagaEvent::getEventType).distinct().collect(Collectors.joining(", "));
     }
 
     private void addIfPresent(List<CandidateAssessment> list, CandidateAssessment candidate) {
@@ -263,7 +419,7 @@ public class RcaService {
 
     private String determineOutcome(SagaInstance saga, List<Anomaly> anomalies, RcaStatus rcaStatus) {
         boolean hasAnomalies = !anomalies.isEmpty();
-        boolean hasRca = rcaStatus == RcaStatus.SELECTED || rcaStatus == RcaStatus.EVIDENCE_AVAILABLE;
+        boolean hasRca = rcaStatus == RcaStatus.EVIDENCE_AVAILABLE;
         boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
                 || saga.getStatus() == SagaStatus.COMPENSATED
                 || saga.getStatus() == SagaStatus.FAILED;
@@ -286,21 +442,30 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleCircuitBreakerOpen(List<SagaEvent> events) {
+    private CandidateAssessment ruleCircuitBreakerOpen(WorkflowSpec workflow, List<SagaEvent> events) {
+        if (workflow == null) return null;
         for (SagaEvent event : events) {
-            if ("PAYMENT_FAILED".equals(event.getEventType())) {
-                String payload = event.getPayload() != null ? event.getPayload().toLowerCase() : "";
-                if (payload.contains("circuit breaker") || payload.contains("retry exhausted")) {
-                    CandidateAssessment rr = candidate("CIRCUIT_BREAKER_OPEN", "CRITICAL", "R01",
-                            Directness.DIRECT_SIGNATURE);
-                    rr.getEvidence().add(Evidence.ofEvent("Payment failed with circuit breaker/retry exhaustion",
-                            event.getPayload(), "payment succeeds or reports business failure",
-                            event.getEventId()));
-                    rr.getEvidence().add(Evidence.of("Payload: " + event.getPayload(), null));
-                    rr.getSuggestions().add("Check downstream service health");
-                    rr.getSuggestions().add("Review Resilience4j metrics at /actuator/circuitbreakers");
-                    return rr;
-                }
+            boolean isFailure = workflow.classifyEvent(event.getEventType())
+                    .filter(role -> role.role() == WorkflowSpec.EventRole.Role.FAILED)
+                    .isPresent();
+            if (!isFailure) continue;
+
+            String payload = event.getPayload() != null ? event.getPayload().toLowerCase(Locale.ROOT) : "";
+            if (payload.contains("circuit breaker") || payload.contains("retry exhausted")) {
+                CandidateAssessment rr = candidate("CIRCUIT_BREAKER_OPEN", "CRITICAL", "R01",
+                        CandidateStatus.STRONG_EVIDENCE);
+                rr.getEvidence().add(Evidence.ofEvent(
+                        event.getEventType() + " reports circuit breaker / retry exhaustion",
+                        event.getPayload(), "the step succeeds or reports a business failure",
+                        event.getEventId()));
+                rr.getEvidence().add(Evidence.of("Payload: " + event.getPayload(), null));
+                // The signature is a substring of a message the failing service writes,
+                // not a reading of breaker state. It establishes that retries were
+                // exhausted; whether a breaker ever opened is not shown by this evidence.
+                rr.setStatusReason("Signature matched in the failure payload; breaker state itself was not observed.");
+                rr.getSuggestions().add("Check downstream service health");
+                rr.getSuggestions().add("Review Resilience4j metrics at /actuator/circuitbreakers");
+                return rr;
             }
         }
         return null;
@@ -313,20 +478,22 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleTimeoutRetryStorm(List<Anomaly> anomalies, List<SagaEvent> events) {
+    private CandidateAssessment ruleTimeoutRetryStorm(WorkflowSpec workflow, List<Anomaly> anomalies,
+            List<SagaEvent> events) {
+        Set<String> retryEventTypes = workflow != null ? workflow.retryEventTypes() : Set.of();
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.RETRY_BURST) {
                 List<SagaEvent> timeoutRetryEvents = events.stream()
-                        .filter(e -> "PAYMENT_RETRY".equals(e.getEventType()))
+                        .filter(e -> retryEventTypes.contains(e.getEventType()))
                         .filter(e -> payloadIndicatesTimeout(e.getPayload()))
                         .collect(Collectors.toList());
                 boolean hasTimeoutEvidence = !timeoutRetryEvents.isEmpty();
                 CandidateAssessment rr = candidate("TIMEOUT_RETRY_STORM", "CRITICAL", "R02",
-                        hasTimeoutEvidence ? Directness.DIRECT_SIGNATURE : Directness.HEURISTIC_INFERENCE);
+                        hasTimeoutEvidence ? CandidateStatus.STRONG_EVIDENCE : CandidateStatus.WEAK_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 if (hasTimeoutEvidence) {
                     rr.getEvidence().add(Evidence.of(
-                            "PAYMENT_RETRY payloads report timeout exceptions",
+                            "Retry payloads report timeout exceptions",
                             timeoutRetryEvents.stream()
                                     .map(SagaEvent::getPayload)
                                     .filter(Objects::nonNull)
@@ -363,7 +530,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.MULTI_TERMINAL_CONFLICT) {
                 CandidateAssessment rr = candidate("MULTI_TERMINAL_CONFLICT", "CRITICAL", "R03",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Enforce final-state immutability");
                 rr.getSuggestions().add("Check for duplicate terminal event delivery");
@@ -381,7 +548,7 @@ public class RcaService {
             if (a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL
                     || a.getAnomalyType() == AnomalyType.STATE_REGRESSION) {
                 CandidateAssessment rr = candidate("TERMINAL_STATE_OVERWRITE", "HIGH", "R04",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Implement compare-and-set for saga state updates");
                 rr.getSuggestions().add("Reject events arriving after terminal state");
@@ -413,7 +580,10 @@ public class RcaService {
                     || saga.getStatus() == SagaStatus.COMPENSATED
                     || saga.getStatus() == SagaStatus.FAILED;
 
-            var workflow = workflowLoader.getOrderSagaWorkflow();
+            // Resolved from the saga's own workflow: R05's threshold is the slowest step
+            // of the workflow this execution belongs to, not of whichever workflow
+            // happened to be loaded first.
+            var workflow = workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
             
             int maxTimeout = detectionProperties.getDefaultStepTimeoutSeconds();
             if (workflow != null && workflow.getSteps() != null) {
@@ -447,7 +617,7 @@ public class RcaService {
                     
                     CandidateAssessment rr = candidate("SERVICE_CRASH",
                             isRecovered ? "MEDIUM" : "CRITICAL", "R05",
-                            Directness.CORROBORATED_INFERENCE);
+                            CandidateStatus.SUPPORTING_EVIDENCE);
                     rr.getEvidence().add(evidence("Saga stuck for " + stuckSeconds + "s (>"
                             + serviceCrashTimeoutSeconds + "s threshold)"));
                     rr.getEvidence().add(evidence("Both SAGA_STUCK and MISSING_TERMINAL_EVENT anomalies present"));
@@ -490,7 +660,7 @@ public class RcaService {
         
         if (hasStuck && !hasMissingTerminal && !hasStepTimeoutBeforeRecovery && isTerminal) {
             CandidateAssessment rr = candidate("TRANSIENT_SERVICE_FAILURE", "LOW", "R06",
-                    Directness.DIRECT_SIGNATURE);
+                    CandidateStatus.STRONG_EVIDENCE);
             rr.getEvidence().add(evidence("Saga was previously stuck (SAGA_STUCK anomaly detected)"));
             rr.getEvidence().add(evidence("Saga has since recovered → final status: " + saga.getStatus()));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
@@ -523,7 +693,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.STEP_TIMEOUT) {
                 CandidateAssessment rr = candidate("DOWNSTREAM_TIMEOUT", "HIGH", "R07",
-                        Directness.THRESHOLD_VIOLATION);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Tune step timeout thresholds in workflow spec");
                 rr.getSuggestions().add("Check downstream service performance");
@@ -540,7 +710,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.COMPENSATION_MISSING) {
                 CandidateAssessment rr = candidate("COMPENSATION_NOT_TRIGGERED", "HIGH", "R09",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Check if orchestrator (order-service) is running");
                 rr.getSuggestions().add("Verify compensation trigger logic");
@@ -554,23 +724,31 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleCompensationStepFailure(SagaInstance saga, List<SagaEvent> events,
-            List<Anomaly> anomalies) {
-        boolean hasRefundCommand = events.stream()
-                .anyMatch(e -> "REFUND_PAYMENT".equals(e.getEventType()));
-        boolean hasRefundCompleted = events.stream()
-                .anyMatch(e -> "PAYMENT_REFUNDED".equals(e.getEventType()));
+    private CandidateAssessment ruleCompensationStepFailure(WorkflowSpec workflow, SagaInstance saga,
+            List<SagaEvent> events, List<Anomaly> anomalies) {
+        List<SagaEvent> started = compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.STARTED);
+        boolean completed = !compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.COMPLETED).isEmpty();
         boolean hasMissingCompAck = anomalies.stream()
                 .anyMatch(a -> a.getAnomalyType() == AnomalyType.MISSING_COMPENSATION_ACK);
 
-        if (hasRefundCommand && !hasRefundCompleted
+        if (!started.isEmpty() && !completed
                 && (saga.getStatus() == SagaStatus.COMPENSATING || hasMissingCompAck)) {
             CandidateAssessment rr = candidate("COMPENSATION_STEP_FAILURE", "HIGH", "R10",
-                    Directness.DIRECT_SIGNATURE);
-            rr.getEvidence().add(evidence("Compensation started (REFUND_PAYMENT) but no PAYMENT_REFUNDED received"));
-            rr.getEvidence().add(evidence("Saga stuck in COMPENSATING status"));
-            rr.getSuggestions().add("Check payment-service logs for refund errors");
-            rr.getSuggestions().add("Verify Kafka connectivity for refund delivery");
+                    CandidateStatus.STRONG_EVIDENCE);
+            String startedTypes = eventTypes(started);
+            rr.getEvidence().add(evidence(
+                    "Compensation started (" + startedTypes + ") but never acknowledged"));
+            rr.getEvidence().add(evidence("Saga status: " + saga.getStatus()));
+            // Fires as soon as the saga enters COMPENSATING, which is the same event that
+            // starts the compensation, so a compensation still within its budget looks
+            // identical to one that failed. MISSING_COMPENSATION_ACK is the signal that
+            // waited for a deadline; without it this is a hypothesis, not a failure.
+            if (!hasMissingCompAck) {
+                rr.setStatus(CandidateStatus.WEAK_EVIDENCE);
+                rr.setStatusReason("No acknowledgement deadline has elapsed yet; the compensation may still be in flight.");
+            }
+            rr.getSuggestions().add("Check the compensating service's logs");
+            rr.getSuggestions().add("Verify broker connectivity for the compensation topic");
             return rr;
         }
         return null;
@@ -580,16 +758,16 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleForwardStepFailure(SagaInstance saga, List<SagaEvent> events) {
-        boolean hasRefundCommand = events.stream()
-                .anyMatch(e -> "REFUND_PAYMENT".equals(e.getEventType()));
-        boolean hasRefundCompleted = events.stream()
-                .anyMatch(e -> "PAYMENT_REFUNDED".equals(e.getEventType()));
+    private CandidateAssessment ruleForwardStepFailure(WorkflowSpec workflow, SagaInstance saga,
+            List<SagaEvent> events) {
+        List<SagaEvent> started = compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.STARTED);
+        List<SagaEvent> completed = compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.COMPLETED);
 
-        if (saga.getStatus() == SagaStatus.COMPENSATED && hasRefundCommand && hasRefundCompleted) {
+        if (saga.getStatus() == SagaStatus.COMPENSATED && !started.isEmpty() && !completed.isEmpty()) {
             CandidateAssessment rr = candidate("FORWARD_STEP_FAILURE", "LOW", "R11",
-                    Directness.DIRECT_SIGNATURE);
-            rr.getEvidence().add(evidence("Compensation completed: REFUND_PAYMENT → PAYMENT_REFUNDED"));
+                    CandidateStatus.STRONG_EVIDENCE);
+            rr.getEvidence().add(evidence("Compensation completed: "
+                    + eventTypes(started) + " -> " + eventTypes(completed)));
             rr.getEvidence().add(evidence("Saga status: COMPENSATED"));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
                 long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
@@ -608,7 +786,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.INVALID_TRANSITION) {
                 CandidateAssessment rr = candidate("INVALID_TRANSITION", "MEDIUM", "R12",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Verify event routing in upstream services");
                 rr.getSuggestions().add("Review workflow spec transitions");
@@ -625,7 +803,7 @@ public class RcaService {
             if (a.getAnomalyType() == AnomalyType.EXACT_DUPLICATE_EVENT
                     || a.getAnomalyType() == AnomalyType.DUPLICATE_COMPENSATION) {
                 CandidateAssessment rr = candidate("DUPLICATE_DELIVERY", "LOW", "R13",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Verify producer idempotency configuration");
                 rr.getSuggestions().add("Check consumer deduplication mechanisms");
@@ -646,7 +824,7 @@ public class RcaService {
             if (a.getAnomalyType() == AnomalyType.OUT_OF_ORDER) {
                 CandidateAssessment rr = candidate("OUT_OF_ORDER_DELIVERY",
                         isTerminal ? "LOW" : "MEDIUM", "R14",
-                        Directness.THRESHOLD_VIOLATION);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 if (isTerminal) {
                     rr.getEvidence().add(evidence("Saga completed despite out-of-order events"));
@@ -669,7 +847,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.ORPHAN_EVENT) {
                 CandidateAssessment rr = candidate("WRONG_SAGA_CORRELATION_KEY", "HIGH", "R15",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Verify sagaId propagation across services");
                 rr.getSuggestions().add("Check Kafka header saga-id configuration");
@@ -685,7 +863,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.MISSING_TRACE_CONTEXT) {
                 CandidateAssessment rr = candidate("MISSING_TRACE_PROPAGATION", "MEDIUM", "R19",
-                        Directness.DIRECT_SIGNATURE);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getEvidence().add(evidence("Events missing traceId cannot be correlated in Jaeger"));
                 rr.getSuggestions().add("Verify trace context propagation in service configuration");
@@ -705,7 +883,7 @@ public class RcaService {
     private CandidateAssessment ruleObservabilityGap(List<Anomaly> anomalies) {
         if (!anomalies.isEmpty()) {
             CandidateAssessment rr = candidate("OBSERVABILITY_GAP", "LOW", "R20",
-                    Directness.HEURISTIC_INFERENCE);
+                    CandidateStatus.WEAK_EVIDENCE);
             rr.getEvidence().add(evidence("Anomalies detected but insufficient evidence to determine root cause"));
             rr.getEvidence().add(evidence("Anomaly types: " + anomalies.stream()
                     .map(a -> a.getAnomalyType().name())
@@ -732,7 +910,7 @@ public class RcaService {
 
         if (hasStuck && isNonTerminal) {
             CandidateAssessment rr = candidate("STUCK_UNKNOWN_CAUSE", "HIGH", "R21",
-                    Directness.HEURISTIC_INFERENCE);
+                    CandidateStatus.WEAK_EVIDENCE);
             rr.getEvidence().add(evidence("Saga stuck in " + saga.getStatus() + " status"));
             rr.getEvidence().add(evidence("No specific root cause identified — insufficient evidence"));
             rr.getSuggestions().add("Check all downstream service health");
@@ -751,7 +929,7 @@ public class RcaService {
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.DELAYED_COMPENSATION) {
                 CandidateAssessment rr = candidate("DELAYED_COMPENSATION", "MEDIUM", "R22",
-                        Directness.THRESHOLD_VIOLATION);
+                        CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 rr.getSuggestions().add("Review orchestrator compensation trigger latency");
                 rr.getSuggestions().add("Check message broker throughput during compensation");
@@ -765,13 +943,18 @@ public class RcaService {
     
     
     private CandidateAssessment candidate(String rootCause, String severity, String ruleId,
-            Directness directness) {
-        return CandidateAssessment.builder()
+            CandidateStatus tier) {
+        CandidateAssessment candidate = CandidateAssessment.builder()
                 .rootCause(rootCause)
                 .severity(severity)
                 .ruleId(ruleId)
-                .directness(directness)
+                .status(tier)
                 .build();
+        if (tier == CandidateStatus.WEAK_EVIDENCE) {
+            candidate.setStatusReason(
+                    "Weak evidence only; treat " + rootCause + " as a fallback hypothesis.");
+        }
+        return candidate;
     }
 
     private Evidence evidence(String fact) {
@@ -788,13 +971,13 @@ public class RcaService {
                 anomaly.getEvidenceEventIds());
     }
 
-    private List<RcaCandidate> candidatesWithStatus(SelectionResult selection, CandidateStatus status) {
+    private List<RcaCandidate> candidatesWithStatus(RcaSelector.SelectionResult selection, CandidateStatus status) {
         return selection.getCandidates().stream()
                 .filter(candidate -> candidate.getStatus() == status)
                 .collect(Collectors.toList());
     }
 
-    private List<RcaCandidate> evidenceCandidates(SelectionResult selection) {
+    private List<RcaCandidate> evidenceCandidates(RcaSelector.SelectionResult selection) {
         return selection.getCandidates().stream()
                 .filter(candidate -> isEvidenceStatus(candidate.getStatus()))
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -803,9 +986,7 @@ public class RcaService {
     private boolean isEvidenceStatus(CandidateStatus status) {
         return status == CandidateStatus.STRONG_EVIDENCE
                 || status == CandidateStatus.SUPPORTING_EVIDENCE
-                || status == CandidateStatus.WEAK_EVIDENCE
-                || status == CandidateStatus.SELECTED
-                || status == CandidateStatus.CONTRIBUTING;
+                || status == CandidateStatus.WEAK_EVIDENCE;
     }
 
     private void appendEvidenceGroup(List<String> evidence,
@@ -815,36 +996,28 @@ public class RcaService {
         if (groupCandidates == null || groupCandidates.isEmpty()) {
             return;
         }
-        groupCandidates.sort(this::compareCandidateStrength);
         for (RcaCandidate candidate : groupCandidates) {
             List<String> facts = evidenceFacts(candidate);
             String factSummary = facts.isEmpty() ? "No structured evidence facts recorded" : String.join("; ", facts);
-            evidence.add(String.format("[%s] %s (%s): %s",
-                    groupLabel, candidate.getRootCause(), candidate.getRuleId(), factSummary));
+            String position = candidate.getAnchorStepId() != null
+                    ? " @" + candidate.getAnchorStepId()
+                    : "";
+            String precededBy = candidate.getPrecededBy().isEmpty()
+                    ? ""
+                    : " (downstream of " + String.join(", ", candidate.getPrecededBy()) + ")";
+            evidence.add(String.format("[%s] %s (%s)%s%s: %s",
+                    groupLabel, candidate.getRootCause(), candidate.getRuleId(),
+                    position, precededBy, factSummary));
             suggestions.addAll(candidate.getSuggestions());
         }
     }
 
-    private int compareCandidateStrength(RcaCandidate first, RcaCandidate second) {
-        int status = Integer.compare(statusRank(first.getStatus()), statusRank(second.getStatus()));
-        if (status != 0) return status;
-        int directness = Integer.compare(enumRank(first.getDirectness()), enumRank(second.getDirectness()));
-        if (directness != 0) return directness;
-        int severity = Integer.compare(severityRank(second.getSeverity()), severityRank(first.getSeverity()));
-        if (severity != 0) return severity;
-        return Comparator.nullsLast(String::compareTo).compare(first.getRuleId(), second.getRuleId());
-    }
-
     private int statusRank(CandidateStatus status) {
-        if (status == CandidateStatus.STRONG_EVIDENCE || status == CandidateStatus.SELECTED) return 0;
-        if (status == CandidateStatus.SUPPORTING_EVIDENCE || status == CandidateStatus.CONTRIBUTING) return 1;
-        if (status == CandidateStatus.WEAK_EVIDENCE || status == CandidateStatus.POSSIBLE_BUT_UNSUPPORTED) return 2;
+        if (status == CandidateStatus.STRONG_EVIDENCE) return 0;
+        if (status == CandidateStatus.SUPPORTING_EVIDENCE) return 1;
+        if (status == CandidateStatus.WEAK_EVIDENCE) return 2;
         if (status == CandidateStatus.RULED_OUT) return 3;
         return 4;
-    }
-
-    private int enumRank(Enum<?> value) {
-        return value != null ? value.ordinal() : Integer.MAX_VALUE;
     }
 
     private List<String> evidenceFacts(RcaCandidate candidate) {
@@ -882,7 +1055,7 @@ public class RcaService {
         return 0;
     }
 
-    private String fallbackSeverity(String outcome, SelectionResult selection) {
+    private String fallbackSeverity(String outcome, RcaSelector.SelectionResult selection) {
         if ("NORMAL".equals(outcome)) return "NONE";
         return highestSeverity(selection.getCandidates());
     }

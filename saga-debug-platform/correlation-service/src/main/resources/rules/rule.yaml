@@ -1,3 +1,13 @@
+# NOT LOADED AT RUNTIME.
+#
+# Nothing in the codebase reads this file. The RCA rules that actually execute are
+# hard-coded as methods in RcaService (R01..R22); the only specification the service
+# loads is workflows/order-saga-workflow.yaml, via WorkflowLoader.
+#
+# This file is kept as a design sketch of what a declarative rule format could look
+# like. It is shipped inside the jar, so treat it as documentation, not configuration:
+# editing it changes nothing. See docs/HIEU_SAU_PROJECT.md section on rule.yaml.
+
 rule:
   id: TIMEOUT_RETRY_STORM
   name: Timeout Retry Storm
