@@ -39,6 +39,32 @@ public class SagaEvent {
     @Column(name = "received_at", nullable = false)
     private Instant receivedAt = Instant.now();
 
+    /**
+     * The event this one was produced in response to, when the producer said so.
+     *
+     * <p>An observed causal link, as opposed to one inferred from the workflow
+     * specification. Null when the producer does not report it, which is the only case
+     * the platform supported before.
+     */
+    @Column(name = "causation_id")
+    private String causationId;
+
+    @Column(name = "span_id")
+    private String spanId;
+
+    /** OpenTelemetry equivalent of {@code causationId}, used when that is absent. */
+    @Column(name = "parent_span_id")
+    private String parentSpanId;
+
+    public String getCausationId() { return causationId; }
+    public void setCausationId(String causationId) { this.causationId = causationId; }
+
+    public String getSpanId() { return spanId; }
+    public void setSpanId(String spanId) { this.spanId = spanId; }
+
+    public String getParentSpanId() { return parentSpanId; }
+    public void setParentSpanId(String parentSpanId) { this.parentSpanId = parentSpanId; }
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 

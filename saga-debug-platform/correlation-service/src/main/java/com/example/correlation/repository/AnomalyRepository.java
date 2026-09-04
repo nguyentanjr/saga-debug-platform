@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 public interface AnomalyRepository extends JpaRepository<Anomaly, Long> {
@@ -20,4 +21,20 @@ public interface AnomalyRepository extends JpaRepository<Anomaly, Long> {
 
     @Query("SELECT MAX(a.detectedAt) FROM Anomaly a WHERE a.sagaId = :sagaId")
     Instant findLatestDetectedAtBySagaId(@Param("sagaId") String sagaId);
+
+    /**
+     * Which of these sagas already carry this anomaly type.
+     *
+     * <p>Replaces one existsBySagaIdAndAnomalyType call per saga inside the scheduler
+     * loops: the same answer for a whole batch in a single round trip.
+     */
+    @Query("SELECT DISTINCT a.sagaId FROM Anomaly a "
+            + "WHERE a.anomalyType = :type AND a.sagaId IN :sagaIds")
+    List<String> findSagaIdsWithAnomalyType(@Param("type") AnomalyType type,
+            @Param("sagaIds") Collection<String> sagaIds);
+
+    List<Anomaly> findBySagaIdIn(Collection<String> sagaIds);
+
+    /** Bulk removal used by retention; children are deleted before their saga. */
+    void deleteBySagaIdIn(Collection<String> sagaIds);
 }
