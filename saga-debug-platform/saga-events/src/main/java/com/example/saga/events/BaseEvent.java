@@ -27,6 +27,22 @@ public abstract class BaseEvent {
 
     private String spanId;
 
+    /**
+     * The event this one was produced in response to.
+     *
+     * <p>Turns a sequence of observations into a chain of stated causes. Without it a
+     * consumer of this stream can only infer what led to what, from a specification
+     * describing what usually happens or from the order things arrived — neither of
+     * which survives parallelism, retries or a lost message.
+     *
+     * <p>Null on an event that starts an execution, and on anything a producer emits
+     * without having been triggered.
+     */
+    private String causationId;
+
+    /** OpenTelemetry equivalent of {@link #causationId}, for consumers that use spans. */
+    private String parentSpanId;
+
 
     protected BaseEvent() {
         this.eventId = UUID.randomUUID().toString();
@@ -65,4 +81,26 @@ public abstract class BaseEvent {
 
     public String getSpanId() { return spanId; }
     public void setSpanId(String spanId) { this.spanId = spanId; }
+
+    public String getCausationId() { return causationId; }
+    public void setCausationId(String causationId) { this.causationId = causationId; }
+
+    public String getParentSpanId() { return parentSpanId; }
+    public void setParentSpanId(String parentSpanId) { this.parentSpanId = parentSpanId; }
+
+    /**
+     * Marks this event as the response to {@code cause}, carrying the causal chain
+     * forward.
+     *
+     * @return this event, for use at the point of construction
+     */
+    public <T extends BaseEvent> T causedBy(BaseEvent cause) {
+        if (cause != null) {
+            this.causationId = cause.getEventId();
+            this.parentSpanId = cause.getSpanId();
+        }
+        @SuppressWarnings("unchecked")
+        T self = (T) this;
+        return self;
+    }
 }
