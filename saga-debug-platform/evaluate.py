@@ -442,6 +442,41 @@ def expected_root_matches(expected, actual_root, actual_roots) -> bool:
     return actual_root == expected or expected in actual_roots
 
 
+def expected_root_matches_strict(expected, actual_roots) -> bool:
+    """Exact-set match: every expected label present AND no extra candidate.
+
+    The lenient `expected_root_matches` only asks whether the expected label appears
+    somewhere in the candidate list, so an engine that emitted every label it knows
+    would score 100%. Wrong candidates reported alongside the right one are what a
+    reader of an RCA result actually has to sift through, so they are counted here.
+    """
+    actual = set(actual_roots or [])
+    wanted = set(expected) if isinstance(expected, list) else ({expected} if expected else set())
+    return actual == wanted
+
+
+def extra_roots(expected, actual_roots) -> list:
+    """Candidates reported beyond what the scenario expects."""
+    wanted = set(expected) if isinstance(expected, list) else ({expected} if expected else set())
+    return [r for r in (actual_roots or []) if r not in wanted]
+
+
+def rca_expectation_matches_strict(result: dict, scenario: dict) -> bool:
+    expected_status = expected_rca_status(scenario)
+    actual_status = result.get("rca_status")
+
+    if expected_status in ("EVIDENCE_AVAILABLE", "SELECTED"):
+        return actual_status in ("EVIDENCE_AVAILABLE", "SELECTED") and expected_root_matches_strict(
+            scenario.get("expected_rca"),
+            result.get("rca_primary_roots"),
+        )
+
+    if expected_status in ("INSUFFICIENT_EVIDENCE", "NO_DIAGNOSIS_NEEDED"):
+        return actual_status == expected_status and not (result.get("rca_primary_roots") or [])
+
+    return actual_status == expected_status
+
+
 def rca_expectation_matches(result: dict, scenario: dict) -> bool:
     expected_status = expected_rca_status(scenario)
     actual_status = result.get("rca_status")
@@ -475,6 +510,8 @@ def make_result(scenario: dict, run_index: int) -> dict:
         "rca_severity":       None,
         "rca_latency_ms":     None,
         "rca_accurate":       False,
+        "rca_accurate_strict": False,
+        "rca_extra_roots":    [],
         "time_to_insight_s":  None,
         "order_latency_ms":   None,
         "anomalies_expected": scenario.get("expected_anomalies", []),
@@ -537,13 +574,22 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
         result["rca_root_cause"] = selected_root_cause(rca)
         result["rca_severity"] = rca.get("severity")
 
-    # Accuracy: compare actual vs expected (both can be None for healthy)
+    # Accuracy: compare actual vs expected (both can be None for healthy).
+    # Two readings are recorded side by side: the lenient one, kept so earlier
+    # reports stay comparable, and the strict one, which penalises extra candidates.
     result["rca_accurate"] = rca_expectation_matches(result, scenario)
+    result["rca_accurate_strict"] = rca_expectation_matches_strict(result, scenario)
+    result["rca_extra_roots"] = extra_roots(
+        scenario.get("expected_rca"), result.get("rca_primary_roots"))
 
     icon = "✅" if result["rca_accurate"] else "❌"
+    strict_icon = "✅" if result["rca_accurate_strict"] else "❌"
+    extra = result["rca_extra_roots"]
+    extra_note = f" extra={extra}" if extra else ""
     print(f" → {result.get('saga_status', '?')} | "
           f"RCA={result['rca_root_cause']} status={result['rca_status']} "
-          f"(expected={scenario['expected_rca']} status={expected_rca_status(scenario)}) {icon}")
+          f"(expected={scenario['expected_rca']} status={expected_rca_status(scenario)}) "
+          f"lenient={icon} strict={strict_icon}{extra_note}")
 
 
 # ── Scenario runners ─────────────────────────────────────────────────────────
@@ -2148,6 +2194,83 @@ def compute_classification_metrics(all_runs):
     }
 
 
+def compute_classification_metrics_strict(all_runs):
+    """Classification counts that penalise every candidate the engine should not
+    have reported.
+
+    Differs from `compute_classification_metrics` in one respect: a run only counts
+    as a true positive when the reported candidate set equals the expected set, and
+    each surplus candidate is counted as a false positive in its own right. This is
+    the number to quote when claiming diagnostic precision, because the lenient
+    variant cannot fall below 100% by adding wrong answers.
+    """
+    tp = fp = fn = tn = 0
+    per_class = {}
+    surplus_total = 0
+
+    def bucket(label):
+        return per_class.setdefault(label, {"tp": 0, "fp": 0, "fn": 0})
+
+    for r in all_runs:
+        if r.get("error"):
+            continue
+
+        expected_status = r.get("rca_expected_status") or (
+            "EVIDENCE_AVAILABLE" if r.get("rca_expected") is not None else "NO_DIAGNOSIS_NEEDED"
+        )
+        expected = r.get("rca_expected")
+        actual_roots = r.get("rca_primary_roots") or []
+        wanted = set(expected) if isinstance(expected, list) else ({expected} if expected else set())
+
+        if expected_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+            # Nothing should have been reported. Every candidate is a false positive.
+            if actual_roots:
+                for label in actual_roots:
+                    fp += 1
+                    bucket(label)["fp"] += 1
+                    surplus_total += 1
+            else:
+                tn += 1
+            continue
+
+        found = set(actual_roots)
+        for label in sorted(wanted & found):
+            tp += 1
+            bucket(label)["tp"] += 1
+        for label in sorted(wanted - found):
+            fn += 1
+            bucket(label)["fn"] += 1
+        for label in sorted(found - wanted):
+            fp += 1
+            bucket(label)["fp"] += 1
+            surplus_total += 1
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    class_report = {}
+    for label, counts in sorted(per_class.items()):
+        p = counts["tp"] / (counts["tp"] + counts["fp"]) if (counts["tp"] + counts["fp"]) > 0 else 0.0
+        r_val = counts["tp"] / (counts["tp"] + counts["fn"]) if (counts["tp"] + counts["fn"]) > 0 else 0.0
+        f = 2 * p * r_val / (p + r_val) if (p + r_val) > 0 else 0.0
+        class_report[label] = {
+            "precision": round(p, 3),
+            "recall": round(r_val, 3),
+            "f1": round(f, 3),
+            "support": counts["tp"] + counts["fn"],
+        }
+
+    return {
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "surplus_candidates": surplus_total,
+        "precision": round(precision, 3),
+        "recall": round(recall, 3),
+        "f1": round(f1, 3),
+        "per_class": class_report,
+    }
+
+
 def compute_rca_status_metrics(all_runs):
     counts = {}
     total = correct = 0
@@ -2279,16 +2402,24 @@ def print_summary(scenarios, all_runs, args):
     p95_rca = (sorted(all_rca_ms)[int(len(all_rca_ms) * 0.95)]
                if len(all_rca_ms) >= 2 else None)
 
+    strict_acc = [r["rca_accurate_strict"] for r in all_runs
+                  if not r.get("error") and "rca_accurate_strict" in r]
+    oa_strict = sum(strict_acc) / len(strict_acc) * 100 if strict_acc else 0
+
     report["overall"] = {
-        "rca_accuracy_pct":      round(oa, 1),
-        "avg_tti_s":             round(ot, 3) if ot else None,
-        "avg_rca_latency_ms":    round(or_, 1) if or_ else None,
-        "p95_rca_latency_ms":    round(p95_rca, 1) if p95_rca else None,
-        "meets_accuracy_target": oa >= 90.0,
+        "rca_accuracy_pct":         round(oa, 1),
+        "rca_accuracy_strict_pct":  round(oa_strict, 1),
+        "avg_tti_s":                round(ot, 3) if ot else None,
+        "avg_rca_latency_ms":       round(or_, 1) if or_ else None,
+        "p95_rca_latency_ms":       round(p95_rca, 1) if p95_rca else None,
+        "meets_accuracy_target":    oa >= 90.0,
     }
 
     rca_metrics = compute_classification_metrics(all_runs)
     report["classification_metrics"] = rca_metrics
+
+    rca_metrics_strict = compute_classification_metrics_strict(all_runs)
+    report["classification_metrics_strict"] = rca_metrics_strict
 
     rca_status_metrics = compute_rca_status_metrics(all_runs)
     report["rca_status_metrics"] = rca_status_metrics
@@ -2300,6 +2431,9 @@ def print_summary(scenarios, all_runs, args):
     print("OVERALL")
     print(f"  RCA Accuracy     : {oa:.1f}%  (target ≥90%)  "
           f"{'✅' if oa >= 90 else '❌'}")
+    print(f"  ...lenient       : expected label present anywhere in the candidate set")
+    print(f"  RCA Accuracy(str): {oa_strict:.1f}%  "
+          f"(candidate set must equal the expected set)")
     if ot:  print(f"  Avg TTI          : {ot:.2f}s")
     if or_: print(f"  RCA Latency Avg  : {or_:.1f}ms")
     if p95_rca: print(f"  RCA Latency P95  : {p95_rca:.1f}ms")
@@ -2313,6 +2447,17 @@ def print_summary(scenarios, all_runs, args):
     print(f"  F1-Score  : {rca_metrics['f1']:.3f}")
     print(f"  TP={rca_metrics['tp']}  FP={rca_metrics['fp']}  "
           f"FN={rca_metrics['fn']}  TN={rca_metrics['tn']}")
+
+    print()
+    print("=" * 60)
+    print("RCA CLASSIFICATION METRICS — STRICT")
+    print("  Surplus candidates count as false positives.")
+    print(f"  Precision : {rca_metrics_strict['precision']:.3f}")
+    print(f"  Recall    : {rca_metrics_strict['recall']:.3f}")
+    print(f"  F1-Score  : {rca_metrics_strict['f1']:.3f}")
+    print(f"  TP={rca_metrics_strict['tp']}  FP={rca_metrics_strict['fp']}  "
+          f"FN={rca_metrics_strict['fn']}  TN={rca_metrics_strict['tn']}")
+    print(f"  Surplus candidates reported : {rca_metrics_strict['surplus_candidates']}")
 
     if rca_metrics.get("per_class"):
         print(f"\n  Per-class breakdown:")
