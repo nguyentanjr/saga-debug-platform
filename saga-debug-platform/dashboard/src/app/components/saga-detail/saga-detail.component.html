@@ -189,14 +189,10 @@
         <ng-template #candidateDetails let-candidate="candidate">
           <div class="candidate-details">
             <div class="candidate-meta">
-              <span class="rule-id-tag">Rule {{ candidate.ruleId }}</span>
               <span *ngIf="candidate.severity && candidate.severity !== 'NONE'"
                     class="candidate-severity"
                     [ngClass]="getSeverityClass(candidate.severity)">
                 {{ candidate.severity }}
-              </span>
-              <span class="directness-tag" [ngClass]="'directness-' + candidate.directness.toLowerCase()">
-                {{ formatDirectness(candidate.directness) }}
               </span>
             </div>
 
@@ -221,20 +217,6 @@
               </div>
             </div>
 
-            <div class="candidate-suggestions" *ngIf="getCandidateSuggestions(candidate).length > 0">
-              <h4>Candidate suggestions</h4>
-              <ul>
-                <li *ngFor="let suggestion of getCandidateSuggestions(candidate)">
-                  <span *ngIf="isJaegerLink(suggestion)">
-                    {{ getTextBeforeLink(suggestion) }}
-                    <a [href]="extractLink(suggestion)" target="_blank" class="jaeger-link">
-                      <mat-icon>open_in_new</mat-icon> View in Jaeger
-                    </a>
-                  </span>
-                  <span *ngIf="!isJaegerLink(suggestion)">{{ suggestion }}</span>
-                </li>
-              </ul>
-            </div>
           </div>
         </ng-template>
 

@@ -149,13 +149,8 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     }
   }
 
-  isSelected(rca: RcaResult): boolean {
-    return this.isEvidenceAvailable(rca);
-  }
-
   isEvidenceAvailable(rca: RcaResult): boolean {
     return rca.rcaStatus === 'EVIDENCE_AVAILABLE'
-      || rca.rcaStatus === 'SELECTED'
       || (!rca.rcaStatus && !!rca.rootCause);
   }
 
@@ -186,12 +181,12 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   getStrongEvidenceCandidates(rca: RcaResult): RcaCandidate[] {
     return this.getCandidates(rca).filter(candidate =>
-      candidate.status === 'STRONG_EVIDENCE' || candidate.status === 'SELECTED');
+      candidate.status === 'STRONG_EVIDENCE');
   }
 
   getSupportingEvidenceCandidates(rca: RcaResult): RcaCandidate[] {
     return this.getCandidates(rca).filter(candidate =>
-      candidate.status === 'SUPPORTING_EVIDENCE' || candidate.status === 'CONTRIBUTING');
+      candidate.status === 'SUPPORTING_EVIDENCE');
   }
 
   getWeakEvidenceCandidates(rca: RcaResult): RcaCandidate[] {
@@ -201,7 +196,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   getAlternativeCandidates(rca: RcaResult): RcaCandidate[] {
     return this.getCandidates(rca).filter(candidate =>
-      candidate.status === 'RULED_OUT' || candidate.status === 'POSSIBLE_BUT_UNSUPPORTED');
+      candidate.status === 'RULED_OUT');
   }
 
   hasActiveCandidates(rca: RcaResult): boolean {
@@ -222,20 +217,6 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   hasAlternativeCandidates(rca: RcaResult): boolean {
     return this.getAlternativeCandidates(rca).length > 0;
-  }
-
-  getPrimaryCauses(rca: RcaResult): string[] {
-    if (rca.primaryRootCauses && rca.primaryRootCauses.length > 0) {
-      return rca.primaryRootCauses;
-    }
-    return rca.rootCause ? [rca.rootCause] : [];
-  }
-
-  getPrimaryCauseSeverity(rca: RcaResult, cause: string): string | null {
-    const selected = this.getCandidates(rca).find(candidate =>
-      candidate.rootCause === cause && candidate.status === 'SELECTED');
-    const severity = selected?.severity || (this.isLegacyOnly(rca) ? rca.severity : null);
-    return severity && severity !== 'NONE' ? severity : null;
   }
 
   getMissingEvidence(rca: RcaResult): string[] {
@@ -274,9 +255,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   isEvidenceCandidate(candidate: RcaCandidate): boolean {
     return candidate.status === 'STRONG_EVIDENCE'
       || candidate.status === 'SUPPORTING_EVIDENCE'
-      || candidate.status === 'WEAK_EVIDENCE'
-      || candidate.status === 'SELECTED'
-      || candidate.status === 'CONTRIBUTING';
+      || candidate.status === 'WEAK_EVIDENCE';
   }
 
   getCandidateReason(candidate: RcaCandidate): string | undefined {
@@ -287,26 +266,15 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     switch (status) {
       case 'STRONG_EVIDENCE':
       case 'SUPPORTING_EVIDENCE':
-      case 'SELECTED':
-      case 'CONTRIBUTING':
         return 'Evidence basis';
       case 'WEAK_EVIDENCE': return 'Caution';
       case 'RULED_OUT': return 'Ruled out because';
-      case 'POSSIBLE_BUT_UNSUPPORTED': return 'Possible but unsupported';
       default: return 'Reason';
     }
   }
 
   getEvidence(candidate: RcaCandidate): Evidence[] {
     return candidate.evidence || [];
-  }
-
-  getCandidateSuggestions(candidate: RcaCandidate): string[] {
-    return candidate.suggestions || [];
-  }
-
-  formatDirectness(directness: string): string {
-    return this.formatEnumLabel(directness);
   }
 
   formatEnumLabel(value: string): string {

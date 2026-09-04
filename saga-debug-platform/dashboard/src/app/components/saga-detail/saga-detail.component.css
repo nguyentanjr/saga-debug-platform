@@ -277,9 +277,7 @@
 }
 
 .anomaly-type-badge,
-.directness-tag,
-.candidate-status-badge,
-.rule-id-tag {
+.candidate-status-badge {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -487,18 +485,10 @@
 }
 
 .cstatus-strong_evidence,
-.cstatus-selected { background: #c8e6c9; color: #2e7d32; }
-.cstatus-supporting_evidence,
-.cstatus-contributing { background: #e1bee7; color: #6a1b9a; }
+.cstatus-strong_evidence { background: #c8e6c9; color: #2e7d32; }
+.cstatus-supporting_evidence { background: #e1bee7; color: #6a1b9a; }
 .cstatus-weak_evidence { background: #fff3cd; color: #8a5a00; }
 .cstatus-ruled_out { background: #eeeeee; color: #616161; }
-.cstatus-possible_but_unsupported { background: #ffe0b2; color: #e65100; }
-
-.rule-id-tag {
-  background: #eeeeee;
-  color: #424242;
-  font-family: monospace;
-}
 
 .candidate-severity {
   padding: 3px 8px;
@@ -506,11 +496,6 @@
   font-size: 11px;
   font-weight: 600;
 }
-
-.directness-direct_signature { background: #c8e6c9; color: #2e7d32; }
-.directness-threshold_violation { background: #bbdefb; color: #1565c0; }
-.directness-corroborated_inference { background: #d1c4e9; color: #4527a0; }
-.directness-heuristic_inference { background: #ffe0b2; color: #e65100; }
 
 .ev-fact {
   min-width: 220px;

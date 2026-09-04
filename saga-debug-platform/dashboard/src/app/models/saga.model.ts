@@ -35,10 +35,8 @@ export interface Anomaly {
   measuredAt?: string;
 }
 
-export type RcaStatus = 'EVIDENCE_AVAILABLE' | 'SELECTED' | 'INSUFFICIENT_EVIDENCE' | 'NO_DIAGNOSIS_NEEDED';
-export type CandidateStatus = 'STRONG_EVIDENCE' | 'SUPPORTING_EVIDENCE' | 'WEAK_EVIDENCE' |
-  'SELECTED' | 'CONTRIBUTING' | 'RULED_OUT' | 'POSSIBLE_BUT_UNSUPPORTED';
-export type Directness = 'DIRECT_SIGNATURE' | 'THRESHOLD_VIOLATION' | 'CORROBORATED_INFERENCE' | 'HEURISTIC_INFERENCE';
+export type RcaStatus = 'EVIDENCE_AVAILABLE' | 'INSUFFICIENT_EVIDENCE' | 'NO_DIAGNOSIS_NEEDED';
+export type CandidateStatus = 'STRONG_EVIDENCE' | 'SUPPORTING_EVIDENCE' | 'WEAK_EVIDENCE' | 'RULED_OUT';
 
 export interface Evidence {
   fact: string;
@@ -53,7 +51,6 @@ export interface RcaCandidate {
   rootCause: string;
   severity: string;
   status: CandidateStatus;
-  directness: Directness;
   evidence: Evidence[];
   suggestions?: string[];
   statusReason?: string;
