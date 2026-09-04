@@ -81,8 +81,7 @@ public class DashboardMetricsService {
 
     private long countEvidenceAvailable(List<RcaResult> rcaResults) {
         return rcaResults.stream()
-                .filter(result -> result.getRcaStatus() == RcaStatus.EVIDENCE_AVAILABLE
-                        || result.getRcaStatus() == RcaStatus.SELECTED)
+                .filter(result -> result.getRcaStatus() == RcaStatus.EVIDENCE_AVAILABLE)
                 .count();
     }
 
@@ -97,8 +96,7 @@ public class DashboardMetricsService {
     private List<MetricItem> topRootCauses(List<RcaResult> results) {
         Map<String, Long> counts = new LinkedHashMap<>();
         for (RcaResult result : results) {
-            if (result.getRcaStatus() != RcaStatus.EVIDENCE_AVAILABLE
-                    && result.getRcaStatus() != RcaStatus.SELECTED) {
+            if (result.getRcaStatus() != RcaStatus.EVIDENCE_AVAILABLE) {
                 continue;
             }
             List<String> roots = concreteEvidenceRootCauses(result);
@@ -121,9 +119,7 @@ public class DashboardMetricsService {
         if (result.getCandidates() != null && !result.getCandidates().isEmpty()) {
             return result.getCandidates().stream()
                     .filter(candidate -> candidate.getStatus() == CandidateStatus.STRONG_EVIDENCE
-                            || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE
-                            || candidate.getStatus() == CandidateStatus.SELECTED
-                            || candidate.getStatus() == CandidateStatus.CONTRIBUTING)
+                            || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE)
                     .map(RcaCandidate::getRootCause)
                     .filter(root -> root != null && !root.isBlank())
                     .distinct()

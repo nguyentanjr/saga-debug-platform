@@ -52,9 +52,10 @@ public class AdminEventController {
                 ? Instant.parse(timestampStr)
                 : Instant.now();
 
-        correlationService.processEvent(
-                eventId, sagaId, eventType, stepName,
-                serviceName, timestamp, payload, Instant.now());
+        correlationService.processEvent(new com.example.correlation.domain.IngestedEvent(
+                eventId, sagaId, eventType, stepName, serviceName,
+                timestamp, payload, Instant.now(),
+                body.get("causationId"), body.get("spanId"), body.get("parentSpanId")));
 
         log.info("Injected event: sagaId={}, eventType={}", sagaId, eventType);
 
