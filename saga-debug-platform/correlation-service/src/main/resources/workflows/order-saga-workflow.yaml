@@ -23,6 +23,10 @@ workflow:
         started: PAYMENT_STARTED
         completed: PAYMENT_COMPLETED
         failed: PAYMENT_FAILED
+        # Emitted by the Resilience4j retry listener on each failed attempt.
+        # Declared here so the projection can attribute retries to this step
+        # instead of the detectors hard-coding the PAYMENT_RETRY event name.
+        retry: PAYMENT_RETRY
 
     - id: RESERVE_INVENTORY
       service: inventory-service
