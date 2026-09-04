@@ -1,16 +1,21 @@
 package com.example.correlation.service;
 
 import com.example.correlation.domain.*;
+import com.example.correlation.execution.ExecutionProjection;
+import com.example.correlation.execution.ExecutionProjectionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
-import com.example.correlation.workflow.WorkflowLoader;
+import com.example.correlation.workflow.WorkflowRegistry;
 import com.example.correlation.workflow.WorkflowSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -23,37 +28,51 @@ import java.util.stream.Collectors;
 @Service
 public class AnomalyDetectionService {
 
-    private static final Set<String> COMPLETED_EVENTS = CorrelationService.COMPLETED_EVENTS;
-    private static final Set<String> FAILED_EVENTS = CorrelationService.FAILED_EVENTS;
-
     private static final Logger log = LoggerFactory.getLogger(AnomalyDetectionService.class);
-    private static final Set<String> RETRY_EVENT_TYPES = Set.of(
-            "PAYMENT_RETRY");
+
+    private static final List<SagaStatus> RUNNING_STATUSES =
+            List.of(SagaStatus.STARTED, SagaStatus.IN_PROGRESS, SagaStatus.COMPENSATING);
+    private static final List<SagaStatus> IN_FLIGHT_STATUSES =
+            List.of(SagaStatus.IN_PROGRESS, SagaStatus.COMPENSATING);
+    private static final List<SagaStatus> SETTLED_STATUSES =
+            List.of(SagaStatus.COMPLETED, SagaStatus.COMPENSATED);
     private final SagaInstanceRepository sagaInstanceRepository;
     private final SagaEventRepository sagaEventRepository;
     private final AnomalyRepository anomalyRepository;
-    private final WorkflowLoader workflowLoader;
+    private final WorkflowRegistry workflowRegistry;
     private final ObjectMapper objectMapper;
     private final DetectionProperties detectionProperties;
+    private final ExecutionProjectionService executionProjectionService;
 
     public AnomalyDetectionService(
             SagaInstanceRepository sagaInstanceRepository,
             SagaEventRepository sagaEventRepository,
             AnomalyRepository anomalyRepository,
-            WorkflowLoader workflowLoader,
+            WorkflowRegistry workflowRegistry,
             ObjectMapper objectMapper,
-            DetectionProperties detectionProperties) {
+            DetectionProperties detectionProperties,
+            ExecutionProjectionService executionProjectionService) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
-        this.workflowLoader = workflowLoader;
+        this.workflowRegistry = workflowRegistry;
         this.objectMapper = objectMapper;
         this.detectionProperties = detectionProperties;
+        this.executionProjectionService = executionProjectionService;
     }
 
 
-    public void detectOutOfOrder(String sagaId) {
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByReceivedAtAsc(sagaId);
+    /**
+     * @param sagaEvents every event of the saga, including the one just stored.
+     *                   Passed in rather than re-queried: the ingestion path used to
+     *                   reload the whole event list once per detector, so a saga with
+     *                   n events cost O(n^2) row reads over its lifetime.
+     */
+    public void detectOutOfOrder(String sagaId, List<SagaEvent> sagaEvents) {
+        List<SagaEvent> events = sagaEvents.stream()
+                .sorted(Comparator.comparing(SagaEvent::getReceivedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
         if (events.size() < 2) return;
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.OUT_OF_ORDER)) return;
 
@@ -88,12 +107,18 @@ public class AnomalyDetectionService {
 
 
 
-    public void detectInvalidTransition(String sagaId, String previousStep,
+    public void detectInvalidTransition(WorkflowSpec workflow, String sagaId, String previousStep,
             String currentStep, String condition, String eventId, Instant eventTimestamp) {
-        WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         if (workflow == null || workflow.getTransitions() == null) return;
 
-        if (previousStep != null && !workflow.isValidTransition(previousStep, currentStep, condition)) {
+        if (previousStep == null) return;
+        // Only a declared-and-contradicted transition is an anomaly. UNKNOWN means the
+        // spec has nothing to say about this step: a gap in the specification, not a
+        // fault in the execution.
+        if (workflow.judgeTransition(previousStep, currentStep, condition)
+                != WorkflowSpec.TransitionVerdict.INVALID) return;
+
+        {
             String expected = workflow.getTransitions().stream()
                     .filter(t -> t.getFrom().equals(previousStep))
                     .map(t -> t.getTo() + " (on: " + t.getCondition() + ")")
@@ -106,21 +131,27 @@ public class AnomalyDetectionService {
                     details()
                             .observedValue(String.format("%s -> %s on %s", previousStep, currentStep, condition))
                             .expectedValue(expected.isEmpty() ? "no transition defined from " + previousStep : expected)
-                            .thresholdSource("workflow:order-saga.transitions")
+                            .thresholdSource("workflow:" + workflow.getName() + ".transitions")
                             .evidenceEventIds(eventId)
                             .measuredAt(eventTimestamp));
         }
     }
 
-    public void detectRetryBurst(String sagaId) {
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
+    public void detectRetryBurst(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
         int burstThreshold = detectionProperties.getRetryBurstThreshold();
         Duration burstWindow = detectionProperties.getRetryBurstWindow();
         if (events.size() < burstThreshold) return;
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.RETRY_BURST)) return;
 
+        // No PAYMENT_RETRY fallback: a workflow that declares no retry event does not
+        // have retries as far as this platform can tell, and borrowing the order saga's
+        // retry event name would attribute another workflow's events to a step it has no
+        // relationship with.
+        Set<String> retryEventTypes = workflow != null ? workflow.retryEventTypes() : Set.of();
+        if (retryEventTypes.isEmpty()) return;
+
         List<SagaEvent> retryEvents = events.stream()
-                .filter(e -> RETRY_EVENT_TYPES.contains(e.getEventType()))
+                .filter(e -> retryEventTypes.contains(e.getEventType()))
                 .collect(Collectors.toList());
         if (retryEvents.size() < burstThreshold) return;
 
@@ -132,11 +163,13 @@ public class AnomalyDetectionService {
             if (gap.compareTo(burstWindow) <= 0) {
                 List<SagaEvent> burstEvents = retryEvents.subList(i, i + burstThreshold);
                 createAnomaly(sagaId, AnomalyType.RETRY_BURST,
-                        String.format("%d retry events in %ds — possible retry storm",
-                                burstThreshold, gap.getSeconds()),
+                        String.format("%d retry events in %ds — possible retry storm%s",
+                                burstThreshold, gap.getSeconds(),
+                                retryPolicyNote(workflow, first.getEventType(), retryEvents.size())),
                         details()
-                                .observedValue(String.format("%d retry events in %dms",
-                                        burstEvents.size(), gap.toMillis()))
+                                .observedValue(String.format("%d retry events in %dms%s",
+                                        burstEvents.size(), gap.toMillis(),
+                                        retryPolicyNote(workflow, first.getEventType(), retryEvents.size())))
                                 .expectedValue(String.format("fewer than %d retry events within %ds",
                                         burstThreshold, burstWindow.toSeconds()))
                                 .thresholdSource("config:anomaly.detection.retry-burst")
@@ -145,6 +178,30 @@ public class AnomalyDetectionService {
                 return;
             }
         }
+    }
+
+    /**
+     * States how the observed retry count compares with the step's declared attempt
+     * budget.
+     *
+     * <p>The engine-side burst threshold and the service's Resilience4j
+     * {@code maxAttempts} were chosen to match each other, so a firing RETRY_BURST does
+     * not by itself show that anything exceeded its policy. Recording both numbers in
+     * the evidence makes that visible to whoever reads the finding, instead of leaving
+     * "retry storm" to imply a violation that was never measured.
+     */
+    private String retryPolicyNote(WorkflowSpec workflow, String retryEventType, int observedRetries) {
+        if (workflow == null) return "";
+
+        Optional<Integer> declared = workflow.classifyEvent(retryEventType)
+                .map(WorkflowSpec.EventRole::stepId)
+                .flatMap(workflow::declaredMaxAttempts);
+        if (declared.isEmpty()) return "";
+
+        int allowedRetries = Math.max(0, declared.get() - 1);
+        return String.format(" [observed %d retries; declared policy allows %d — %s policy]",
+                observedRetries, allowedRetries,
+                observedRetries > allowedRetries ? "exceeds" : "within");
     }
 
     public void detectDuplicateEvent(String sagaId, String eventId, String eventType) {
@@ -192,60 +249,71 @@ public class AnomalyDetectionService {
         }
     }
 
-    public void detectMultiTerminalConflict(String sagaId) {
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
+    /**
+     * Two contradictory terminal outcomes observed for one saga.
+     *
+     * <p>Was two hard-coded event sets naming the order saga's success and failure
+     * events. The question is now asked of the workflow: which observations imply a
+     * terminal status, and did this saga produce both a success and a non-success one.
+     */
+    public void detectMultiTerminalConflict(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
+        if (workflow == null) return;
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT)) return;
 
-        boolean hasSuccess = events.stream()
-                .anyMatch(e -> COMPLETED_EVENTS.contains(e.getEventType()));
-        boolean hasFail = events.stream()
-                .anyMatch(e -> FAILED_EVENTS.contains(e.getEventType()));
+        List<SagaEvent> succeeded = terminalEvents(workflow, events, SagaStatus.COMPLETED);
+        List<SagaEvent> notSucceeded = new ArrayList<>(
+                terminalEvents(workflow, events, SagaStatus.FAILED));
+        notSucceeded.addAll(terminalEvents(workflow, events, SagaStatus.COMPENSATED));
 
-        if (hasSuccess && hasFail) {
-            List<SagaEvent> terminalEvents = events.stream()
-                    .filter(e -> COMPLETED_EVENTS.contains(e.getEventType())
-                            || FAILED_EVENTS.contains(e.getEventType()))
-                    .toList();
-            String successTypes = events.stream()
-                    .map(SagaEvent::getEventType).filter(COMPLETED_EVENTS::contains)
-                    .collect(Collectors.joining(", "));
-            String failTypes = events.stream()
-                    .map(SagaEvent::getEventType).filter(FAILED_EVENTS::contains)
-                    .collect(Collectors.joining(", "));
-            createAnomaly(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT,
-                    String.format("Both success [%s] and failure [%s] events present in same saga",
-                            successTypes, failTypes),
-                    details()
-                            .observedValue(String.format("success=[%s], failure=[%s]", successTypes, failTypes))
-                            .expectedValue("only one terminal event family per saga")
-                            .thresholdSource("code:terminal-event-sets")
-                            .evidenceEvents(terminalEvents)
-                            .measuredAt(lastTimestamp(terminalEvents)));
-        }
+        if (succeeded.isEmpty() || notSucceeded.isEmpty()) return;
+
+        List<SagaEvent> terminalEvidence = new ArrayList<>(succeeded);
+        terminalEvidence.addAll(notSucceeded);
+        terminalEvidence.sort(Comparator.comparing(SagaEvent::getTimestamp));
+
+        String successTypes = distinctTypes(succeeded);
+        String failTypes = distinctTypes(notSucceeded);
+        createAnomaly(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT,
+                String.format("Both success [%s] and non-success [%s] terminal events present in same saga",
+                        successTypes, failTypes),
+                details()
+                        .observedValue(String.format("success=[%s], non-success=[%s]", successTypes, failTypes))
+                        .expectedValue("only one terminal outcome per saga")
+                        .thresholdSource("workflow:" + workflow.getName() + ".terminal-states")
+                        .evidenceEvents(terminalEvidence)
+                        .measuredAt(lastTimestamp(terminalEvidence)));
     }
 
-    public void detectDuplicateCompensation(String sagaId) {
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
-        List<SagaEvent> refundEvents = events.stream()
-                .filter(e -> "REFUND_PAYMENT".equals(e.getEventType()))
+    /** Events whose lifecycle role puts the saga into the given terminal status. */
+    private List<SagaEvent> terminalEvents(WorkflowSpec workflow, List<SagaEvent> events,
+            SagaStatus terminal) {
+        return events.stream()
+                .filter(e -> workflow.classifyEvent(e.getEventType())
+                        .flatMap(workflow::statusAfter)
+                        .filter(status -> status == terminal)
+                        .isPresent())
                 .toList();
-        long refundCount = refundEvents.size();
-        if (refundCount > 1 && !anomalyRepository.existsBySagaIdAndAnomalyType(
-                sagaId, AnomalyType.DUPLICATE_COMPENSATION)) {
-            createAnomaly(sagaId, AnomalyType.DUPLICATE_COMPENSATION,
-                    String.format("REFUND_PAYMENT appeared %d times - duplicate compensation", refundCount),
-                    details()
-                            .observedValue(String.format("REFUND_PAYMENT count=%d", refundCount))
-                            .expectedValue("REFUND_PAYMENT appears once per compensation attempt")
-                            .thresholdSource("workflow:REFUND_PAYMENT.cardinality")
-                            .evidenceEvents(refundEvents)
-                            .measuredAt(lastTimestamp(refundEvents)));
-        }
     }
 
-    
-
-
+    public void detectDuplicateCompensation(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
+        if (workflow == null) return;
+        List<SagaEvent> compStartEvents = compensationEvents(
+                workflow, events, WorkflowSpec.EventRole.Role.STARTED);
+        long startCount = compStartEvents.size();
+        if (startCount > 1 && !anomalyRepository.existsBySagaIdAndAnomalyType(
+                sagaId, AnomalyType.DUPLICATE_COMPENSATION)) {
+            String types = distinctTypes(compStartEvents);
+            createAnomaly(sagaId, AnomalyType.DUPLICATE_COMPENSATION,
+                    String.format("Compensation started %d times (%s) - duplicate compensation",
+                            startCount, types),
+                    details()
+                            .observedValue(String.format("%s start count=%d", types, startCount))
+                            .expectedValue("compensation starts once per compensation attempt")
+                            .thresholdSource("workflow:" + workflow.getName() + ".compensation.cardinality")
+                            .evidenceEvents(compStartEvents)
+                            .measuredAt(lastTimestamp(compStartEvents)));
+        }
+    }
 
     public void detectOrphanEvent(String sagaId, String eventId, String eventType, Instant eventTimestamp) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) return;
@@ -264,7 +332,7 @@ public class AnomalyDetectionService {
 
 
     public void detectMissingTraceContext(String sagaId, String eventType, String eventId, String payload,
-            Instant eventTimestamp) {
+            Instant eventTimestamp, List<SagaEvent> sagaEvents) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_TRACE_CONTEXT)) return;
         boolean hasTraceId = false;
         if (payload != null && !payload.isBlank()) {
@@ -277,7 +345,7 @@ public class AnomalyDetectionService {
             }
         }
         if (!hasTraceId) {
-            boolean sagaHasAnyTrace = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId).stream()
+            boolean sagaHasAnyTrace = sagaEvents.stream()
                     .anyMatch(e -> {
                         if (e.getPayload() == null || e.getPayload().isBlank()) return false;
                         try {
@@ -302,15 +370,13 @@ public class AnomalyDetectionService {
 
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStuckSagas() {
-        List<SagaInstance> runningSagas = new ArrayList<>(
-                sagaInstanceRepository.findByStatus(SagaStatus.STARTED));
-        runningSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.IN_PROGRESS));
-        runningSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
+        List<SagaInstance> runningSagas = sagaInstanceRepository.findByStatusIn(
+                RUNNING_STATUSES, detectionBatch());
 
-        WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
         Instant now = Instant.now();
 
         for (SagaInstance saga : runningSagas) {
+            WorkflowSpec workflow = specFor(saga);
             SagaEvent lastEvent = sagaEventRepository
                     .findTopBySagaIdOrderByTimestampDesc(saga.getSagaId())
                     .orElse(null);
@@ -347,76 +413,190 @@ public class AnomalyDetectionService {
 
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStepTimeouts() {
-        WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
-        if (workflow == null) return;
 
         
         Instant recentCutoff = Instant.now().minus(detectionProperties.getCompletedSagaLookback());
-        List<SagaInstance> activeSagas = new java.util.ArrayList<>(
-                sagaInstanceRepository.findByStatus(SagaStatus.IN_PROGRESS));
-        activeSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
-        
-        sagaInstanceRepository.findByStatus(SagaStatus.COMPLETED).stream()
-                .filter(s -> s.getEndTime() != null && s.getEndTime().isAfter(recentCutoff))
-                .forEach(activeSagas::add);
-        sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATED).stream()
-                .filter(s -> s.getEndTime() != null && s.getEndTime().isAfter(recentCutoff))
-                .forEach(activeSagas::add);
+        List<SagaInstance> activeSagas = new ArrayList<>(
+                sagaInstanceRepository.findByStatusIn(IN_FLIGHT_STATUSES, detectionBatch()));
+        activeSagas.addAll(sagaInstanceRepository.findByStatusInAndEndTimeAfter(
+                SETTLED_STATUSES, recentCutoff, detectionBatch()));
 
-        for (SagaInstance saga : activeSagas) {
-            if (anomalyRepository.existsBySagaIdAndAnomalyType(
-                    saga.getSagaId(), AnomalyType.STEP_TIMEOUT)) continue;
+        Map<String, List<SagaEvent>> eventsBySaga = eventsFor(activeSagas, AnomalyType.STEP_TIMEOUT);
 
-            List<SagaEvent> events = sagaEventRepository
-                    .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            if (events.size() < 2) continue;
+        Map<String, WorkflowSpec> specBySaga = activeSagas.stream()
+                .filter(saga -> specFor(saga) != null)
+                .collect(Collectors.toMap(SagaInstance::getSagaId, this::specFor, (a, b) -> a));
 
-            for (int i = 1; i < events.size(); i++) {
-                SagaEvent previousEvent = events.get(i - 1);
-                SagaEvent currentEvent = events.get(i);
-                long stepDurationMs = Duration.between(
-                        previousEvent.getTimestamp(),
-                        currentEvent.getTimestamp()).toMillis();
+        for (Map.Entry<String, List<SagaEvent>> entry : eventsBySaga.entrySet()) {
+            if (entry.getValue().size() < 2) continue;
+            WorkflowSpec workflow = specBySaga.get(entry.getKey());
+            if (workflow == null) continue;
+            evaluateStepTimeouts(entry.getKey(), entry.getValue(), workflow);
+        }
+    }
 
-                String stepName = workflow.getExpectedStepForEvent(currentEvent.getEventType());
-                if (stepName == null) continue;
-                int expectedTimeoutMs = workflow.getStepTimeoutSeconds(stepName) * 1000;
+    /**
+     * Loads the events for a batch of sagas in one query, dropping the ones that
+     * already carry {@code alreadyDetected}.
+     *
+     * <p>The scheduler loops used to issue two queries per saga per pass — an exists
+     * check and an event fetch — so a pass cost O(batch) round trips. This makes it
+     * two, regardless of batch size.
+     */
+    private Map<String, List<SagaEvent>> eventsFor(List<SagaInstance> sagas, AnomalyType alreadyDetected) {
+        if (sagas.isEmpty()) return Map.of();
 
-                if (stepDurationMs > expectedTimeoutMs) {
-                    createAnomaly(saga.getSagaId(), AnomalyType.STEP_TIMEOUT,
-                            String.format("Step '%s' took %dms (timeout: %dms). Previous event: %s",
-                                    stepName, stepDurationMs, expectedTimeoutMs,
-                                    previousEvent.getEventType()),
-                            details()
-                                    .observedValue(String.format("%s took %dms", stepName, stepDurationMs))
-                                    .expectedValue(String.format("<= %dms", expectedTimeoutMs))
-                                    .thresholdSource("workflow:" + stepName + ".timeout")
-                                    .evidenceEvents(previousEvent, currentEvent)
-                                    .measuredAt(currentEvent.getTimestamp()));
-                    break;
-                }
+        List<String> sagaIds = sagas.stream().map(SagaInstance::getSagaId).distinct().toList();
+        Set<String> skip = Set.copyOf(
+                anomalyRepository.findSagaIdsWithAnomalyType(alreadyDetected, sagaIds));
+
+        List<String> pending = sagaIds.stream().filter(id -> !skip.contains(id)).toList();
+        if (pending.isEmpty()) return Map.of();
+
+        return sagaEventRepository.findBySagaIdInOrderBySagaIdAscTimestampAsc(pending).stream()
+                .collect(Collectors.groupingBy(SagaEvent::getSagaId,
+                        LinkedHashMap::new, Collectors.toList()));
+    }
+
+    /**
+     * Runs the configured step-timeout implementation for one saga.
+     *
+     * <p>Package-visible and repository-free apart from {@code createAnomaly} so the
+     * legacy and projection measurements can be compared directly in tests.
+     */
+    void evaluateStepTimeouts(String sagaId, List<SagaEvent> events, WorkflowSpec workflow) {
+        DetectionProperties.StepTimeoutMode mode = detectionProperties.getStepTimeoutMode();
+
+        StepTimeoutFinding legacy = (mode == DetectionProperties.StepTimeoutMode.LEGACY
+                || mode == DetectionProperties.StepTimeoutMode.SHADOW)
+                ? findStepTimeoutByAdjacency(events, workflow)
+                : null;
+
+        StepTimeoutFinding projected = (mode == DetectionProperties.StepTimeoutMode.PROJECTION
+                || mode == DetectionProperties.StepTimeoutMode.SHADOW)
+                ? findStepTimeoutByProjection(sagaId, events, workflow)
+                : null;
+
+        if (mode == DetectionProperties.StepTimeoutMode.SHADOW) {
+            logDivergence(sagaId, legacy, projected);
+        }
+
+        StepTimeoutFinding authoritative =
+                mode == DetectionProperties.StepTimeoutMode.PROJECTION ? projected : legacy;
+        if (authoritative != null) {
+            createAnomaly(sagaId, AnomalyType.STEP_TIMEOUT, authoritative.description(),
+                    authoritative.details());
+        }
+    }
+
+    /**
+     * Legacy measurement: the gap between an event and its positional predecessor.
+     *
+     * <p>Kept intact while SHADOW mode gathers comparison data. Its known weakness is
+     * that any intervening observation — a retry event, or an event mapping to no step —
+     * becomes the measurement's start point, so the reported duration of a step depends
+     * on observations that are not part of that step.
+     */
+    private StepTimeoutFinding findStepTimeoutByAdjacency(List<SagaEvent> events, WorkflowSpec workflow) {
+        for (int i = 1; i < events.size(); i++) {
+            SagaEvent previousEvent = events.get(i - 1);
+            SagaEvent currentEvent = events.get(i);
+            long stepDurationMs = Duration.between(
+                    previousEvent.getTimestamp(),
+                    currentEvent.getTimestamp()).toMillis();
+
+            String stepName = workflow.getExpectedStepForEvent(currentEvent.getEventType());
+            if (stepName == null) continue;
+            int expectedTimeoutMs = workflow.getStepTimeoutSeconds(stepName) * 1000;
+
+            if (stepDurationMs > expectedTimeoutMs) {
+                return new StepTimeoutFinding(stepName, stepDurationMs, expectedTimeoutMs,
+                        String.format("Step '%s' took %dms (timeout: %dms). Previous event: %s",
+                                stepName, stepDurationMs, expectedTimeoutMs,
+                                previousEvent.getEventType()),
+                        details()
+                                .observedValue(String.format("%s took %dms", stepName, stepDurationMs))
+                                .expectedValue(String.format("<= %dms", expectedTimeoutMs))
+                                .thresholdSource("workflow:" + stepName + ".timeout")
+                                .evidenceEvents(previousEvent, currentEvent)
+                                .measuredAt(currentEvent.getTimestamp()));
             }
+        }
+        return null;
+    }
+
+    /**
+     * Projection measurement: an operation's duration from its start reference to its
+     * terminal observation, with retries folded into the same operation.
+     *
+     * <p>Operations whose start could not be established are skipped rather than
+     * measured against a substitute boundary — absence of evidence is reported as
+     * absence, not as a fast step.
+     */
+    private StepTimeoutFinding findStepTimeoutByProjection(String sagaId, List<SagaEvent> events,
+            WorkflowSpec workflow) {
+        ExecutionProjection projection = executionProjectionService.project(sagaId, events, workflow);
+
+        for (ExecutionProjection.Operation op : projection.measurableOperations()) {
+            long durationMs = op.duration().toMillis();
+            int expectedTimeoutMs = workflow.getStepTimeoutSeconds(op.stepId()) * 1000;
+            if (durationMs <= expectedTimeoutMs) continue;
+
+            String provenance = op.startProvenance().name();
+            return new StepTimeoutFinding(op.stepId(), durationMs, expectedTimeoutMs,
+                    String.format("Operation '%s' took %dms across %d attempt(s) (timeout: %dms), "
+                                    + "measured from %s",
+                            op.stepId(), durationMs, op.attemptCount(), expectedTimeoutMs, provenance),
+                    details()
+                            .observedValue(String.format("%s took %dms over %d attempt(s); start=%s",
+                                    op.stepId(), durationMs, op.attemptCount(), provenance))
+                            .expectedValue(String.format("<= %dms", expectedTimeoutMs))
+                            .thresholdSource("workflow:" + op.stepId() + ".timeout")
+                            .evidenceEventIds(op.evidenceEventIds().toArray(new String[0]))
+                            .measuredAt(op.endedAt()));
+        }
+        return null;
+    }
+
+    private void logDivergence(String sagaId, StepTimeoutFinding legacy, StepTimeoutFinding projected) {
+        boolean legacyFired = legacy != null;
+        boolean projectedFired = projected != null;
+
+        if (!legacyFired && !projectedFired) return;
+
+        if (legacyFired != projectedFired) {
+            log.warn("STEP_TIMEOUT shadow divergence saga={}: legacy={} projection={}",
+                    sagaId,
+                    legacyFired ? legacy.summary() : "no-finding",
+                    projectedFired ? projected.summary() : "no-finding");
+        } else if (!legacy.stepId().equals(projected.stepId())
+                || legacy.durationMs() != projected.durationMs()) {
+            log.warn("STEP_TIMEOUT shadow divergence saga={}: legacy={} projection={}",
+                    sagaId, legacy.summary(), projected.summary());
+        } else {
+            log.debug("STEP_TIMEOUT shadow agreement saga={}: {}", sagaId, legacy.summary());
+        }
+    }
+
+    private record StepTimeoutFinding(String stepId, long durationMs, int thresholdMs,
+            String description, AnomalyDetails details) {
+        String summary() {
+            return String.format("%s=%dms(>%dms)", stepId, durationMs, thresholdMs);
         }
     }
 
     @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectMissingTerminalEvents() {
-        WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
-        
-        int maxStepTimeout = detectionProperties.getDefaultStepTimeoutSeconds();
-        if (workflow != null && workflow.getSteps() != null) {
-            maxStepTimeout = workflow.getSteps().stream()
-                    .mapToInt(s -> workflow.getStepTimeoutSeconds(s.getId()))
-                    .max().orElse(detectionProperties.getDefaultStepTimeoutSeconds());
-        }
-        int maxTimeout = maxStepTimeout * detectionProperties.getMissingTerminalTimeoutMultiplier();
+        // One cutoff bounds the query for every workflow, so it has to be the most
+        // permissive step timeout in the registry; a per-saga check would need a
+        // per-workflow query and buys nothing here.
+        int maxTimeout = maxStepTimeoutAcrossWorkflows()
+                * detectionProperties.getMissingTerminalTimeoutMultiplier();
 
         Instant cutoff = Instant.now().minus(maxTimeout, ChronoUnit.SECONDS);
 
-        List<SagaInstance> stuckSagas = new java.util.ArrayList<>(
-                sagaInstanceRepository.findByStatusAndLastUpdatedBefore(SagaStatus.STARTED, cutoff));
-        stuckSagas.addAll(
-                sagaInstanceRepository.findByStatusAndLastUpdatedBefore(SagaStatus.IN_PROGRESS, cutoff));
+        List<SagaInstance> stuckSagas = sagaInstanceRepository.findByStatusInAndLastUpdatedBefore(
+                List.of(SagaStatus.STARTED, SagaStatus.IN_PROGRESS), cutoff, detectionBatch());
 
         for (SagaInstance saga : stuckSagas) {
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
@@ -446,30 +626,32 @@ public class AnomalyDetectionService {
 
         
         
-        List<SagaInstance> compensatingSagas = new java.util.ArrayList<>(
-                sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
+        List<SagaInstance> compensatingSagas = sagaInstanceRepository.findByStatusInAndLastUpdatedBefore(
+                List.of(SagaStatus.COMPENSATING), cutoff, detectionBatch());
 
         for (SagaInstance saga : compensatingSagas) {
             if (saga.getLastUpdated().isAfter(cutoff)) continue; 
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
                     saga.getSagaId(), AnomalyType.COMPENSATION_MISSING)) continue;
 
+            WorkflowSpec workflow = specFor(saga);
+            if (workflow == null) continue;
+
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            List<SagaEvent> failureEvents = events.stream()
-                    .filter(e -> "INVENTORY_FAILED".equals(e.getEventType()))
-                    .toList();
+            List<SagaEvent> failureEvents = eventsWithRole(workflow, events, WorkflowSpec.EventRole.Role.FAILED);
             boolean hasFailure = !failureEvents.isEmpty();
-            boolean hasCompStart = events.stream().anyMatch(e ->
-                    "REFUND_PAYMENT".equals(e.getEventType()));
+            boolean hasCompStart = !compensationEvents(
+                    workflow, events, WorkflowSpec.EventRole.Role.STARTED).isEmpty();
 
             if (hasFailure && !hasCompStart) {
+                String failureTypes = distinctTypes(failureEvents);
                 createAnomaly(saga.getSagaId(), AnomalyType.COMPENSATION_MISSING,
-                        "Failure detected (INVENTORY_FAILED) but no compensation started",
+                        String.format("Failure detected (%s) but no compensation started", failureTypes),
                         details()
-                                .observedValue("INVENTORY_FAILED without REFUND_PAYMENT")
-                                .expectedValue("REFUND_PAYMENT starts compensation after INVENTORY_FAILED")
-                                .thresholdSource("workflow:INVENTORY_FAILED.compensation")
+                                .observedValue(failureTypes + " without any compensation start event")
+                                .expectedValue("a compensation step starts after a step failure")
+                                .thresholdSource("workflow:" + workflow.getName() + ".compensation")
                                 .evidenceEvents(failureEvents)
                                 .measuredAt(Instant.now()));
             }
@@ -480,30 +662,33 @@ public class AnomalyDetectionService {
     public void detectMissingCompensationAck() {
         Instant cutoff = Instant.now().minus(detectionProperties.getCompensationAckCutoff());
 
-        List<SagaInstance> compensatingSagas =
-                sagaInstanceRepository.findByStatusAndLastUpdatedBefore(SagaStatus.COMPENSATING, cutoff);
+        List<SagaInstance> compensatingSagas = sagaInstanceRepository.findByStatusInAndLastUpdatedBefore(
+                List.of(SagaStatus.COMPENSATING), cutoff, detectionBatch());
 
         for (SagaInstance saga : compensatingSagas) {
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
                     saga.getSagaId(), AnomalyType.MISSING_COMPENSATION_ACK)) continue;
 
+            WorkflowSpec workflow = specFor(saga);
+            if (workflow == null) continue;
+
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            List<SagaEvent> refundCommandEvents = events.stream()
-                    .filter(e -> "REFUND_PAYMENT".equals(e.getEventType()))
-                    .toList();
-            boolean hasRefundCmd = !refundCommandEvents.isEmpty();
-            boolean hasRefundDone = events.stream().anyMatch(e ->
-                    "PAYMENT_REFUNDED".equals(e.getEventType()));
+            List<SagaEvent> compStartEvents = compensationEvents(
+                    workflow, events, WorkflowSpec.EventRole.Role.STARTED);
+            boolean hasCompStart = !compStartEvents.isEmpty();
+            boolean hasCompDone = !compensationEvents(
+                    workflow, events, WorkflowSpec.EventRole.Role.COMPLETED).isEmpty();
 
-            if (hasRefundCmd && !hasRefundDone) {
+            if (hasCompStart && !hasCompDone) {
+                String startedTypes = distinctTypes(compStartEvents);
                 createAnomaly(saga.getSagaId(), AnomalyType.MISSING_COMPENSATION_ACK,
-                        "Compensation started (REFUND_PAYMENT) but no acknowledgement (PAYMENT_REFUNDED)",
+                        String.format("Compensation started (%s) but never acknowledged", startedTypes),
                         details()
-                                .observedValue("REFUND_PAYMENT without PAYMENT_REFUNDED")
-                                .expectedValue("PAYMENT_REFUNDED acknowledges compensation")
-                                .thresholdSource("workflow:REFUND_PAYMENT.ack")
-                                .evidenceEvents(refundCommandEvents)
+                                .observedValue(startedTypes + " without a compensation completion event")
+                                .expectedValue("the compensation step reports completion")
+                                .thresholdSource("workflow:" + workflow.getName() + ".compensation.ack")
+                                .evidenceEvents(compStartEvents)
                                 .measuredAt(Instant.now()));
             }
         }
@@ -513,54 +698,56 @@ public class AnomalyDetectionService {
     public void detectDelayedCompensation() {
         
         
-        WorkflowSpec workflow = workflowLoader.getOrderSagaWorkflow();
-        int compensationTimeoutSeconds = detectionProperties.getDefaultStepTimeoutSeconds();
-        if (workflow != null) {
-            compensationTimeoutSeconds = workflow.getStepTimeoutSeconds("REFUND_PAYMENT");
-        }
-        int compensationThresholdMs = (int) (compensationTimeoutSeconds
-                * detectionProperties.getDelayedCompensationMultiplier() * 1000);
-
         Instant recentCutoff = Instant.now().minus(detectionProperties.getCompensationRecentLookback());
 
         
-        List<SagaInstance> compensatedSagas = new java.util.ArrayList<>(
-                sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATED));
-        compensatedSagas.addAll(sagaInstanceRepository.findByStatus(SagaStatus.COMPENSATING));
+        List<SagaInstance> compensatedSagas = sagaInstanceRepository.findByStatusInAndLastUpdatedAfter(
+                List.of(SagaStatus.COMPENSATED, SagaStatus.COMPENSATING), recentCutoff, detectionBatch());
 
         for (SagaInstance saga : compensatedSagas) {
-            if (saga.getLastUpdated() != null && saga.getLastUpdated().isBefore(recentCutoff)) continue;
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
                     saga.getSagaId(), AnomalyType.DELAYED_COMPENSATION)) continue;
+
+            WorkflowSpec workflow = specFor(saga);
+            if (workflow == null) continue;
 
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
 
             
-            SagaEvent failureEvent = null;
-            SagaEvent compensationStartEvent = null;
-            for (SagaEvent event : events) {
-                if ("INVENTORY_FAILED".equals(event.getEventType()) && failureEvent == null) {
-                    failureEvent = event;
-                }
-                if ("REFUND_PAYMENT".equals(event.getEventType()) && compensationStartEvent == null) {
-                    compensationStartEvent = event;
-                }
-            }
+            SagaEvent failureEvent = eventsWithRole(
+                    workflow, events, WorkflowSpec.EventRole.Role.FAILED).stream()
+                    .findFirst().orElse(null);
+            SagaEvent compensationStartEvent = compensationEvents(
+                    workflow, events, WorkflowSpec.EventRole.Role.STARTED).stream()
+                    .findFirst().orElse(null);
 
-            if (failureEvent != null && compensationStartEvent != null) {
-                long gapMs = Duration.between(failureEvent.getTimestamp(), compensationStartEvent.getTimestamp()).toMillis();
-                if (gapMs > compensationThresholdMs) {
-                    createAnomaly(saga.getSagaId(), AnomalyType.DELAYED_COMPENSATION,
-                            String.format("Compensation delayed: %dms gap between INVENTORY_FAILED and REFUND_PAYMENT (threshold: %dms)",
-                                    gapMs, compensationThresholdMs),
-                            details()
-                                    .observedValue(String.format("%dms gap from INVENTORY_FAILED to REFUND_PAYMENT", gapMs))
-                                    .expectedValue(String.format("<= %dms", compensationThresholdMs))
-                                    .thresholdSource("config:anomaly.detection.delayed-compensation-multiplier")
-                                    .evidenceEvents(failureEvent, compensationStartEvent)
-                                    .measuredAt(compensationStartEvent.getTimestamp()));
-                }
+            if (failureEvent == null || compensationStartEvent == null) continue;
+
+            // The budget is the compensation step's own declared timeout, looked up from
+            // the step the start event belongs to, rather than a fixed REFUND_PAYMENT.
+            int compensationTimeoutSeconds = workflow
+                    .classifyEvent(compensationStartEvent.getEventType())
+                    .map(role -> workflow.getStepTimeoutSeconds(role.stepId()))
+                    .orElse(detectionProperties.getDefaultStepTimeoutSeconds());
+            int compensationThresholdMs = (int) (compensationTimeoutSeconds
+                    * detectionProperties.getDelayedCompensationMultiplier() * 1000);
+
+            long gapMs = Duration.between(failureEvent.getTimestamp(),
+                    compensationStartEvent.getTimestamp()).toMillis();
+            if (gapMs > compensationThresholdMs) {
+                createAnomaly(saga.getSagaId(), AnomalyType.DELAYED_COMPENSATION,
+                        String.format("Compensation delayed: %dms gap between %s and %s (threshold: %dms)",
+                                gapMs, failureEvent.getEventType(),
+                                compensationStartEvent.getEventType(), compensationThresholdMs),
+                        details()
+                                .observedValue(String.format("%dms gap from %s to %s",
+                                        gapMs, failureEvent.getEventType(),
+                                        compensationStartEvent.getEventType()))
+                                .expectedValue(String.format("<= %dms", compensationThresholdMs))
+                                .thresholdSource("config:anomaly.detection.delayed-compensation-multiplier")
+                                .evidenceEvents(failureEvent, compensationStartEvent)
+                                .measuredAt(compensationStartEvent.getTimestamp()));
             }
         }
     }
@@ -574,6 +761,78 @@ public class AnomalyDetectionService {
             case COMPENSATED -> 5;           
             case COMPLETED -> 6;             
         };
+    }
+
+
+    // ── Spec resolution and role-based event lookup ──────────────────────────
+    //
+    // The detectors below used to name the order saga's events directly
+    // ("INVENTORY_FAILED", "REFUND_PAYMENT", "PAYMENT_REFUNDED"). They now ask the
+    // saga's own workflow which of its events play those roles, so the same detector
+    // works for a workflow whose compensation is releasing a reservation or reversing
+    // a transfer.
+
+    /** The specification governing this saga, or null when none is registered. */
+    private WorkflowSpec specFor(SagaInstance saga) {
+        return workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
+    }
+
+    /** Events playing the given lifecycle role on any forward step. */
+    private List<SagaEvent> eventsWithRole(WorkflowSpec workflow, List<SagaEvent> events,
+            WorkflowSpec.EventRole.Role role) {
+        return events.stream()
+                .filter(e -> workflow.classifyEvent(e.getEventType())
+                        .filter(r -> r.role() == role && !workflow.isCompensationStep(r.stepId()))
+                        .isPresent())
+                .toList();
+    }
+
+    /** Events playing the given lifecycle role on any compensation step. */
+    private List<SagaEvent> compensationEvents(WorkflowSpec workflow, List<SagaEvent> events,
+            WorkflowSpec.EventRole.Role role) {
+        return events.stream()
+                .filter(e -> workflow.classifyEvent(e.getEventType())
+                        .filter(r -> r.role() == role && workflow.isCompensationStep(r.stepId()))
+                        .isPresent())
+                .toList();
+    }
+
+    private static String distinctTypes(List<SagaEvent> events) {
+        return events.stream()
+                .map(SagaEvent::getEventType)
+                .distinct()
+                .collect(Collectors.joining(", "));
+    }
+
+    /**
+     * The longest step timeout any registered workflow declares.
+     *
+     * <p>Used only where one cutoff has to bound a query across every workflow at once;
+     * taking the maximum keeps the query from excluding sagas of the slowest workflow.
+     */
+    private int maxStepTimeoutAcrossWorkflows() {
+        int fallback = detectionProperties.getDefaultStepTimeoutSeconds();
+        return workflowRegistry.workflowNames().stream()
+                .map(name -> workflowRegistry.byType(name).orElse(null))
+                .filter(Objects::nonNull)
+                .filter(spec -> spec.getSteps() != null)
+                .flatMap(spec -> spec.getSteps().stream()
+                        .map(step -> spec.getStepTimeoutSeconds(step.getId())))
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(fallback);
+    }
+
+    /**
+     * Row cap and ordering for one scheduler pass.
+     *
+     * <p>A pass must cost what the recent work costs, not what the accumulated history
+     * costs. Newest-first ordering means that when a backlog exceeds the cap, the
+     * sagas most likely to still be actionable are the ones examined.
+     */
+    private Pageable detectionBatch() {
+        return PageRequest.of(0, detectionProperties.getDetectionBatchSize(),
+                Sort.by(Sort.Direction.DESC, "lastUpdated"));
     }
 
     private void createAnomaly(String sagaId, AnomalyType type, String description, AnomalyDetails details) {

@@ -19,6 +19,31 @@ public class DetectionProperties {
     private double delayedCompensationMultiplier = 1.5;
     private Duration compensationRecentLookback = Duration.ofMinutes(10);
     private int serviceCrashTimeoutMultiplier = 3;
+    private StepTimeoutMode stepTimeoutMode = StepTimeoutMode.SHADOW;
+    private int detectionBatchSize = 500;
+
+    /**
+     * Maximum sagas one scheduled detector pass will examine.
+     *
+     * <p>Bounds heap and query cost per pass so they track the recent workload rather
+     * than total accumulated history. Sagas beyond the cap are picked up on a later
+     * pass; passes are ordered newest-first.
+     */
+    public int getDetectionBatchSize() { return detectionBatchSize; }
+    public void setDetectionBatchSize(int detectionBatchSize) { this.detectionBatchSize = detectionBatchSize; }
+
+    /**
+     * Which implementation of step-timeout detection is authoritative.
+     *
+     * <p>LEGACY measures the gap between positionally adjacent events; PROJECTION
+     * measures operation duration from the execution projection. SHADOW runs both,
+     * keeps LEGACY authoritative, and logs every divergence so the two can be
+     * compared on real traffic before the switch is made.
+     */
+    public enum StepTimeoutMode { LEGACY, SHADOW, PROJECTION }
+
+    public StepTimeoutMode getStepTimeoutMode() { return stepTimeoutMode; }
+    public void setStepTimeoutMode(StepTimeoutMode stepTimeoutMode) { this.stepTimeoutMode = stepTimeoutMode; }
 
     public Duration getClockSkewTolerance() { return clockSkewTolerance; }
     public void setClockSkewTolerance(Duration clockSkewTolerance) { this.clockSkewTolerance = clockSkewTolerance; }
