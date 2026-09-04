@@ -6,7 +6,8 @@ workflow:
     - id: CREATE_ORDER
       service: order-service
       timeout: 5s
-      compensation: CANCEL_ORDER
+      # No compensation declared: cancelling a created order is not implemented by any
+      # service, and naming a step that does not exist would route a failure nowhere.
       events:
         started: ORDER_CREATED
         completed: ORDER_CREATED
@@ -31,7 +32,9 @@ workflow:
     - id: RESERVE_INVENTORY
       service: inventory-service
       timeout: 5s
-      compensation: RELEASE_INVENTORY
+      # No compensation declared: releasing a reservation is not implemented, and
+      # reserving inventory is the last forward step, so nothing downstream can fail
+      # and require it to be undone.
       events:
         started: INVENTORY_STARTED
         completed: INVENTORY_RESERVED

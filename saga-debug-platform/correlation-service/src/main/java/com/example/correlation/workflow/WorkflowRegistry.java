@@ -81,6 +81,19 @@ public class WorkflowRegistry {
             return;
         }
 
+        // Checked before the spec is indexed, not when a saga first needs it. Every
+        // detector reads its expectations from here, so a spec that cannot be
+        // interpreted does not degrade the diagnosis — it produces confident nonsense,
+        // with nothing in the logs pointing back at the file that caused it.
+        WorkflowSpecValidator.Report report = WorkflowSpecValidator.validate(spec);
+        report.warnings().forEach(warning ->
+                log.warn("Workflow '{}' ({}): {}", spec.getName(), filename, warning));
+        if (!report.isUsable()) {
+            report.errors().forEach(error ->
+                    log.error("Workflow '{}' ({}) rejected: {}", spec.getName(), filename, error));
+            return;
+        }
+
         WorkflowSpec previous = byName.putIfAbsent(spec.getName(), spec);
         if (previous != null) {
             log.error("Duplicate workflow name '{}' in {}; keeping the one already loaded",
@@ -92,10 +105,11 @@ public class WorkflowRegistry {
             byStartEvent.computeIfAbsent(eventType, k -> new ArrayList<>()).add(spec);
         }
 
-        log.info("Workflow '{}' v{} — {} step(s), start event(s) {}",
+        log.info("Workflow '{}' v{} — {} step(s), start event(s) {}{}",
                 spec.getName(), spec.getVersion(),
                 spec.getSteps() != null ? spec.getSteps().size() : 0,
-                spec.startEventTypes());
+                spec.startEventTypes(),
+                report.isClean() ? "" : " (" + report.warnings().size() + " warning(s))");
     }
 
     /** The spec for an execution whose workflow is already known. */
