@@ -4,6 +4,7 @@ import com.example.payment.domain.Payment;
 import com.example.payment.domain.PaymentStatus;
 import com.example.payment.dto.PaymentResponse;
 import com.example.payment.exception.NotFoundException;
+import com.example.saga.events.EventTraceHelper;
 import com.example.saga.events.OrderCreatedEvent;
 import com.example.saga.events.PaymentCompletedEvent;
 import com.example.saga.events.PaymentRefundedEvent;
@@ -81,7 +82,9 @@ public class PaymentService {
         PaymentCompletedEvent completedEvent = new PaymentCompletedEvent();
         completedEvent.setOrderId(payment.getOrderId());
         completedEvent.setAmount(payment.getAmount());
-        completedEvent.setSagaId(event.getSagaId());
+        // Carries the correlation key and records that this completion is the
+        // response to that particular OrderCreatedEvent.
+        EventTraceHelper.inResponseTo(completedEvent, event);
         completedEvent.setProductId(event.getProductId());
         completedEvent.setQuantity(event.getQuantity());
         paymentEventProducer.publishPaymentCompleted(completedEvent);
@@ -102,7 +105,7 @@ public class PaymentService {
             log.warn("No payment found for order {}. Publishing refunded event anyway.", command.getOrderId());
             PaymentRefundedEvent refundedEvent = new PaymentRefundedEvent();
             refundedEvent.setOrderId(command.getOrderId());
-            refundedEvent.setSagaId(command.getSagaId());
+            EventTraceHelper.inResponseTo(refundedEvent, command);
             refundedEvent.setAmount(java.math.BigDecimal.ZERO);
             paymentEventProducer.publishPaymentRefunded(refundedEvent);
             return;
@@ -118,7 +121,7 @@ public class PaymentService {
 
         PaymentRefundedEvent refundedEvent = new PaymentRefundedEvent();
         refundedEvent.setOrderId(payment.getOrderId());
-        refundedEvent.setSagaId(command.getSagaId());
+        EventTraceHelper.inResponseTo(refundedEvent, command);
         
         refundedEvent.setAmount(payment.getAmount());
         paymentEventProducer.publishPaymentRefunded(refundedEvent);
@@ -151,7 +154,7 @@ public class PaymentService {
 
         com.example.saga.events.PaymentFailedEvent failedEvent = new com.example.saga.events.PaymentFailedEvent();
         failedEvent.setOrderId(event.getOrderId());
-        failedEvent.setSagaId(event.getSagaId());
+        EventTraceHelper.inResponseTo(failedEvent, event);
         failedEvent.setReason("Circuit breaker / retry exhausted: " + t.getMessage());
         paymentEventProducer.publishPaymentFailed(failedEvent);
     }

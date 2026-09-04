@@ -81,11 +81,19 @@ resilience4j:
     instances:
       paymentProcessing:
         # maxAttempts = 4 → 1 initial call + 3 retries per failing saga.
-        # This matches the correlation-service detectRetryBurst threshold
-        # (BURST_THRESHOLD=3 retry events within BURST_WINDOW=60s) so that a
-        # single failed saga emits enough PAYMENT_RETRY events to trigger
-        # the RETRY_BURST anomaly. Reducing this would make the detector
-        # require multiple sagas to fire concurrently.
+        #
+        # CAUTION — this value and the correlation-service detectRetryBurst threshold
+        # (retry-burst-threshold = 3 within retry-burst-window = 60s) were set to match
+        # each other. The observed system was tuned so the detector would fire, which
+        # means a firing RETRY_BURST is not independent evidence that retry behaviour
+        # was abnormal: 3 retries is exactly what this policy prescribes, so the
+        # detector currently reports a step behaving to spec.
+        #
+        # Do not cite RETRY_BURST as a detection result without stating this coupling.
+        # The finding itself now records "observed N retries; declared policy allows M"
+        # so the comparison is visible in the evidence. Breaking the coupling means
+        # deriving the threshold from something other than this value — see the
+        # retryPolicy block in correlation-service workflows/order-saga-workflow.yaml.
         maxAttempts: 4
         waitDuration: 1s
         enableExponentialBackoff: true
