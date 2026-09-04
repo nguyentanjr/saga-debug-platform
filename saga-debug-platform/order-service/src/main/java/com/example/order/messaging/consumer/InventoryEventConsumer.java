@@ -28,6 +28,8 @@ public class InventoryEventConsumer {
     @KafkaListener(topics = "inventory-failed", groupId = "order-service-group")
     public void handleInventoryFailed(InventoryFailedEvent event) {
         log.info("Received InventoryFailedEvent for order {} [sagaId={}]", event.getOrderId(), event.getSagaId());
-        orderService.markInventoryFailed(event.getOrderId(), event.getSagaId());
+        // The event, not just its ids: the refund command it triggers records which
+        // observation caused it.
+        orderService.markInventoryFailed(event);
     }
 }

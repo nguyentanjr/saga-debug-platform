@@ -5,6 +5,7 @@ import com.example.inventory.domain.InventoryReservation;
 import com.example.inventory.domain.InventoryReservationStatus;
 import com.example.inventory.dto.InventoryResponse;
 import com.example.inventory.exception.NotFoundException;
+import com.example.saga.events.EventTraceHelper;
 import com.example.saga.events.InventoryFailedEvent;
 import com.example.saga.events.InventoryReservedEvent;
 import com.example.saga.events.PaymentCompletedEvent;
@@ -79,7 +80,7 @@ public class InventoryService {
 
             InventoryFailedEvent failedEvent = new InventoryFailedEvent();
             failedEvent.setOrderId(event.getOrderId());
-            failedEvent.setSagaId(event.getSagaId());
+            EventTraceHelper.inResponseTo(failedEvent, event);
             failedEvent.setProductId(productId);
             failedEvent.setQuantity(quantity);
             failedEvent.setReason("Not enough inventory");
@@ -105,7 +106,7 @@ public class InventoryService {
 
         InventoryReservedEvent reservedEvent = new InventoryReservedEvent();
         reservedEvent.setOrderId(event.getOrderId());
-        reservedEvent.setSagaId(event.getSagaId());
+        EventTraceHelper.inResponseTo(reservedEvent, event);
         reservedEvent.setProductId(productId);
         reservedEvent.setQuantity(quantity);
         inventoryEventProducer.publishInventoryReserved(reservedEvent);
@@ -127,7 +128,7 @@ public class InventoryService {
 
         InventoryFailedEvent failedEvent = new InventoryFailedEvent();
         failedEvent.setOrderId(event.getOrderId());
-        failedEvent.setSagaId(event.getSagaId());
+        EventTraceHelper.inResponseTo(failedEvent, event);
         failedEvent.setProductId(event.getProductId());
         failedEvent.setQuantity(event.getQuantity());
         failedEvent.setReason("Circuit breaker open: " + t.getMessage());

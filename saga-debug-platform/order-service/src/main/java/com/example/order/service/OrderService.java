@@ -5,6 +5,8 @@ import com.example.order.domain.OrderStatus;
 import com.example.order.dto.CreateOrderRequest;
 import com.example.order.dto.OrderResponse;
 import com.example.order.exception.NotFoundException;
+import com.example.saga.events.EventTraceHelper;
+import com.example.saga.events.InventoryFailedEvent;
 import com.example.saga.events.OrderCreatedEvent;
 import com.example.saga.events.RefundPaymentCommand;
 import com.example.order.messaging.producer.OrderEventProducer;
@@ -133,7 +135,9 @@ public class OrderService {
 
     @WithSpan("saga.order.markInventoryFailed")
     @Transactional
-    public void markInventoryFailed(UUID orderId, UUID sagaId) {
+    public void markInventoryFailed(InventoryFailedEvent cause) {
+        UUID orderId = cause.getOrderId();
+        UUID sagaId = cause.getSagaId();
         Span.current().setAttribute("order.id", orderId.toString());
         if (sagaId != null) Span.current().setAttribute("saga.id", sagaId.toString());
         Span.current().setAttribute("saga.step", "RESERVE_INVENTORY");
@@ -152,7 +156,7 @@ public class OrderService {
 
             RefundPaymentCommand refundCommand = new RefundPaymentCommand();
             refundCommand.setOrderId(orderId);
-            refundCommand.setSagaId(sagaId);
+            EventTraceHelper.inResponseTo(refundCommand, cause);
             refundCommand.setReason("Inventory reservation failed");
             orderEventProducer.publishRefundPayment(refundCommand);
         });
