@@ -1,0 +1,109 @@
+# Anomaly-signature rules — LOADED AT RUNTIME by RuleRegistry.
+#
+# Replaces the earlier rule.yaml, which was a design sketch that nothing read. These
+# nine rules do execute; editing this file changes what the platform diagnoses, with no
+# rebuild.
+#
+# A rule belongs here when a set of anomaly types is its ENTIRE condition. The other nine
+# rules stay as methods in RcaService because they need something this format cannot say:
+# the content of a payload (R01), the saga's current status (R06, R14, R21), arithmetic
+# over timestamps against a workflow threshold (R05), the absence of an event the spec
+# requires (R10, R11), or evidence computed from the anomaly set (R20). See the class
+# comment on AnomalySignatureRule.
+#
+# Fields:
+#   id                 rule identifier, reported with the diagnosis
+#   rootCause          the label this rule concludes
+#   severity           CRITICAL | HIGH | MEDIUM | LOW
+#   evidence           STRONG_EVIDENCE | SUPPORTING_EVIDENCE | WEAK_EVIDENCE
+#   matchesAnyAnomaly  any one of these anomaly types fires the rule
+#   evidenceNotes      fixed observations added beside the matched anomaly (optional)
+#   suggestions        what the reader should check
+
+rules:
+
+  - id: R03
+    rootCause: MULTI_TERMINAL_CONFLICT
+    severity: CRITICAL
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [MULTI_TERMINAL_CONFLICT]
+    suggestions:
+      - "Enforce final-state immutability"
+      - "Check for duplicate terminal event delivery"
+
+  # Two anomaly types, one conclusion: a terminal state was written over, whether that
+  # showed up as an event arriving after the end or as the status moving backwards.
+  - id: R04
+    rootCause: TERMINAL_STATE_OVERWRITE
+    severity: HIGH
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [FORBIDDEN_POST_TERMINAL, STATE_REGRESSION]
+    suggestions:
+      - "Implement compare-and-set for saga state updates"
+      - "Reject events arriving after terminal state"
+
+  - id: R07
+    rootCause: DOWNSTREAM_TIMEOUT
+    severity: HIGH
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [STEP_TIMEOUT]
+    suggestions:
+      - "Tune step timeout thresholds in workflow spec"
+      - "Check downstream service performance"
+
+  - id: R09
+    rootCause: COMPENSATION_NOT_TRIGGERED
+    severity: HIGH
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [COMPENSATION_MISSING]
+    suggestions:
+      - "Check if orchestrator (order-service) is running"
+      - "Verify compensation trigger logic"
+
+  - id: R12
+    rootCause: INVALID_TRANSITION
+    severity: MEDIUM
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [INVALID_TRANSITION]
+    suggestions:
+      - "Verify event routing in upstream services"
+      - "Review workflow spec transitions"
+
+  - id: R13
+    rootCause: DUPLICATE_DELIVERY
+    severity: LOW
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [EXACT_DUPLICATE_EVENT, DUPLICATE_COMPENSATION]
+    suggestions:
+      - "Verify producer idempotency configuration"
+      - "Check consumer deduplication mechanisms"
+
+  - id: R15
+    rootCause: WRONG_SAGA_CORRELATION_KEY
+    severity: HIGH
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [ORPHAN_EVENT]
+    suggestions:
+      - "Verify sagaId propagation across services"
+      - "Check Kafka header saga-id configuration"
+
+  - id: R19
+    rootCause: MISSING_TRACE_PROPAGATION
+    severity: MEDIUM
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [MISSING_TRACE_CONTEXT]
+    evidenceNotes:
+      - "Events missing traceId cannot be correlated in Jaeger"
+    suggestions:
+      - "Verify trace context propagation in service configuration"
+      - "Check OpenTelemetry agent or Spring Sleuth setup"
+      - "Ensure Kafka headers include traceparent/traceId"
+
+  - id: R22
+    rootCause: DELAYED_COMPENSATION
+    severity: MEDIUM
+    evidence: STRONG_EVIDENCE
+    matchesAnyAnomaly: [DELAYED_COMPENSATION]
+    suggestions:
+      - "Review orchestrator compensation trigger latency"
+      - "Check message broker throughput during compensation"

@@ -14,7 +14,9 @@ import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertEvent;
 import com.example.correlation.service.alert.AlertSink;
+import com.example.correlation.service.rca.AnomalySignatureRule;
 import com.example.correlation.service.rca.RcaSelector;
+import com.example.correlation.service.rca.RuleRegistry;
 import com.example.correlation.workflow.WorkflowRegistry;
 import com.example.correlation.workflow.WorkflowSpec;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,6 +50,7 @@ public class RcaService {
     private final WorkflowRegistry workflowRegistry;
     private final ObjectMapper objectMapper;
     private final RcaSelector rcaSelector;
+    private final RuleRegistry ruleRegistry;
     private final DetectionProperties detectionProperties;
     private final AlertSink alertSink;
     private final ExecutionProjectionService executionProjectionService;
@@ -60,6 +63,7 @@ public class RcaService {
             WorkflowRegistry workflowRegistry,
             ObjectMapper objectMapper,
             RcaSelector rcaSelector,
+            RuleRegistry ruleRegistry,
             DetectionProperties detectionProperties,
             AlertSink alertSink,
             ExecutionProjectionService executionProjectionService,
@@ -71,6 +75,7 @@ public class RcaService {
         this.workflowRegistry = workflowRegistry;
         this.objectMapper = objectMapper;
         this.rcaSelector = rcaSelector;
+        this.ruleRegistry = ruleRegistry;
         this.detectionProperties = detectionProperties;
         this.alertSink = alertSink;
         this.executionProjectionService = executionProjectionService;
@@ -97,22 +102,19 @@ public class RcaService {
         WorkflowSpec workflow = workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
 
         List<CandidateAssessment> candidates = new ArrayList<>();
+        // Declared rules first: R03, R04, R07, R09, R12, R13, R15, R19, R22 live in
+        // rules/*.yaml, because a set of anomaly types is their entire condition.
+        candidates.addAll(evaluateDeclaredRules(anomalies));
+
+        // Procedural rules: each needs something a signature match cannot express —
+        // payload content, saga status, timestamp arithmetic, or a missing event.
         addIfPresent(candidates, ruleCircuitBreakerOpen(workflow, events));
         addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
-        addIfPresent(candidates, ruleMultiTerminalConflict(anomalies));
-        addIfPresent(candidates, ruleTerminalStateOverwrite(anomalies));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
         addIfPresent(candidates, ruleTransientServiceFailure(saga, anomalies));
-        addIfPresent(candidates, ruleDownstreamTimeout(anomalies));
-        addIfPresent(candidates, ruleCompensationNotTriggered(anomalies));
         addIfPresent(candidates, ruleCompensationStepFailure(workflow, saga, events, anomalies));
         addIfPresent(candidates, ruleForwardStepFailure(workflow, saga, events));
-        addIfPresent(candidates, ruleInvalidTransition(anomalies));
-        addIfPresent(candidates, ruleDuplicateDelivery(anomalies));
         addIfPresent(candidates, ruleOutOfOrderDelivery(saga, anomalies));
-        addIfPresent(candidates, ruleWrongSagaCorrelationKey(anomalies));
-        addIfPresent(candidates, ruleMissingTracePropagation(anomalies));
-        addIfPresent(candidates, ruleDelayedCompensation(anomalies));
 
         
         
@@ -413,6 +415,35 @@ public class RcaService {
         return events.stream().map(SagaEvent::getEventType).distinct().collect(Collectors.joining(", "));
     }
 
+    /**
+     * Runs every declared anomaly-signature rule against this saga's anomalies.
+     *
+     * <p>Order of the returned candidates carries no meaning: {@code RcaSelector} ranks
+     * them by evidence tier and by where they sit in the execution, so which file a rule
+     * was declared in cannot influence which diagnosis wins. That was not true of the
+     * previous implementation, where the order of {@code addIfPresent} calls decided
+     * ties.
+     */
+    private List<CandidateAssessment> evaluateDeclaredRules(List<Anomaly> anomalies) {
+        List<CandidateAssessment> matched = new ArrayList<>();
+
+        for (AnomalySignatureRule rule : ruleRegistry.rules()) {
+            rule.firstMatch(anomalies).ifPresent(anomaly -> {
+                CandidateAssessment candidate = candidate(
+                        rule.getRootCause(), rule.getSeverity(), rule.getId(), rule.getEvidence());
+
+                // The matched anomaly first: it carries the event ids that let
+                // anchorCandidates() place this candidate in the execution.
+                candidate.getEvidence().add(evidence(anomaly));
+                rule.getEvidenceNotes().forEach(note -> candidate.getEvidence().add(evidence(note)));
+                candidate.getSuggestions().addAll(rule.getSuggestions());
+
+                matched.add(candidate);
+            });
+        }
+        return matched;
+    }
+
     private void addIfPresent(List<CandidateAssessment> list, CandidateAssessment candidate) {
         if (candidate != null) list.add(candidate);
     }
@@ -526,37 +557,10 @@ public class RcaService {
 
     
     
-    private CandidateAssessment ruleMultiTerminalConflict(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.MULTI_TERMINAL_CONFLICT) {
-                CandidateAssessment rr = candidate("MULTI_TERMINAL_CONFLICT", "CRITICAL", "R03",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Enforce final-state immutability");
-                rr.getSuggestions().add("Check for duplicate terminal event delivery");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
     
-    private CandidateAssessment ruleTerminalStateOverwrite(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL
-                    || a.getAnomalyType() == AnomalyType.STATE_REGRESSION) {
-                CandidateAssessment rr = candidate("TERMINAL_STATE_OVERWRITE", "HIGH", "R04",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Implement compare-and-set for saga state updates");
-                rr.getSuggestions().add("Reject events arriving after terminal state");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
@@ -689,36 +693,10 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleDownstreamTimeout(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.STEP_TIMEOUT) {
-                CandidateAssessment rr = candidate("DOWNSTREAM_TIMEOUT", "HIGH", "R07",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Tune step timeout thresholds in workflow spec");
-                rr.getSuggestions().add("Check downstream service performance");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
     
-    private CandidateAssessment ruleCompensationNotTriggered(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.COMPENSATION_MISSING) {
-                CandidateAssessment rr = candidate("COMPENSATION_NOT_TRIGGERED", "HIGH", "R09",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Check if orchestrator (order-service) is running");
-                rr.getSuggestions().add("Verify compensation trigger logic");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
@@ -782,36 +760,9 @@ public class RcaService {
 
     
     
-    private CandidateAssessment ruleInvalidTransition(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.INVALID_TRANSITION) {
-                CandidateAssessment rr = candidate("INVALID_TRANSITION", "MEDIUM", "R12",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Verify event routing in upstream services");
-                rr.getSuggestions().add("Review workflow spec transitions");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
-    private CandidateAssessment ruleDuplicateDelivery(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.EXACT_DUPLICATE_EVENT
-                    || a.getAnomalyType() == AnomalyType.DUPLICATE_COMPENSATION) {
-                CandidateAssessment rr = candidate("DUPLICATE_DELIVERY", "LOW", "R13",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Verify producer idempotency configuration");
-                rr.getSuggestions().add("Check consumer deduplication mechanisms");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
@@ -843,37 +794,9 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleWrongSagaCorrelationKey(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.ORPHAN_EVENT) {
-                CandidateAssessment rr = candidate("WRONG_SAGA_CORRELATION_KEY", "HIGH", "R15",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Verify sagaId propagation across services");
-                rr.getSuggestions().add("Check Kafka header saga-id configuration");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
-    private CandidateAssessment ruleMissingTracePropagation(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.MISSING_TRACE_CONTEXT) {
-                CandidateAssessment rr = candidate("MISSING_TRACE_PROPAGATION", "MEDIUM", "R19",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getEvidence().add(evidence("Events missing traceId cannot be correlated in Jaeger"));
-                rr.getSuggestions().add("Verify trace context propagation in service configuration");
-                rr.getSuggestions().add("Check OpenTelemetry agent or Spring Sleuth setup");
-                rr.getSuggestions().add("Ensure Kafka headers include traceparent/traceId");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
@@ -925,19 +848,6 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleDelayedCompensation(List<Anomaly> anomalies) {
-        for (Anomaly a : anomalies) {
-            if (a.getAnomalyType() == AnomalyType.DELAYED_COMPENSATION) {
-                CandidateAssessment rr = candidate("DELAYED_COMPENSATION", "MEDIUM", "R22",
-                        CandidateStatus.STRONG_EVIDENCE);
-                rr.getEvidence().add(evidence(a));
-                rr.getSuggestions().add("Review orchestrator compensation trigger latency");
-                rr.getSuggestions().add("Check message broker throughput during compensation");
-                return rr;
-            }
-        }
-        return null;
-    }
 
     
     
