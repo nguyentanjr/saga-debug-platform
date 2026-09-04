@@ -514,6 +514,8 @@ def make_result(scenario: dict, run_index: int) -> dict:
         "rca_extra_roots":    [],
         "time_to_insight_s":  None,
         "order_latency_ms":   None,
+        "rca_candidates":     [],
+        "baseline_picks":     {},
         "anomalies_expected": scenario.get("expected_anomalies", []),
         "anomalies_actual":   [],
         "error":              None,
@@ -573,6 +575,8 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
             result["rca_primary_roots"] = rca.get("primaryRootCauses") or []
         result["rca_root_cause"] = selected_root_cause(rca)
         result["rca_severity"] = rca.get("severity")
+        result["rca_candidates"] = captured_candidates(rca)
+        result["baseline_picks"] = baseline_picks(result["rca_candidates"])
 
     # Accuracy: compare actual vs expected (both can be None for healthy).
     # Two readings are recorded side by side: the lenient one, kept so earlier
@@ -2125,6 +2129,140 @@ def main():
     print_summary(scenarios, all_runs, args)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Baselines
+#
+# The question a reader is entitled to ask of any diagnosis engine is "better than
+# what?". Accuracy against expected labels answers "is it right", not "is the ranking
+# earning its place". These three baselines answer the second question.
+#
+# All three choose from the SAME candidate set the engine produced, and differ only in
+# the selection policy. That is deliberate: it isolates the contribution of the ranking
+# layer instead of comparing against a different system. A baseline that picked from a
+# different candidate set would confound rule coverage with ranking quality.
+#
+#   rule_id_order   the behaviour before RcaSelector gained execution position — sort by
+#                   rule id and take the first. Any gap between this and the engine is
+#                   exactly what the tier + position ordering bought.
+#   severity_only   rank by CRITICAL > HIGH > MEDIUM > LOW alone. The obvious policy, and
+#                   the one a reviewer will propose if the thesis does not pre-empt it.
+#   first_anomaly   take whichever candidate is anchored earliest in time — "trust the
+#                   first symptom", with no notion of evidence quality.
+#
+# RULED_OUT candidates are excluded from all three: they are not diagnoses the engine
+# offers, so letting a baseline pick one would be beating a strawman.
+# ──────────────────────────────────────────────────────────────────────────────
+
+SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def captured_candidates(rca: dict | None) -> list:
+    """The candidate list as raw material for the baselines, not for scoring."""
+    if not rca:
+        return []
+    captured = []
+    for candidate in rca.get("candidates") or []:
+        captured.append({
+            "ruleId":   candidate.get("ruleId"),
+            "rootCause": candidate.get("rootCause"),
+            "severity": candidate.get("severity"),
+            "status":   candidate.get("status"),
+            "anchorAt": candidate.get("anchorAt"),
+        })
+    return captured
+
+
+def _selectable(candidates: list) -> list:
+    return [c for c in candidates
+            if c.get("status") != "RULED_OUT" and c.get("rootCause")]
+
+
+def baseline_picks(candidates: list) -> dict:
+    """What each baseline would have named as the primary root cause."""
+    pool = _selectable(candidates)
+    if not pool:
+        return {"rule_id_order": None, "severity_only": None, "first_anomaly": None}
+
+    by_rule_id = sorted(pool, key=lambda c: c.get("ruleId") or "~")
+
+    by_severity = sorted(
+        pool,
+        key=lambda c: (-SEVERITY_RANK.get(c.get("severity"), 0), c.get("ruleId") or "~"))
+
+    # Candidates the engine could not place in the execution have no anchor; they sort
+    # last rather than being given a fabricated position.
+    by_anchor = sorted(
+        pool,
+        key=lambda c: (c.get("anchorAt") or "9999", c.get("ruleId") or "~"))
+
+    return {
+        "rule_id_order": by_rule_id[0]["rootCause"],
+        "severity_only": by_severity[0]["rootCause"],
+        "first_anomaly": by_anchor[0]["rootCause"],
+    }
+
+
+def compute_baseline_comparison(all_runs):
+    """Accuracy@1 of the engine and of each baseline, over the same runs.
+
+    Only runs where the scenario expects concrete evidence are counted. Healthy
+    scenarios are excluded because "name a root cause" is not a task there — abstention
+    is, and that is reported separately as rcaStatus accuracy.
+    """
+    names = ["engine", "rule_id_order", "severity_only", "first_anomaly"]
+    correct = {name: 0 for name in names}
+    total = 0
+    disagreements = []
+
+    for r in all_runs:
+        if r.get("error"):
+            continue
+        expected_status = r.get("rca_expected_status")
+        if expected_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+            continue
+
+        expected = r.get("rca_expected")
+        if expected is None:
+            continue
+        wanted = set(expected) if isinstance(expected, list) else {expected}
+
+        total += 1
+        picks = dict(r.get("baseline_picks") or {})
+        picks["engine"] = r.get("rca_root_cause")
+
+        for name in names:
+            if picks.get(name) in wanted:
+                correct[name] += 1
+
+        if picks.get("engine") != picks.get("rule_id_order"):
+            disagreements.append({
+                "scenario_id": r.get("scenario_id"),
+                "run_index":   r.get("run_index"),
+                "expected":    expected,
+                "engine":      picks.get("engine"),
+                "rule_id_order": picks.get("rule_id_order"),
+            })
+
+    report = {"runs_scored": total, "accuracy_pct": {}, "correct": correct}
+    for name in names:
+        report["accuracy_pct"][name] = round(100.0 * correct[name] / total, 1) if total else 0.0
+
+    report["engine_minus_rule_id_order_pp"] = round(
+        report["accuracy_pct"]["engine"] - report["accuracy_pct"]["rule_id_order"], 1)
+    report["disagreements_with_rule_id_order"] = disagreements
+
+    # A zero gap is a real finding, not a failure — it says the scenario suite contains
+    # no case where the ranking changes the answer, which is a statement about the suite
+    # rather than about the ranking. Saying so beats quietly reporting a tie.
+    report["note"] = (
+        "No scenario in this run distinguishes the engine from rule-id ordering; "
+        "the suite lacks a multi-rule case where ranking decides."
+        if not disagreements else
+        f"{len(disagreements)} run(s) where the ranking changed the primary diagnosis."
+    )
+    return report
+
+
 def compute_classification_metrics(all_runs):
     tp = fp = fn = tn = 0
     per_class = {}
@@ -2348,6 +2486,7 @@ def print_summary(scenarios, all_runs, args):
         "scenarios": [],
         "overall": {},
         "classification_metrics": {},
+        "baseline_comparison": {},
         "rca_status_metrics": {},
         "anomaly_metrics": {},
         "raw_runs": all_runs,
@@ -2427,6 +2566,9 @@ def print_summary(scenarios, all_runs, args):
     anomaly_metrics = compute_anomaly_metrics(all_runs)
     report["anomaly_metrics"] = anomaly_metrics
 
+    baseline_comparison = compute_baseline_comparison(all_runs)
+    report["baseline_comparison"] = baseline_comparison
+
     print(f"\n{'='*60}")
     print("OVERALL")
     print(f"  RCA Accuracy     : {oa:.1f}%  (target ≥90%)  "
@@ -2474,6 +2616,28 @@ def print_summary(scenarios, all_runs, args):
     for status, m in rca_status_metrics.get("by_expected", {}).items():
         print(f"  {status:<24} : {m['accuracy_pct']:>5.1f}%  "
               f"({m['correct']}/{m['total']}) actual={m['actual']}")
+
+    print(f"\n{'='*60}")
+    print("BASELINE COMPARISON  (accuracy@1, same runs, same candidate set)")
+    if not baseline_comparison.get("runs_scored"):
+        print("  No run expected a concrete root cause; nothing to compare.")
+    else:
+        acc = baseline_comparison["accuracy_pct"]
+        print(f"  Scored on {baseline_comparison['runs_scored']} run(s) "
+              f"expecting a concrete diagnosis.\n")
+        print(f"  {'Selection policy':<34} {'Acc@1':>7}")
+        print(f"  {'-'*42}")
+        print(f"  {'engine (tier -> position -> sev)':<34} {acc['engine']:>6.1f}%")
+        print(f"  {'baseline: rule id order':<34} {acc['rule_id_order']:>6.1f}%")
+        print(f"  {'baseline: severity only':<34} {acc['severity_only']:>6.1f}%")
+        print(f"  {'baseline: first anomaly in time':<34} {acc['first_anomaly']:>6.1f}%")
+        print(f"\n  Engine minus rule-id ordering : "
+              f"{baseline_comparison['engine_minus_rule_id_order_pp']:+.1f} pp")
+        print(f"  {baseline_comparison['note']}")
+        for d in baseline_comparison["disagreements_with_rule_id_order"][:5]:
+            print(f"    - {d['scenario_id']} run {d['run_index']}: "
+                  f"engine={d['engine']} vs ruleId={d['rule_id_order']} "
+                  f"(expected {d['expected']})")
 
     print(f"\n{'='*60}")
     print("ANOMALY DETECTION METRICS")
