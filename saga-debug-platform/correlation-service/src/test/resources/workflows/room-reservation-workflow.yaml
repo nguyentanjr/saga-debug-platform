@@ -1,0 +1,68 @@
+# The saga implemented by semotpan/saga-orchestration, written as a specification this
+# platform can check executions against.
+#
+# Read out of RoomReservationSaga, SagaStepStatus, RoomBookingStatus and PaymentStatus in
+# that repository — not invented here. The saga has two steps and one compensation:
+#
+#   book the room -> take the payment
+#   payment rejected -> release the room booking
+#
+# Nothing in that project was modified. The whole integration is this file plus the two
+# ingestion mappings: three YAML files, no Java.
+
+workflow:
+  name: ROOM_RESERVATION
+  version: "1.0"
+
+  steps:
+    - id: BOOK_ROOM
+      service: hotel-service
+      timeout: 30s
+      compensation: RELEASE_ROOM
+      events:
+        completed: ROOM_BOOKED
+        failed: ROOM_REJECTED
+
+    - id: TAKE_PAYMENT
+      service: payment-service
+      timeout: 30s
+      events:
+        started: PAYMENT_REQUESTED
+        completed: PAYMENT_TAKEN
+        failed: PAYMENT_REJECTED
+
+  compensationSteps:
+    # Releasing the room is what the reservation service asks for when payment is
+    # rejected; the hotel service reports it as RoomBookingStatus.CANCELLED.
+    - id: RELEASE_ROOM
+      service: hotel-service
+      timeout: 30s
+      events:
+        completed: ROOM_CANCELLED
+
+  transitions:
+    - from: STARTED
+      to: BOOK_ROOM
+
+    - from: BOOK_ROOM
+      to: TAKE_PAYMENT
+      condition: SUCCESS
+
+    - from: TAKE_PAYMENT
+      to: COMPLETED
+      condition: SUCCESS
+
+    # A room that was never booked needs no releasing, so this failure ends the saga
+    # rather than compensating.
+    - from: BOOK_ROOM
+      to: FAILED
+      condition: FAILED
+
+    # A rejected payment leaves a held room, which does need releasing.
+    - from: TAKE_PAYMENT
+      to: COMPENSATING
+      condition: FAILED
+
+    - from: RELEASE_ROOM
+      to: COMPENSATED
+      condition: SUCCESS

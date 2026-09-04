@@ -1,0 +1,26 @@
+# The payment side of semotpan/saga-orchestration. See hotel-saga-room-booking.yaml for
+# why the correlation key and the identity are read from the transport rather than the
+# body.
+#
+# A separate file rather than a wider topicPattern because the two sources share a field
+# name with different meanings: `status` is CANCELLED on both topics, and it means "the
+# room booking was released" on one and "the payment was reversed" on the other. One
+# mapping cannot translate a value two ways, and inventing a shared vocabulary would be
+# this platform asking the observed system to make sense on its terms.
+
+source:
+  name: hotel-saga-payment
+  topicPattern: 'payment\.outbox\.events'
+
+  fields:
+    executionId: key
+    eventId: header:id
+
+    # PaymentStatus: REQUESTED | COMPLETED | FAILED | CANCELLED.
+    eventType: status
+
+  eventTypes:
+    "REQUESTED": PAYMENT_REQUESTED
+    "COMPLETED": PAYMENT_TAKEN
+    "FAILED": PAYMENT_REJECTED
+    "CANCELLED": PAYMENT_REVERSED
