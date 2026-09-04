@@ -1,0 +1,30 @@
+# Context-load profile: enough configuration to start the application without any
+# external service. Nothing here should be read as production defaults.
+spring:
+  datasource:
+    url: jdbc:h2:mem:correlation;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      # Schema comes from Flyway against real Postgres; here nothing touches tables.
+      ddl-auto: none
+    database-platform: org.hibernate.dialect.H2Dialect
+  flyway:
+    # The migrations are Postgres-specific (jsonb, TIMESTAMPTZ); schema-h2.sql below
+    # stands in for them here.
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+  kafka:
+    bootstrap-servers: localhost:59092
+    listener:
+      # No broker in this test; the container must not try to connect.
+      auto-startup: false
+
+rca:
+  alert:
+    file: ${java.io.tmpdir}/correlation-test-alerts.log

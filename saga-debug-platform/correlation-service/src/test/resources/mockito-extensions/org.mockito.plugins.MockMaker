@@ -1,0 +1,8 @@
+# Use the subclass mock maker instead of the inline one.
+#
+# The inline maker needs a JVM agent, and self-attachment is not permitted on every
+# JDK 21+ build — where it is not, every Mockito-based test fails at class
+# initialisation with "no working agent attachment mechanism". Nothing here mocks a
+# final class, a final method, or a static, so the subclass maker is sufficient and
+# removes the dependency on agent attachment entirely.
+mock-maker-subclass

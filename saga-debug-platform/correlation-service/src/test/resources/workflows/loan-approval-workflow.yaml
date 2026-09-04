@@ -1,0 +1,108 @@
+# A workflow whose steps have more than two possible outcomes.
+#
+# Assessing a loan does not simply succeed or fail: it approves, refers to a human, or
+# rejects. All three mean the assessment step finished and did its job — they route to
+# different successors. A model with only completed/failed cannot express that, and
+# would have to call two of the three "failure".
+#
+#                        ┌─ APPROVED ──────► DISBURSE_FUNDS ─► COMPLETED
+#   SUBMIT ─► ASSESS ────┼─ MANUAL_REVIEW ─► HUMAN_REVIEW ───► DISBURSE_FUNDS
+#                        └─ REJECTED ──────► FAILED
+workflow:
+  name: LOAN_APPROVAL
+  version: "1.0"
+
+  steps:
+    - id: SUBMIT_APPLICATION
+      service: intake-service
+      timeout: 5s
+      events:
+        started: APPLICATION_SUBMITTED
+        completed: APPLICATION_SUBMITTED
+        failed: APPLICATION_REJECTED_AT_INTAKE
+
+    - id: ASSESS_RISK
+      service: scoring-service
+      timeout: 30s
+      events:
+        started: ASSESSMENT_STARTED
+      # Three named outcomes rather than completed/failed.
+      outcomes:
+        APPROVED: ASSESSMENT_APPROVED
+        MANUAL_REVIEW: ASSESSMENT_FLAGGED
+        REJECTED: ASSESSMENT_REJECTED
+
+    - id: HUMAN_REVIEW
+      service: underwriting-service
+      timeout: 1h
+      outcomes:
+        APPROVED: REVIEW_APPROVED
+        REJECTED: REVIEW_REJECTED
+
+    - id: DISBURSE_FUNDS
+      service: disbursement-service
+      timeout: 20s
+      compensation: REVERSE_DISBURSEMENT
+      events:
+        started: DISBURSEMENT_STARTED
+        completed: FUNDS_DISBURSED
+        failed: DISBURSEMENT_FAILED
+
+  compensationSteps:
+    - id: REVERSE_DISBURSEMENT
+      service: disbursement-service
+      timeout: 20s
+      events:
+        started: REVERSAL_REQUESTED
+        completed: FUNDS_REVERSED
+        failed: REVERSAL_FAILED
+
+  transitions:
+    - from: STARTED
+      to: SUBMIT_APPLICATION
+    - from: SUBMIT_APPLICATION
+      to: ASSESS_RISK
+      condition: SUCCESS
+    - from: SUBMIT_APPLICATION
+      to: FAILED
+      condition: FAILED
+
+    # One step, three declared outcomes, three destinations.
+    - from: ASSESS_RISK
+      to: DISBURSE_FUNDS
+      condition: APPROVED
+    - from: ASSESS_RISK
+      to: HUMAN_REVIEW
+      condition: MANUAL_REVIEW
+    - from: ASSESS_RISK
+      to: FAILED
+      condition: REJECTED
+
+    - from: HUMAN_REVIEW
+      to: DISBURSE_FUNDS
+      condition: APPROVED
+    - from: HUMAN_REVIEW
+      to: FAILED
+      condition: REJECTED
+
+    - from: DISBURSE_FUNDS
+      to: COMPLETED
+      condition: SUCCESS
+    - from: DISBURSE_FUNDS
+      to: COMPENSATING
+      condition: FAILED
+    - from: COMPENSATING
+      to: COMPENSATED
+      condition: COMPENSATION_COMPLETE
+
+  validEventTypes:
+    APPLICATION_SUBMITTED: SUBMIT_APPLICATION
+    ASSESSMENT_APPROVED: ASSESS_RISK
+    ASSESSMENT_FLAGGED: ASSESS_RISK
+    ASSESSMENT_REJECTED: ASSESS_RISK
+    REVIEW_APPROVED: HUMAN_REVIEW
+    REVIEW_REJECTED: HUMAN_REVIEW
+    FUNDS_DISBURSED: DISBURSE_FUNDS
+    DISBURSEMENT_FAILED: DISBURSE_FUNDS
+    REVERSAL_REQUESTED: REVERSE_DISBURSEMENT
+    FUNDS_REVERSED: REVERSE_DISBURSEMENT

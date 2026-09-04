@@ -1,0 +1,105 @@
+# A second workflow, used to test that the engine is not the order saga's engine.
+#
+# Two properties matter here and neither holds for ORDER_SAGA:
+#   1. Reserving stock is NOT the last step — DISPATCH_PARCEL follows it. The previous
+#      state machine declared a saga COMPLETED on INVENTORY_RESERVED, so a workflow
+#      shaped like this either never completed or reported its own healthy tail as a
+#      post-terminal violation.
+#   2. Every event type, step id and service name differs from the order saga's, so any
+#      detector still keyed on those names simply does not fire here.
+#
+# Deliberately in test resources: no service implements this workflow, and shipping it
+# in the jar would imply the running demo has two workflows when it has one.
+workflow:
+  name: FULFILLMENT_SAGA
+  version: "1.0"
+
+  steps:
+    - id: CREATE_SHIPMENT
+      service: shipment-service
+      timeout: 5s
+      events:
+        started: SHIPMENT_CREATED
+        completed: SHIPMENT_CREATED
+        failed: SHIPMENT_FAILED
+
+    - id: CHARGE_CUSTOMER
+      service: billing-service
+      timeout: 10s
+      compensation: REVERSE_CHARGE
+      retryPolicy:
+        maxAttempts: 3
+        backoff: exponential
+      events:
+        started: CHARGE_STARTED
+        completed: CHARGE_COMPLETED
+        failed: CHARGE_FAILED
+        retry: CHARGE_RETRY
+
+    - id: RESERVE_STOCK
+      service: warehouse-service
+      timeout: 5s
+      events:
+        started: STOCK_RESERVATION_STARTED
+        completed: STOCK_RESERVED
+        failed: STOCK_FAILED
+
+    # The step that ORDER_SAGA does not have: work continues after stock is reserved.
+    - id: DISPATCH_PARCEL
+      service: courier-service
+      timeout: 30s
+      events:
+        started: DISPATCH_STARTED
+        completed: PARCEL_DISPATCHED
+        failed: DISPATCH_FAILED
+
+  compensationSteps:
+    - id: REVERSE_CHARGE
+      service: billing-service
+      timeout: 10s
+      events:
+        started: CHARGE_REVERSAL_REQUESTED
+        completed: CHARGE_REVERSED
+        failed: CHARGE_REVERSAL_FAILED
+
+  transitions:
+    - from: STARTED
+      to: CREATE_SHIPMENT
+    - from: CREATE_SHIPMENT
+      to: CHARGE_CUSTOMER
+      condition: SUCCESS
+    - from: CHARGE_CUSTOMER
+      to: RESERVE_STOCK
+      condition: SUCCESS
+    - from: RESERVE_STOCK
+      to: DISPATCH_PARCEL
+      condition: SUCCESS
+    - from: DISPATCH_PARCEL
+      to: COMPLETED
+      condition: SUCCESS
+    - from: CREATE_SHIPMENT
+      to: FAILED
+      condition: FAILED
+    - from: CHARGE_CUSTOMER
+      to: FAILED
+      condition: FAILED
+    - from: RESERVE_STOCK
+      to: COMPENSATING
+      condition: FAILED
+    - from: DISPATCH_PARCEL
+      to: COMPENSATING
+      condition: FAILED
+    - from: COMPENSATING
+      to: COMPENSATED
+      condition: COMPENSATION_COMPLETE
+
+  validEventTypes:
+    SHIPMENT_CREATED: CREATE_SHIPMENT
+    CHARGE_COMPLETED: CHARGE_CUSTOMER
+    CHARGE_FAILED: CHARGE_CUSTOMER
+    STOCK_RESERVED: RESERVE_STOCK
+    STOCK_FAILED: RESERVE_STOCK
+    PARCEL_DISPATCHED: DISPATCH_PARCEL
+    DISPATCH_FAILED: DISPATCH_PARCEL
+    CHARGE_REVERSAL_REQUESTED: REVERSE_CHARGE
+    CHARGE_REVERSED: REVERSE_CHARGE

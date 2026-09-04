@@ -1,0 +1,88 @@
+# A workflow with genuine parallelism, used to test the two shapes the engine could not
+# handle before: fan-out (one step triggers two) and fan-in (a step waits for both).
+#
+#   OPEN_CART ──┬─► RUN_FRAUD_CHECK ──┬─► SETTLE_ORDER ─► COMPLETED
+#               └─► RESERVE_SEATS  ───┘
+#
+# Fan-out used to be resolved with findFirst(), so OPEN_CART's completion meant whatever
+# the first YAML line said. Fan-in used to make SETTLE_ORDER unmeasurable, because
+# "the previous step" is not a single step.
+workflow:
+  name: PARALLEL_CHECKOUT
+  version: "1.0"
+
+  steps:
+    - id: OPEN_CART
+      service: cart-service
+      timeout: 5s
+      events:
+        started: CART_OPENED
+        completed: CART_OPENED
+        failed: CART_FAILED
+
+    - id: RUN_FRAUD_CHECK
+      service: risk-service
+      timeout: 20s
+      events:
+        started: FRAUD_CHECK_STARTED
+        completed: FRAUD_CHECK_PASSED
+        failed: FRAUD_CHECK_REJECTED
+
+    - id: RESERVE_SEATS
+      service: seating-service
+      timeout: 20s
+      events:
+        started: SEAT_RESERVATION_STARTED
+        completed: SEATS_RESERVED
+        failed: SEAT_RESERVATION_FAILED
+
+    # Behind the join: cannot begin until both arms above have finished.
+    - id: SETTLE_ORDER
+      service: settlement-service
+      timeout: 10s
+      events:
+        started: SETTLEMENT_STARTED
+        completed: ORDER_SETTLED
+        failed: SETTLEMENT_FAILED
+
+  transitions:
+    - from: STARTED
+      to: OPEN_CART
+    # Fan-out: one completion, two successors.
+    - from: OPEN_CART
+      to: RUN_FRAUD_CHECK
+      condition: SUCCESS
+    - from: OPEN_CART
+      to: RESERVE_SEATS
+      condition: SUCCESS
+    # Fan-in: two predecessors, one successor.
+    - from: RUN_FRAUD_CHECK
+      to: SETTLE_ORDER
+      condition: SUCCESS
+    - from: RESERVE_SEATS
+      to: SETTLE_ORDER
+      condition: SUCCESS
+    - from: SETTLE_ORDER
+      to: COMPLETED
+      condition: SUCCESS
+    - from: OPEN_CART
+      to: FAILED
+      condition: FAILED
+    - from: RUN_FRAUD_CHECK
+      to: FAILED
+      condition: FAILED
+    - from: RESERVE_SEATS
+      to: FAILED
+      condition: FAILED
+    - from: SETTLE_ORDER
+      to: FAILED
+      condition: FAILED
+
+  validEventTypes:
+    CART_OPENED: OPEN_CART
+    FRAUD_CHECK_PASSED: RUN_FRAUD_CHECK
+    FRAUD_CHECK_REJECTED: RUN_FRAUD_CHECK
+    SEATS_RESERVED: RESERVE_SEATS
+    SEAT_RESERVATION_FAILED: RESERVE_SEATS
+    ORDER_SETTLED: SETTLE_ORDER
+    SETTLEMENT_FAILED: SETTLE_ORDER
