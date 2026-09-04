@@ -54,7 +54,8 @@ HTTP  ─┴► EventIngestionService ─► CorrelationService.processEvent
                                         └─► lưu sự kiện + suy trạng thái từ đặc tả
 
 [theo lịch, 15s] 6 detector quét bất thường dạng "sự kiện không tới"
-[theo lịch, 30s] RcaService: 18 luật → RcaSelector xếp hạng → lưu kết quả + cảnh báo
+[theo lịch, 30s] RcaService: 18 luật (9 từ YAML, 9 trong code)
+                 → RcaSelector xếp hạng → lưu kết quả + cảnh báo
 ```
 
 ---
@@ -177,11 +178,11 @@ Kết quả lần chạy 2026-05-23 (`results/evaluation_report.json`) — **tr�
 
 | Hạn chế | Chi tiết |
 |---|---|
-| Luật RCA hard-code | 18 luật là phương thức Java trong `RcaService`. `resources/rules/rule.yaml` **không được nạp lúc chạy** — là bản phác thảo thiết kế |
-| Chưa có source mapping ở production | Cơ chế **đã được chứng minh bằng test** (`ForeignSystemIngestionTest` + `test/resources/ingestion/legacy-order-system.yaml`), nhưng `main/resources/ingestion/` rỗng nên bản chạy thật luôn dùng identity mapping |
-| Không có baseline | Khung đánh giá so với nhãn kỳ vọng, không so với phương pháp đối chứng |
+| 9/18 luật RCA còn trong code | R03, R04, R07, R09, R12, R13, R15, R19, R22 đã khai báo trong `rules/anomaly-signature-rules.yaml`. Chín luật còn lại cần nội dung payload, trạng thái saga, tính toán thời gian hoặc sự vắng mặt của sự kiện — không ép ra YAML được |
+| Chưa có xác thực trên API | Kể cả `/api/ingest` và `/api/admin/inject-event` |
+| Baseline chưa có số | `evaluate.py` đã tính `baseline_comparison` (3 chính sách chọn đối chứng) nhưng chưa chạy lại để lấy kết quả |
 | Danh mục kịch bản tự tham chiếu | Kịch bản được suy ra từ chính bộ luật đã cài, nên độ phủ nội tại gần như không thể thấp |
-| REST API không xác thực | Kể cả `/api/ingest` và `/api/admin/inject-event` |
+
 | Toxiproxy chưa nối dây | Kịch bản `SC07` được đánh dấu `synthetic` vì các service nối thẳng `kafka:9092` |
 | Chạy cục bộ | Một máy Docker Compose; chưa kiểm ở quy mô lớn |
 
