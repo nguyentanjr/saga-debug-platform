@@ -66,18 +66,78 @@ public class SourceMapping {
         return eventTypes.getOrDefault(sourceType, sourceType);
     }
 
-    public Optional<String> eventId(JsonNode payload) { return read(payload, fields.getEventId()); }
-    public Optional<String> executionId(JsonNode payload) { return read(payload, fields.getExecutionId()); }
-    public Optional<String> eventType(JsonNode payload) {
-        return read(payload, fields.getEventType()).map(this::translateEventType);
+    public Optional<String> eventId(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getEventId());
     }
-    public Optional<String> stepName(JsonNode payload) { return read(payload, fields.getStepName()); }
-    public Optional<String> serviceName(JsonNode payload) { return read(payload, fields.getServiceName()); }
-    public Optional<String> eventTime(JsonNode payload) { return read(payload, fields.getEventTime()); }
-    public Optional<String> causationId(JsonNode payload) { return read(payload, fields.getCausationId()); }
-    public Optional<String> spanId(JsonNode payload) { return read(payload, fields.getSpanId()); }
-    public Optional<String> parentSpanId(JsonNode payload) { return read(payload, fields.getParentSpanId()); }
-    public Optional<String> traceId(JsonNode payload) { return read(payload, fields.getTraceId()); }
+    public Optional<String> executionId(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getExecutionId());
+    }
+    public Optional<String> eventType(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getEventType()).map(this::translateEventType);
+    }
+    public Optional<String> stepName(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getStepName());
+    }
+    public Optional<String> serviceName(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getServiceName());
+    }
+    public Optional<String> eventTime(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getEventTime());
+    }
+    public Optional<String> causationId(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getCausationId());
+    }
+    public Optional<String> spanId(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getSpanId());
+    }
+    public Optional<String> parentSpanId(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getParentSpanId());
+    }
+    public Optional<String> traceId(JsonNode payload, RawObservation observation) {
+        return resolve(payload, observation, fields.getTraceId());
+    }
+
+
+    /** Where a declared path says to look. */
+    public static final String KEY_SOURCE = "key";
+    public static final String HEADER_PREFIX = "header:";
+
+
+    /**
+     * Reads one declared field from wherever the mapping says it lives.
+     *
+     * <p>Three forms, distinguished by prefix:
+     * <ul>
+     *   <li>{@code key} — the transport's record key</li>
+     *   <li>{@code header:NAME} — a transport header</li>
+     *   <li>anything else — a dotted path into the payload, which is the default and what
+     *       every existing mapping means</li>
+     * </ul>
+     *
+     * <p>Prefixes rather than a nested {@code {source, path}} object because a mapping is
+     * read far more often than it is written, and {@code eventType: header:eventType} says
+     * the whole thing on one line. The cost is a known limitation, recorded here rather
+     * than hidden: a payload field named exactly {@code key}, or one whose name starts
+     * with {@code header:}, cannot be addressed. Neither has been seen in practice, and
+     * the readability is worth that.
+     */
+    Optional<String> resolve(JsonNode payload, RawObservation observation, String path) {
+        if (path == null || path.isBlank()) {
+            return Optional.empty();
+        }
+        if (KEY_SOURCE.equals(path)) {
+            return blankToEmpty(observation != null ? observation.key() : null);
+        }
+        if (path.startsWith(HEADER_PREFIX)) {
+            String name = path.substring(HEADER_PREFIX.length());
+            return blankToEmpty(observation != null ? observation.header(name) : null);
+        }
+        return read(payload, path);
+    }
+
+    private static Optional<String> blankToEmpty(String value) {
+        return value == null || value.isBlank() ? Optional.empty() : Optional.of(value);
+    }
 
     /**
      * Follows a dotted path.
@@ -107,10 +167,17 @@ public class SourceMapping {
     }
 
     /**
-     * Where each envelope field lives in the source payload.
+     * Where each envelope field lives.
      *
-     * <p>Defaults are this platform's own field names, so a producer that already speaks
-     * the envelope needs no mapping at all and an existing deployment is unaffected.
+     * <p>Defaults are this platform's own field names read from the payload, so a producer
+     * that already speaks the envelope needs no mapping at all and an existing deployment
+     * is unaffected.
+     *
+     * <p>A value may also name the transport instead of the body — {@code key} for the
+     * record key, {@code header:NAME} for a header. That exists because systems using the
+     * outbox pattern with Debezium routinely publish a thin business payload and carry the
+     * identity, the event type and the correlation key in the key and headers; without it
+     * such a system cannot be read at all, however its payload is mapped.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Fields {

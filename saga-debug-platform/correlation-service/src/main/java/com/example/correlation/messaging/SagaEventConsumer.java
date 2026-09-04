@@ -5,6 +5,8 @@ import com.example.correlation.ingestion.IngestionResult;
 import com.example.correlation.ingestion.RawObservation;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -57,7 +59,8 @@ public class SagaEventConsumer {
                 Instant.ofEpochMilli(record.timestamp()),
                 // Kafka can always identify a record even when the payload cannot.
                 record.topic() + "-" + record.partition() + "-" + record.offset(),
-                correlationHeader(record));
+                record.key(),
+                headersOf(record));
 
         // A thrown exception reaches the container's error handler, which retries with
         // backoff. A returned rejection does not: nothing about the record will change.
@@ -70,8 +73,23 @@ public class SagaEventConsumer {
         }
     }
 
-    private static String correlationHeader(ConsumerRecord<String, String> record) {
-        Header header = record.headers().lastHeader("saga-id");
-        return header != null ? new String(header.value(), StandardCharsets.UTF_8) : null;
-    }
+    /**
+      * Every header, so a mapping can name the one it needs.
+      *
+      * <p>This replaced a method that read one hard-coded header called {@code saga-id}.
+      * That name was this project's own convention, so a system carrying its correlation
+      * key in a header called anything else was unreadable no matter how its payload was
+      * mapped. Which header matters is a property of the source, and therefore belongs in
+      * the source's mapping file.
+      *
+      * <p>Last value wins on a repeated header, matching {@code Headers.lastHeader}.
+      */
+     private static Map<String, String> headersOf(ConsumerRecord<String, String> record) {
+         Map<String, String> headers = new LinkedHashMap<>();
+         for (Header header : record.headers()) {
+             if (header.key() == null || header.value() == null) continue;
+             headers.put(header.key(), new String(header.value(), StandardCharsets.UTF_8));
+         }
+         return headers;
+     }
 }

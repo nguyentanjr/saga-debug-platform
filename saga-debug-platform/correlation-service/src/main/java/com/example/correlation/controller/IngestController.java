@@ -131,7 +131,7 @@ public class IngestController {
             // fall back on, so an event without an id cannot be deduplicated and is
             // rejected rather than being given a synthetic one that changes per request.
             IngestionResult result = ingestionService.ingest(new RawObservation(
-                    source, event.toString(), receivedAt, null, null));
+                    source, event.toString(), receivedAt, null, null, Map.of()));
 
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("outcome", result.outcome().name());

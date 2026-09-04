@@ -74,8 +74,7 @@ public class EventIngestionService {
                     raw.sourceRef(), violations);
         }
 
-        String executionId = mapping.executionId(payload)
-                .orElse(raw.correlationHint());
+        String executionId = mapping.executionId(payload, raw).orElse(null);
         if (executionId == null) {
             String reason = "no value at '" + mapping.getFields().getExecutionId()
                     + "' and no correlation hint";
@@ -84,7 +83,7 @@ public class EventIngestionService {
             return IngestionResult.notCorrelatable(reason);
         }
 
-        String eventId = mapping.eventId(payload).orElse(raw.fallbackEventId());
+        String eventId = mapping.eventId(payload, raw).orElse(raw.fallbackEventId());
         if (eventId == null) {
             String reason = "no value at '" + mapping.getFields().getEventId()
                     + "' and the transport offered no identity";
@@ -108,15 +107,15 @@ public class EventIngestionService {
         IngestedEvent observation = new IngestedEvent(
                 eventId,
                 executionId,
-                mapping.eventType(payload).orElse(raw.sourceRef()),
-                mapping.stepName(payload).orElse("UNKNOWN"),
-                mapping.serviceName(payload).orElse("unknown"),
+                mapping.eventType(payload, raw).orElse(raw.sourceRef()),
+                mapping.stepName(payload, raw).orElse("UNKNOWN"),
+                mapping.serviceName(payload, raw).orElse("unknown"),
                 resolved.eventTime(),
                 raw.payload(),
                 Instant.now(),
-                mapping.causationId(payload).orElse(null),
-                mapping.spanId(payload).orElse(null),
-                mapping.parentSpanId(payload).orElse(null));
+                mapping.causationId(payload, raw).orElse(null),
+                mapping.spanId(payload, raw).orElse(null),
+                mapping.parentSpanId(payload, raw).orElse(null));
 
         try {
             correlationService.processEvent(observation);
