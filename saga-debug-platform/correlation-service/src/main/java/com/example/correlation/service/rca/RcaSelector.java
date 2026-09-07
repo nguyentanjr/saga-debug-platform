@@ -5,6 +5,7 @@ import com.example.correlation.domain.SagaInstance;
 import com.example.correlation.domain.SagaStatus;
 import com.example.correlation.domain.rca.CandidateAssessment;
 import com.example.correlation.domain.rca.CandidateStatus;
+import com.example.correlation.domain.rca.ClaimSubject;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
 import org.springframework.stereotype.Service;
@@ -48,12 +49,64 @@ public class RcaSelector {
                 .filter(c -> c.getStatus() != CandidateStatus.RULED_OUT)
                 .collect(Collectors.toList());
 
+        List<RcaCandidate> ranked = candidates.stream()
+                .map(RcaCandidate::from)
+                .collect(Collectors.toList());
+
         SelectionResult result = new SelectionResult();
         result.setRcaStatus(resolveStatus(evidenceCandidates, anomalyList, saga));
-        result.setCandidates(candidates.stream().map(RcaCandidate::from).collect(Collectors.toList()));
+        result.setCandidates(ranked);
+        result.setPrimary(promote(ranked));
         result.setMissingEvidence(buildMissingEvidence(candidates, result.getRcaStatus()));
         return result;
     }
+
+    /**
+     * The one candidate this selection is willing to publish as the root cause.
+     *
+     * <p>The ranking above already answers "which of these should a reader look at
+     * first"; this only reads that answer off the front of the list. Nothing is
+     * re-scored, no threshold is relaxed, and no candidate is promoted that the rules did
+     * not already assess as {@link CandidateStatus#STRONG_EVIDENCE}.
+     *
+     * <p>Restricted to that one tier on purpose. SUPPORTING_EVIDENCE corroborates a
+     * finding rather than establishing one, WEAK_EVIDENCE is explicitly a hypothesis, and
+     * RULED_OUT has been withdrawn — publishing any of them as <em>the</em> root cause
+     * would state more than the evidence does. Nothing here changes which candidates
+     * exist or what status they carry; a saga with no strong candidate produces no
+     * promotion, exactly as before.
+     *
+     * <p>The fallback rules R20/R21 cannot arrive here: they are assessed WEAK_EVIDENCE
+     * by the rules that raise them, and {@link #applyExclusions} withdraws them outright
+     * once anything specific is available.
+     *
+     * <h2>Why evidence tier is not the only question</h2>
+     * A root cause answers "what did the observed system do wrong", so a candidate can
+     * only be promoted if that is what it is a claim about. A finding whose subject is
+     * this platform's own reception — which records it read first, which partitions it
+     * was behind on — is strong evidence of something real and still not an answer to
+     * that question. {@code OUT_OF_ORDER_DELIVERY (R14)} is the case this was written
+     * for: on backlog ingestion it anchors at the first step of the run, so the ranking's
+     * execution-position key put it ahead of an unacknowledged compensation and a
+     * downstream timeout, and it was published as the cause of runs whose observed
+     * systems had done nothing wrong.
+     *
+     * <p>Nothing is suppressed by this. Such a candidate is ranked exactly where it was,
+     * keeps its status, severity, anchor and evidence, and is still returned in
+     * {@code candidates}; it is passed over here and here only. See {@link ClaimSubject}.
+     *
+     * @return the first strongly-evidenced candidate in ranked order whose claim is about
+     *         the observed system, or null when the selection has none — which is a
+     *         refusal to name a cause, not a failure
+     */
+    private RcaCandidate promote(List<RcaCandidate> ranked) {
+        return ranked.stream()
+                .filter(candidate -> candidate.getStatus() == CandidateStatus.STRONG_EVIDENCE)
+                .filter(candidate -> candidate.getSubject() == ClaimSubject.OBSERVED_SYSTEM)
+                .findFirst()
+                .orElse(null);
+    }
+
 
     /**
      * Where a candidate sits in the execution, and which steps precede which.
@@ -206,8 +259,19 @@ public class RcaSelector {
         private List<RcaCandidate> candidates = new ArrayList<>();
         private List<String> missingEvidence = new ArrayList<>();
 
+        /**
+         * The candidate this selection promotes to the reported root cause, or null.
+         *
+         * <p>One of the objects in {@link #candidates}, not a copy, so the promoted cause
+         * and the candidate list can never disagree about a rule's status or evidence.
+         */
+        private RcaCandidate primary;
+
         public RcaStatus getRcaStatus() { return rcaStatus; }
         public void setRcaStatus(RcaStatus rcaStatus) { this.rcaStatus = rcaStatus; }
+
+        public RcaCandidate getPrimary() { return primary; }
+        public void setPrimary(RcaCandidate primary) { this.primary = primary; }
 
         public List<RcaCandidate> getCandidates() { return candidates; }
         public void setCandidates(List<RcaCandidate> candidates) {

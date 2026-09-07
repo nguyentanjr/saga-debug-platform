@@ -1,12 +1,13 @@
 package com.example.correlation.service.rca;
 
+import com.example.correlation.config.DeclarationFiles;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -35,7 +36,13 @@ public class RuleRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(RuleRegistry.class);
 
-    private static final String LOCATION_PATTERN = "classpath*:rules/*.yaml";
+    /**
+     * Where a deployment keeps rules it did not build into the jar. A threshold is a fact
+     * about the system being watched, so tuning one for a particular deployment must not
+     * mean rebuilding the platform.
+     */
+    @Value("${correlation.declarations.dir:}")
+    private String declarationsDirectory;
 
     private final List<AnomalySignatureRule> rules = new ArrayList<>();
 
@@ -43,8 +50,7 @@ public class RuleRegistry {
     public void load() {
         ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
         try {
-            Resource[] resources = new PathMatchingResourcePatternResolver()
-                    .getResources(LOCATION_PATTERN);
+            List<Resource> resources = DeclarationFiles.find("rules", declarationsDirectory);
 
             for (Resource resource : resources) {
                 try (InputStream is = resource.getInputStream()) {

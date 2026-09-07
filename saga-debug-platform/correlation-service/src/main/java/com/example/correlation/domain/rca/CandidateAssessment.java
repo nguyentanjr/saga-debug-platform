@@ -14,6 +14,13 @@ public class CandidateAssessment {
     private String statusReason;
 
     /**
+     * Who this candidate's claim is about, which decides whether it can answer "what did
+     * the observed system do wrong". Declared by the rule; defaults to the observed
+     * system, so a rule that says nothing about its subject keeps the behaviour it had.
+     */
+    private ClaimSubject subject = ClaimSubject.OBSERVED_SYSTEM;
+
+    /**
      * Where in the execution this candidate's evidence points, and what else the
      * execution shows before it. Set during selection, not by the rule.
      */
@@ -60,6 +67,11 @@ public class CandidateAssessment {
 
     public String getStatusReason() { return statusReason; }
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+
+    public ClaimSubject getSubject() { return subject; }
+    public void setSubject(ClaimSubject subject) {
+        this.subject = subject != null ? subject : ClaimSubject.OBSERVED_SYSTEM;
+    }
 
     public static class Builder {
         private final CandidateAssessment candidate = new CandidateAssessment();
@@ -110,6 +122,12 @@ public class CandidateAssessment {
 
         public Builder statusReason(String statusReason) {
             candidate.setStatusReason(statusReason);
+            return this;
+        }
+
+        /** Declares who the claim is about; omit to keep the observed-system default. */
+        public Builder subject(ClaimSubject subject) {
+            candidate.setSubject(subject);
             return this;
         }
 

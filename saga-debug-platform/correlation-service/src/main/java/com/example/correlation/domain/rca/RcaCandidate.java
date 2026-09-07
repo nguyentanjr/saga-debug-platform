@@ -16,6 +16,12 @@ public class RcaCandidate {
     private List<String> suggestions = new ArrayList<>();
     private String statusReason;
 
+    /**
+     * Who this candidate's claim is about. Carried through to the stored result so a
+     * reader can see why a candidate ranked first and was still not reported as the cause.
+     */
+    private ClaimSubject subject = ClaimSubject.OBSERVED_SYSTEM;
+
     /** Step whose observations this candidate rests on, per the execution projection. */
     private String anchorStepId;
 
@@ -40,6 +46,7 @@ public class RcaCandidate {
         candidate.setEvidence(assessment.getEvidence());
         candidate.setSuggestions(assessment.getSuggestions());
         candidate.setStatusReason(assessment.getStatusReason());
+        candidate.setSubject(assessment.getSubject());
         candidate.setAnchorStepId(assessment.getAnchorStepId());
         candidate.setAnchorAt(assessment.getAnchorAt());
         candidate.setPrecededBy(assessment.getPrecededBy());
@@ -81,4 +88,9 @@ public class RcaCandidate {
 
     public String getStatusReason() { return statusReason; }
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+
+    public ClaimSubject getSubject() { return subject; }
+    public void setSubject(ClaimSubject subject) {
+        this.subject = subject != null ? subject : ClaimSubject.OBSERVED_SYSTEM;
+    }
 }

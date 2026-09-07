@@ -5,6 +5,7 @@ import com.example.correlation.execution.ExecutionProjection;
 import com.example.correlation.execution.ExecutionProjectionService;
 import com.example.correlation.domain.rca.CandidateStatus;
 import com.example.correlation.domain.rca.CandidateAssessment;
+import com.example.correlation.domain.rca.ClaimSubject;
 import com.example.correlation.domain.rca.Evidence;
 import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.domain.rca.RcaStatus;
@@ -96,7 +97,10 @@ public class RcaService {
         rcaResultRepository.deleteAllBySagaId(sagaId);
 
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
-        List<Anomaly> anomalies = anomalyRepository.findBySagaId(sagaId);
+        // Only the findings that still stand. A withdrawn claim is one the platform has
+        // said later observations falsified; reasoning from it publishes as a diagnosis
+        // something already known to be wrong about the run.
+        List<Anomaly> anomalies = anomalyRepository.findStandingBySagaId(sagaId);
 
         
         WorkflowSpec workflow = workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
@@ -131,6 +135,10 @@ public class RcaService {
                 rcaSelector.select(candidates, anomalies, saga, executionOrder(projection, workflow));
         RcaStatus rcaStatus = selection.getRcaStatus();
         List<RcaCandidate> evidenceCandidates = evidenceCandidates(selection);
+        // The candidate the selector ranked first among the strongly-evidenced ones, or
+        // null when it found none. Read rather than recomputed: re-deriving a winner here
+        // would be a second ranking that could disagree with the one in the candidate list.
+        RcaCandidate primary = selection.getPrimary();
         // Order already established by the selector, which knows where each candidate
         // sits in the execution. Re-sorting here on severity and rule id would throw
         // that away and put the alphabetically-first rule back on top.
@@ -169,7 +177,7 @@ public class RcaService {
 
         
         List<String> traceIds = events.stream()
-                .map(e -> extractTraceId(e.getPayload()))
+                .map(RcaService::traceIdOf)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
@@ -184,17 +192,30 @@ public class RcaService {
         try {
             RcaResult result = new RcaResult();
             result.setSagaId(sagaId);
-            result.setRootCause(null);
+            // The reported cause is the promoted candidate's, and null when nothing was
+            // promoted. These three fields were pinned to null when the score-free model
+            // replaced the old single-primary one, so a run could rank a STRONG_EVIDENCE
+            // candidate, publish it in `candidates`, and still report no root cause at all
+            // — the diagnosis was reached and then not stated. Every field below still
+            // comes from a candidate the rules assessed; nothing is inferred here.
+            result.setRootCause(primary != null ? primary.getRootCause() : null);
             result.setOutcome(outcome);
             result.setSeverity(!evidenceCandidates.isEmpty()
                     ? highestSeverity(evidenceCandidates)
                     : fallbackSeverity(outcome, selection));
+            // Deliberately still null: the score-free model removed confidence scores, and
+            // promoting a candidate is not grounds for inventing one. See V5.
             result.setConfidence(null);
-            result.setRuleId(null);
+            result.setRuleId(primary != null ? primary.getRuleId() : null);
             result.setEvidence(objectMapper.writeValueAsString(evidence));
             result.setSuggestions(objectMapper.writeValueAsString(suggestions));
             result.setRcaStatus(rcaStatus);
-            result.setPrimaryRootCauses(List.of());
+            // Mirrors root_cause as a list, which is the shape V5 established when it
+            // introduced the column (primary_root_causes = jsonb_build_array(root_cause)).
+            result.setPrimaryRootCauses(
+                    primary != null && primary.getRootCause() != null
+                            ? List.of(primary.getRootCause())
+                            : List.of());
             result.setCandidates(selection.getCandidates());
             result.setMissingEvidence(selection.getMissingEvidence());
 
@@ -209,8 +230,10 @@ public class RcaService {
             rcaResultRepository.save(result);
             emitAlert(result, evidence);
 
-            log.info("RCA saga={}: rcaStatus={}, outcome={}, severity={}, evidenceCandidates={}",
+            log.info("RCA saga={}: rcaStatus={}, outcome={}, severity={}, rootCause={} ({}), "
+                            + "evidenceCandidates={}",
                     sagaId, rcaStatus, outcome, result.getSeverity(),
+                    result.getRootCause(), result.getRuleId(),
                     evidenceCandidates.stream().map(RcaCandidate::getRootCause).collect(Collectors.toList()));
             return result;
         } catch (Exception e) {
@@ -768,6 +791,22 @@ public class RcaService {
     
     
     
+    /**
+     * What OUT_OF_ORDER establishes, and what it does not.
+     *
+     * <p>The detector behind it sorts a run's observations by when this platform received
+     * them and reports a pair whose event times run the other way. That is a true and
+     * useful statement about the reception order, and it stays a candidate with all its
+     * evidence. It is not a statement that the observed system violated an ordering
+     * contract: the pairs it reports come from different topics, and Kafka defines no
+     * ordering across topics for either side to have broken. It appears on backlog and
+     * multi-topic catch-up reads, where this platform is choosing the order, and not on
+     * live ingestion or on replay of records it already holds.
+     *
+     * <p>So the claim's subject is the observation process, and it is declared as such —
+     * which keeps it out of promotion without touching its tier, its severity, its anchor
+     * or its rank. See {@link com.example.correlation.domain.rca.ClaimSubject}.
+     */
     private CandidateAssessment ruleOutOfOrderDelivery(SagaInstance saga, List<Anomaly> anomalies) {
         boolean isTerminal = saga.getStatus() == SagaStatus.COMPLETED
                 || saga.getStatus() == SagaStatus.COMPENSATED;
@@ -776,6 +815,7 @@ public class RcaService {
                 CandidateAssessment rr = candidate("OUT_OF_ORDER_DELIVERY",
                         isTerminal ? "LOW" : "MEDIUM", "R14",
                         CandidateStatus.STRONG_EVIDENCE);
+                rr.setSubject(ClaimSubject.OBSERVATION_PROCESS);
                 rr.getEvidence().add(evidence(a));
                 if (isTerminal) {
                     rr.getEvidence().add(evidence("Saga completed despite out-of-order events"));
@@ -970,16 +1010,17 @@ public class RcaService {
         return highestSeverity(selection.getCandidates());
     }
 
-    private String extractTraceId(String payloadJson) {
-        if (payloadJson == null || payloadJson.isBlank()) return null;
-        try {
-            var node = objectMapper.readTree(payloadJson);
-            if (node.has("traceId") && !node.get("traceId").isNull()) {
-                return node.get("traceId").asText();
-            }
-        } catch (Exception e) {
-            
-        }
-        return null;
+    /**
+     * The trace this event belongs to, as its source's mapping said to read it.
+     *
+     * <p>Was a search of the payload for a field named {@code traceId} — this platform's
+     * own name — so a system keeping it anywhere else produced a report with no link to
+     * its traces. The value now arrives through {@code SourceMapping.traceId} like every
+     * other mapped field.
+     */
+    private static String traceIdOf(SagaEvent event) {
+        if (event == null) return null;
+        String traceId = event.getTraceId();
+        return traceId != null && !traceId.isBlank() ? traceId : null;
     }
 }
