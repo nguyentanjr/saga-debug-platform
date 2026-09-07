@@ -1,0 +1,24 @@
+# The customer service's reply. See spm-order-orchestrator.yaml for the system as a whole.
+#
+# CustomerUseCase.reserveBalance fails when balance - price*quantity < 0, so a customer
+# with too little balance is how the first failure path is provoked.
+#
+# NOTHING IS PUBLISHED WHEN THE REFUND FINISHES.
+# CustomerEventHandler.handleCompensateCustomerBalanceRequest calls compensateBalance and
+# writes no outbox row, so this topic can say "the balance was reserved" and never "the
+# balance was given back". That is a property of the observed system, recorded rather than
+# worked around; see the note on REFUND_CUSTOMER_BALANCE in the workflow.
+source:
+  name: spm-customer-reply
+  system: saga-pattern-order
+  topicPattern: 'CUSTOMER\.events'
+
+  fields:
+    executionId: [key, id]
+    businessKey: id
+    eventId: header:id
+    eventType: header:eventType
+
+  eventTypes:
+    "RESERVE_CUSTOMER_BALANCE_SUCCESSFULLY": CUSTOMER_BALANCE_RESERVED
+    "RESERVE_CUSTOMER_BALANCE_FAILED": CUSTOMER_BALANCE_REJECTED

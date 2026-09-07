@@ -1,0 +1,98 @@
+# The saga implemented by uuhnaut69/saga-pattern-microservices, written as a specification
+# this platform can check executions against.
+#
+# Read out of OrderEventHandler, CustomerEventHandler, InventoryEventHandler, the three
+# outbox connector configs and the Spring Cloud Stream bindings -- not from the README,
+# which says "Saga Orchestration" without saying which service orchestrates or in what
+# order. The order service does, and the order is: balance first, stock second.
+#
+#   ORDER_PLACED ─► RESERVE_CUSTOMER_BALANCE ─► RESERVE_PRODUCT_STOCK ─► COMPLETED
+#                            │                            │
+#                            └─► FAILED                   └─► REFUND_CUSTOMER_BALANCE
+#
+# Strictly sequential: inventory only ever acts on an ORDER.events record whose eventType
+# is RESERVE_CUSTOMER_BALANCE_SUCCESSFULLY, which the orchestrator writes only after the
+# customer service has answered. There is no parallelism to model.
+#
+# HOW TO PROVOKE EACH PATH, for anyone reproducing this:
+#   balance rejected - order a total price above the customer's balance
+#                      (CustomerUseCase.reserveBalance: balance - price*quantity < 0)
+#   stock rejected   - order a quantity above the product's stocks
+#                      (ProductUseCase.reserveProduct: stocks - quantity < 0)
+#
+# WHAT CANNOT BE SEEN OF THE COMPENSATION
+#
+# handleCompensateCustomerBalanceRequest refunds the balance and writes no outbox row, so
+# REFUND_CUSTOMER_BALANCE below declares a `started` event and no `completed` one. An
+# execution that compensates therefore settles at COMPENSATING, which is the honest reading
+# of the evidence: the refund was asked for, and nothing was ever published to say it
+# happened. The refund is verifiable only in the customer service's own database.
+
+workflow:
+  name: SPM_ORDER_SAGA
+  version: "1.0"
+  sources: [saga-pattern-order]
+
+  steps:
+    - id: RESERVE_CUSTOMER_BALANCE
+      service: customer-service
+      timeout: 30s
+      compensation: REFUND_CUSTOMER_BALANCE
+      events:
+        # The orchestrator's first command, on ORDER.events.
+        started: ORDER_PLACED
+        completed: CUSTOMER_BALANCE_RESERVED
+        failed: CUSTOMER_BALANCE_REJECTED
+
+    - id: RESERVE_PRODUCT_STOCK
+      service: inventory-service
+      timeout: 30s
+      events:
+        # The orchestrator relaying the balance success as the next command, on
+        # ORDER.events. It is the same raw type name the customer service used on its own
+        # topic; the two mappings keep them apart.
+        started: STOCK_RESERVATION_REQUESTED
+        completed: PRODUCT_STOCK_RESERVED
+        failed: PRODUCT_STOCK_REJECTED
+
+  compensationSteps:
+    - id: REFUND_CUSTOMER_BALANCE
+      service: customer-service
+      timeout: 30s
+      events:
+        started: CUSTOMER_REFUND_REQUESTED
+
+  transitions:
+    - from: STARTED
+      to: RESERVE_CUSTOMER_BALANCE
+
+    - from: RESERVE_CUSTOMER_BALANCE
+      to: RESERVE_PRODUCT_STOCK
+      condition: SUCCESS
+
+    - from: RESERVE_PRODUCT_STOCK
+      to: COMPLETED
+      condition: SUCCESS
+
+    # A balance that was never reserved needs no refund, so this ends the run.
+    - from: RESERVE_CUSTOMER_BALANCE
+      to: FAILED
+      condition: FAILED
+
+    # A rejected stock reservation leaves the balance held, which does need refunding.
+    - from: RESERVE_PRODUCT_STOCK
+      to: COMPENSATING
+      condition: FAILED
+
+    - from: REFUND_CUSTOMER_BALANCE
+      to: COMPENSATED
+      condition: SUCCESS
+
+  validEventTypes:
+    ORDER_PLACED: RESERVE_CUSTOMER_BALANCE
+    CUSTOMER_BALANCE_RESERVED: RESERVE_CUSTOMER_BALANCE
+    CUSTOMER_BALANCE_REJECTED: RESERVE_CUSTOMER_BALANCE
+    STOCK_RESERVATION_REQUESTED: RESERVE_PRODUCT_STOCK
+    PRODUCT_STOCK_RESERVED: RESERVE_PRODUCT_STOCK
+    PRODUCT_STOCK_REJECTED: RESERVE_PRODUCT_STOCK
+    CUSTOMER_REFUND_REQUESTED: REFUND_CUSTOMER_BALANCE

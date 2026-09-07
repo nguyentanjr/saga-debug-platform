@@ -1,0 +1,11 @@
+# Probe for the transport seam: correlation key in the record key, identity in a header.
+# The Debezium EventRouter shape. Read over Kafka before the fix, refused over HTTP.
+source:
+  name: outbox-http-probe
+  topicPattern: 'probe\.outbox\.events'
+  fields:
+    executionId: key
+    eventId: header:id
+    eventType: status
+  eventTypes:
+    "BOOKED": ORDER_CREATED

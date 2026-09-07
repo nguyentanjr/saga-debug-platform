@@ -1,0 +1,39 @@
+# The orchestrator's COMMANDS to the hotel service, in semotpan/saga-orchestration.
+#
+# The reply topics (see hotel-saga-room-booking.yaml) say what happened; this topic says
+# what was asked for, and it is the only place three things exist at all:
+#
+#   1. STEP-STARTED EVIDENCE. Nothing is published when a step begins on the reply side,
+#      so a step that never answered could only be reported as "the saga went quiet",
+#      not as "BOOK_ROOM was asked for and never answered". RCA rule R11 needs a
+#      compensation-started event and could not fire without this topic.
+#   2. THE BUSINESS KEY. The reply payloads carry {"status": ...} and nothing else. The
+#      reservation id an operator actually searches by is only ever in the command.
+#   3. THE COMPENSATION REQUEST. `type` is CANCEL when the orchestrator asks for the room
+#      to be released, which is what distinguishes a booking from a release on a topic
+#      whose header eventType is REQUEST either way.
+#
+# Declares `system: hotel-saga` like the other three mappings, so all four topics share
+# one execution namespace. See SourceMapping#systemName.
+source:
+  name: hotel-saga-room-booking-commands
+
+  # Four topics, one observed system, one id space. The reply and command topics need
+  # separate mappings because their payloads share field names with different meanings --
+  # `status` is CANCELLED on both reply topics and means "room released" on one and
+  # "payment reversed" on the other -- but they are one saga with one id, and the
+  # execution namespace follows the system rather than the file that read it.
+  system: hotel-saga
+  topicPattern: 'room-booking\.inbox\.events'
+
+  fields:
+    executionId: key
+    eventId: header:id
+    # The saga payload's own field, not the header: the header says REQUEST for both a
+    # booking and a release, the payload's `type` tells them apart.
+    eventType: type
+    businessKey: reservationId
+
+  eventTypes:
+    "REQUEST": BOOK_ROOM_REQUESTED
+    "CANCEL": RELEASE_ROOM_REQUESTED

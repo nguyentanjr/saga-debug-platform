@@ -1,0 +1,30 @@
+# The payment service's reply. See kms-order-request.yaml for the system as a whole.
+#
+# Read from paymentStatus rather than stockStatus: the payload is the same class on every
+# topic, so the field that carries meaning here is the one this service wrote. A mapping
+# that read stockStatus on this topic would report the stock leg's outcome twice and the
+# payment leg's never.
+source:
+  name: kms-payment-reply
+  system: kms-order-saga
+
+  # This deployment also carries the platform's own ORDER_SAGA demo specification, which
+  # declares ORDER_CREATED as a start event too. The registry correctly refused to guess
+  # between them and left executions UNRESOLVED. Naming the workflow here is the documented
+  # remedy and the honest one: this source has exactly one saga, and saying so is cheaper
+  # than renaming an event this system did not name.
+  workflow: KMS_ORDER_SAGA
+  topicPattern: 't_payment'
+
+  fields:
+    executionId: [key, orderNumber]
+    businessKey: orderNumber
+    eventType: paymentStatus
+
+  # `paymentStatusReason` is deliberately NOT mapped to stepName: it is free text, and
+  # step_name is VARCHAR(50). See kms-stock-reply.yaml, where a 62-character reason made
+  # the insert fail and the event was dropped after its retries. The payload keeps it.
+
+  eventTypes:
+    "Success": PAYMENT_ACCEPTED
+    "Failed": PAYMENT_REJECTED

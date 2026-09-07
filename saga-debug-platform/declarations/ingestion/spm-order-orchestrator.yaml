@@ -1,0 +1,56 @@
+# Reading an unmodified third-party system: uuhnaut69/saga-pattern-microservices.
+#
+# Saga ORCHESTRATION (order-service drives the steps) over the transactional outbox
+# pattern: Debezium 2.4 EventRouter -> Redpanda. Three services (order, customer,
+# inventory), one Postgres each, one `out_box` table each. Nothing in it was changed.
+#
+# THE ENVELOPE, AS IT ACTUALLY ARRIVES
+#
+#   key     = 418f177a-...                      <- aggregate_id, which is the ORDER id
+#   headers = id=<out_box row uuid>, eventType=ORDER_CREATED
+#   value   = "{\"id\":\"418f177a-...\",\"customerId\":...}"   <- a JSON *string*
+#
+# The connectors set `table.field.event.key: aggregate_id` and place `type` in a header,
+# but they do NOT set `table.expand.json.payload`, so the out_box `payload` column arrives
+# double-encoded: the record value is a JSON string whose content is the event. Paths
+# below descend into it, which is the case SourceMapping.read unwraps.
+#
+# THIS SOURCE IS THE BEST-EQUIPPED OF THE THREE OBSERVED SO FAR
+#
+# It publishes a real per-event id (the outbox row's uuid) and a real event type header --
+# neither of which the other two systems had -- and the correlation key is both the record
+# key and a payload field. Everything below is read from where it already is; nothing is
+# inferred and nothing was asked of the source.
+#
+# WHY ONE MAPPING PER TOPIC
+#
+# `RESERVE_CUSTOMER_BALANCE_SUCCESSFULLY` is published on BOTH this topic and
+# CUSTOMER.events, and it means two different things:
+#   on CUSTOMER.events -- "the customer service reserved the balance"   (a step result)
+#   on ORDER.events    -- "the orchestrator is now asking for stock"    (the next command)
+# One name, two meanings, told apart by which topic carried it. Hence a mapping per topic,
+# each translating into the specification's vocabulary.
+
+source:
+  name: spm-order-orchestrator
+  system: saga-pattern-order
+  topicPattern: 'ORDER\.events'
+
+  fields:
+    # The order id, carried as the record key by EventRouter's table.field.event.key, and
+    # again inside the embedded payload. Declared as both so neither is guessed at.
+    executionId: [key, id]
+    businessKey: id
+
+    # The out_box row's own uuid. A real event identity, so a redelivery is recognised as
+    # the same event rather than falling back to partition-offset.
+    eventId: header:id
+
+    # A real event type header -- what the orchestrator called this step.
+    eventType: header:eventType
+
+  eventTypes:
+    "ORDER_CREATED": ORDER_PLACED
+    # The orchestrator relaying the customer service's success as a command to inventory.
+    "RESERVE_CUSTOMER_BALANCE_SUCCESSFULLY": STOCK_RESERVATION_REQUESTED
+    "COMPENSATE_CUSTOMER_BALANCE": CUSTOMER_REFUND_REQUESTED

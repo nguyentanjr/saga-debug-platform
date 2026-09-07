@@ -1,0 +1,28 @@
+# The orchestrator's COMMANDS to the payment service. See
+# hotel-saga-room-booking-commands.yaml for why the command topics are read at all.
+#
+# CANCEL is mapped even though this implementation never sends it: RoomReservationSaga
+# compensates by stepping BACK from payment to room-booking, so payment is never the
+# step being compensated. Mapped anyway so the declaration stays correct if a later step
+# is added after payment, and so an unexpected CANCEL here is named rather than silently
+# passed through as an untranslated type.
+source:
+  name: hotel-saga-payment-commands
+
+  # Four topics, one observed system, one id space. The reply and command topics need
+  # separate mappings because their payloads share field names with different meanings --
+  # `status` is CANCELLED on both reply topics and means "room released" on one and
+  # "payment reversed" on the other -- but they are one saga with one id, and the
+  # execution namespace follows the system rather than the file that read it.
+  system: hotel-saga
+  topicPattern: 'payment\.inbox\.events'
+
+  fields:
+    executionId: key
+    eventId: header:id
+    eventType: type
+    businessKey: reservationId
+
+  eventTypes:
+    "REQUEST": TAKE_PAYMENT_REQUESTED
+    "CANCEL": REFUND_PAYMENT_REQUESTED

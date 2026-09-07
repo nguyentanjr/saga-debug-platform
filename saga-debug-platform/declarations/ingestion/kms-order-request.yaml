@@ -1,0 +1,64 @@
+# Reading an unmodified third-party system: sylleryum/kafka-microservices-with-saga.
+#
+# Four Spring Boot services (order, stock, payment, notification) over Kafka. The order
+# service is not an orchestrator in the usual sense: stock and payment both consume the
+# same request event in parallel, and a Kafka Streams INNER JOIN of their two reply topics
+# (120s window) decides the outcome. Nothing in that project was changed to observe it.
+#
+# WHAT MAKES THIS SOURCE DIFFERENT FROM AN OUTBOX SYSTEM
+#
+# All four topics carry the SAME Java type -- com.sylleryum.common.entity.Order -- as their
+# value. There is no event type, no event id, no timestamp and no envelope of any kind:
+#
+#   key   = orderNumber (a UUID string, on every topic)
+#   value = {"orderNumber":..., "items":[...], "orderPrice":...,
+#            "stockStatus":"New|Success|Failed|Rollback",  "stockStatusReason":...,
+#            "paymentStatus":"New|Success|Failed|Rollback","paymentStatusReason":...}
+#
+# So an event's MEANING is not a field: it is the pair (topic, status field). The topic
+# says which service spoke, the status says what it said. That is why there is one mapping
+# per topic here rather than one for the system, and why `eventType` is read from a status
+# field rather than from anything named like a type.
+#
+# WHAT IS NOT DECLARED, AND WHY
+#
+#   eventId  -- this system publishes none. Left undeclared on purpose so the platform
+#               falls back to topic-partition-offset, which Kafka guarantees. Inventing
+#               one from orderNumber would be wrong: the same orderNumber is published to
+#               t_order twice (the request, then the join's verdict), and they are
+#               different events.
+#   eventTime -- none in the payload either, so the broker's CreateTime is used. Here that
+#               is sound: these are ordinary producers calling send() at the moment the
+#               work happened, not a CDC connector republishing rows later.
+
+source:
+  name: kms-order-request
+  system: kms-order-saga
+
+  # This deployment also carries the platform's own ORDER_SAGA demo specification, which
+  # declares ORDER_CREATED as a start event too. The registry correctly refused to guess
+  # between them and left executions UNRESOLVED. Naming the workflow here is the documented
+  # remedy and the honest one: this source has exactly one saga, and saying so is cheaper
+  # than renaming an event this system did not name.
+  workflow: KMS_ORDER_SAGA
+  topicPattern: 't_order'
+
+  fields:
+    # Present in both places: the record key and the body. Declared as both so the mapping
+    # keeps working if either side is ever dropped, and neither is guessed at.
+    executionId: [key, orderNumber]
+    businessKey: orderNumber
+
+    # t_order carries two different things at two different times, and stockStatus is what
+    # separates them:
+    #   New      -- the request the order service publishes; stock and payment both read it
+    #   Rollback -- the verdict, telling stock to give the reservation back
+    #   Success/
+    #   Failed   -- the verdict when the stock leg needs no undoing
+    eventType: stockStatus
+
+  eventTypes:
+    "New": ORDER_CREATED
+    "Rollback": STOCK_ROLLBACK_REQUESTED
+    "Success": ORDER_VERDICT_BROADCAST
+    "Failed": ORDER_VERDICT_BROADCAST

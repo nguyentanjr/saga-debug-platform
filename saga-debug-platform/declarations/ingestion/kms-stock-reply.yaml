@@ -1,0 +1,34 @@
+# The stock service's reply. See kms-order-request.yaml for the system as a whole.
+#
+# Published by OrderManagementService.newOrder after it has tried to decrement quantities
+# in MongoDB, so it is a genuine completion signal rather than an acknowledgement.
+#
+# NOTHING IS PUBLISHED WHEN A ROLLBACK FINISHES. rollbackOrder() restores the quantities
+# and returns without calling the producer, so this topic can say "the reservation was
+# taken" and never "the reservation was given back". That is a property of the observed
+# system, recorded here rather than worked around.
+source:
+  name: kms-stock-reply
+  system: kms-order-saga
+
+  # This deployment also carries the platform's own ORDER_SAGA demo specification, which
+  # declares ORDER_CREATED as a start event too. The registry correctly refused to guess
+  # between them and left executions UNRESOLVED. Naming the workflow here is the documented
+  # remedy and the honest one: this source has exactly one saga, and saying so is cheaper
+  # than renaming an event this system did not name.
+  workflow: KMS_ORDER_SAGA
+  topicPattern: 't_stock'
+
+  fields:
+    executionId: [key, orderNumber]
+    businessKey: orderNumber
+    eventType: stockStatus
+
+  # `stockStatusReason` is deliberately NOT mapped to stepName. It is free text -- "Quantity for
+  # one of the items ordered exceed quantity in stock" is 62 characters -- and step_name is
+  # VARCHAR(50), so mapping it there made the insert fail, the record exhaust its retries
+  # and the event be dropped. The whole payload is stored anyway, so the reason is not lost.
+
+  eventTypes:
+    "Success": STOCK_RESERVED
+    "Failed": STOCK_REJECTED

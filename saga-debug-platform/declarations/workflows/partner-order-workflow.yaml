@@ -1,0 +1,39 @@
+# A second observed system that also calls its first event ORDER_CREATED.
+# Two companies, two sagas, the same English word -- nothing exotic.
+#
+# Before workflow resolution took the source into account, dropping this file next to the
+# other specifications made the FIRST system's runs resolve to UNRESOLVED: two workflows
+# claimed ORDER_CREATED, and the registry correctly refused to guess between them.
+workflow:
+  name: PARTNER_ORDER_SAGA
+  version: "1.0"
+
+  # Which observed system this specification describes. This is what turns the collision
+  # into a filter: an observation from another source never considers this file.
+  sources: [partner-order-system]
+
+  steps:
+    - id: CREATE_ORDER
+      service: partner-order-service
+      timeout: 30s
+      events:
+        completed: ORDER_CREATED
+    - id: SHIP
+      service: partner-ship-service
+      timeout: 60s
+      events:
+        completed: PARTNER_SHIPPED
+        failed: PARTNER_SHIP_FAILED
+  transitions:
+    - from: STARTED
+      to: CREATE_ORDER
+      condition: on_success
+    - from: CREATE_ORDER
+      to: SHIP
+      condition: on_success
+    - from: SHIP
+      to: COMPLETED
+      condition: on_success
+    - from: SHIP
+      to: FAILED
+      condition: on_failure

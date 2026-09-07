@@ -1,0 +1,26 @@
+# Pointing the platform at an unmodified third-party system.
+#
+#   git clone https://github.com/semotpan/saga-orchestration
+#   cd saga-orchestration && docker compose -p hotelsaga up -d --build
+#   cd -  && docker compose -f docker-compose.yml -f docker-compose.hotel-saga.yml up -d correlation-service
+#
+# Nothing in that project is changed, and this service is not rebuilt. What it takes to
+# observe them is three YAML files in ./declarations and the two settings below: where
+# their broker is, and which of their topics carry execution telemetry. Both are read
+# from the environment, so neither is a code change either.
+#
+# The topics come from their Debezium EventRouter, whose route.topic.replacement is
+# "${routedByValue}.outbox.events" over aggregate types "room-booking" and "payment".
+services:
+  correlation-service:
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CORRELATION_KAFKA_TOPIC_PATTERN: 'room-booking\.outbox\.events|payment\.outbox\.events'
+    networks:
+      - default
+      - hotel-saga
+
+networks:
+  hotel-saga:
+    external: true
+    name: hotelsaga_local-network

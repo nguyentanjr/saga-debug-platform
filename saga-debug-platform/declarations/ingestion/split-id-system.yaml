@@ -1,0 +1,35 @@
+# A system whose services do not share one identifier.
+#
+# Nothing about this system was changed, and nothing about this platform was rebuilt: the
+# file sits in the directory named by correlation.declarations.dir, outside the jar.
+#
+# Its order service knows an order number. Its payment service knows a payment id and has
+# never heard of order numbers -- except in the one event it publishes when the payment is
+# opened, which mentions both because that is the moment it learned of the order.
+#
+# Before aliasKey, the payment events fell into an execution of their own and the platform
+# reported two half-finished sagas for one run. The remedy on offer was to ask this system
+# to thread a shared id through its services.
+source:
+  name: split-id-system
+  topicPattern: 'split\.[a-z]+\.events'
+
+  fields:
+    eventId: id
+    eventTime: at
+
+    # Each service publishes the id it knows. Whichever is present is the one to use.
+    executionId: [orderNo, paymentRef]
+
+    # The second identifier, when an event happens to carry both. This is the whole basis
+    # of the join: an observed pair in one event, not a guess from timing.
+    aliasKey: [linkedOrderNo, linkedPaymentRef]
+
+    eventType: kind
+    serviceName: from
+    businessKey: [orderNo, linkedOrderNo]
+
+  eventTypes:
+    "order.created": ORDER_CREATED
+    "payment.captured": PAYMENT_COMPLETED
+    "stock.held": INVENTORY_RESERVED

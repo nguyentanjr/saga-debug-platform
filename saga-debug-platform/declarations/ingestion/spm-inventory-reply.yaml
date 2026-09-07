@@ -1,0 +1,24 @@
+# The inventory service's reply. See spm-order-orchestrator.yaml for the system as a whole.
+#
+# The topic is PRODUCT.events, not INVENTORY.events: the aggregate type written by
+# InventoryEventHandler is "PRODUCT" and EventRouter routes by that field, so the connector
+# named "inventory_outbox_connector" produces a topic named after the aggregate. Read from
+# the code and from order-service's own binding (reserveProductStockStage-in-0 ->
+# PRODUCT.events) rather than from the connector's name.
+#
+# ProductUseCase.reserveProduct fails when stocks - quantity < 0, which is how the
+# compensating path is provoked.
+source:
+  name: spm-inventory-reply
+  system: saga-pattern-order
+  topicPattern: 'PRODUCT\.events'
+
+  fields:
+    executionId: [key, id]
+    businessKey: id
+    eventId: header:id
+    eventType: header:eventType
+
+  eventTypes:
+    "RESERVE_PRODUCT_STOCK_SUCCESSFULLY": PRODUCT_STOCK_RESERVED
+    "RESERVE_PRODUCT_STOCK_FAILED": PRODUCT_STOCK_REJECTED
