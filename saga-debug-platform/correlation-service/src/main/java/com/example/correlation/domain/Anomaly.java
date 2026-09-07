@@ -44,6 +44,30 @@ public class Anomaly {
     @Column(name = "measured_at")
     private Instant measuredAt;
 
+    /**
+     * When this finding was withdrawn, or null while it still stands.
+     *
+     * <p>Set when later observations falsified the claim rather than when the underlying
+     * problem was fixed — see {@link AnomalyType#assertsAbsence()}. The row is kept: a
+     * platform that silently deletes findings it has already reported cannot be trusted
+     * about the ones it keeps.
+     */
+    @Column(name = "retracted_at")
+    private Instant retractedAt;
+
+    @Column(name = "retraction_reason")
+    private String retractionReason;
+
+    public Instant getRetractedAt() { return retractedAt; }
+    public void setRetractedAt(Instant retractedAt) { this.retractedAt = retractedAt; }
+
+    public String getRetractionReason() { return retractionReason; }
+    public void setRetractionReason(String retractionReason) {
+        this.retractionReason = retractionReason;
+    }
+
+    public boolean isRetracted() { return retractedAt != null; }
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 

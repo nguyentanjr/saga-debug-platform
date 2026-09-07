@@ -2,6 +2,7 @@ package com.example.correlation.service;
 
 import com.example.correlation.domain.*;
 import com.example.correlation.execution.ExecutionProjection;
+import com.example.correlation.execution.EvidenceTimeline;
 import com.example.correlation.execution.ExecutionProjectionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -107,16 +108,34 @@ public class AnomalyDetectionService {
 
 
 
+    /**
+     * A run that went somewhere its workflow does not allow.
+     *
+     * <p>Only a declared-and-contradicted transition is an anomaly. UNKNOWN covers two
+     * quite different silences and neither is a fault in the execution: the specification
+     * having nothing to say about this step, and the platform not having observed the steps
+     * that lie between these two. The second used to be reported as INVALID, which made an
+     * ordinary gap in delivery — a partition read late, a retry still in flight — into a
+     * standing accusation against the observed system. It is logged rather than filed,
+     * because an operator looking at a quiet run is entitled to know which observations the
+     * platform was waiting on.
+     */
     public void detectInvalidTransition(WorkflowSpec workflow, String sagaId, String previousStep,
             String currentStep, String condition, String eventId, Instant eventTimestamp) {
         if (workflow == null || workflow.getTransitions() == null) return;
 
         if (previousStep == null) return;
-        // Only a declared-and-contradicted transition is an anomaly. UNKNOWN means the
-        // spec has nothing to say about this step: a gap in the specification, not a
-        // fault in the execution.
-        if (workflow.judgeTransition(previousStep, currentStep, condition)
-                != WorkflowSpec.TransitionVerdict.INVALID) return;
+        WorkflowSpec.TransitionJudgment judgment =
+                workflow.explainTransition(previousStep, currentStep, condition);
+        if (judgment.verdict() != WorkflowSpec.TransitionVerdict.INVALID) {
+            if (!judgment.stepsInBetween().isEmpty()) {
+                log.debug("Saga {}: {} -> {} on {} is not adjacent, but {} lies between them "
+                                + "in {} and has not been observed. Nothing concluded.",
+                        sagaId, previousStep, currentStep, condition,
+                        judgment.stepsInBetween(), workflow.getName());
+            }
+            return;
+        }
 
         {
             String expected = workflow.getTransitions().stream()
@@ -205,48 +224,135 @@ public class AnomalyDetectionService {
     }
 
     public void detectDuplicateEvent(String sagaId, String eventId, String eventType) {
+        detectDuplicateEvent(sagaId, eventId, eventType, null, null);
+    }
+
+    /**
+     * One event id, delivered by the source more than once.
+     *
+     * <p>The caller has already established that this is the observed system's doing and
+     * not this platform's: a re-read of one record never reaches here. The two transport
+     * references are carried into the evidence because they are what settles that
+     * question, and a reader who doubts the finding should be able to check it rather
+     * than take it on trust.
+     *
+     * @param storedOn  the record the stored copy arrived on, or null when unrecorded
+     * @param arrivedOn the record this copy arrived on, or null when the transport offers
+     *                  no identity — in which case the two cannot be compared and this
+     *                  keeps its previous meaning: the same event id was delivered again
+     */
+    public void detectDuplicateEvent(String sagaId, String eventId, String eventType,
+            String storedOn, String arrivedOn) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.EXACT_DUPLICATE_EVENT)) return;
+
+        boolean recordsKnown = storedOn != null && arrivedOn != null;
+        String observed = recordsKnown
+                ? String.format("eventId=%s, eventType=%s, delivered on %s and again on %s",
+                        eventId, eventType, storedOn, arrivedOn)
+                : String.format("eventId=%s, eventType=%s", eventId, eventType);
+
         createAnomaly(sagaId, AnomalyType.EXACT_DUPLICATE_EVENT,
                 String.format("Duplicate event detected: eventId=%s, type=%s", eventId, eventType),
                 details()
-                        .observedValue(String.format("eventId=%s, eventType=%s", eventId, eventType))
+                        .observedValue(observed)
                         .expectedValue("event_id appears once per saga event stream")
-                        .thresholdSource("db:saga_events.event_id")
+                        .thresholdSource(recordsKnown
+                                ? "db:saga_events.transport_ref"
+                                : "db:saga_events.event_id")
                         .evidenceEventIds(eventId)
                         .measuredAt(Instant.now()));
     }
 
-    public void detectStateRegression(String sagaId, SagaStatus oldStatus, SagaStatus newStatus,
-            String eventId, Instant eventTimestamp) {
-        if (statusRank(newStatus) < statusRank(oldStatus)) {
-            if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.STATE_REGRESSION)) return;
-            createAnomaly(sagaId, AnomalyType.STATE_REGRESSION,
-                    String.format("State regression: %s → %s (rank %d → %d)",
-                            oldStatus, newStatus, statusRank(oldStatus), statusRank(newStatus)),
-                    details()
-                            .observedValue(String.format("%s -> %s", oldStatus, newStatus))
-                            .expectedValue("saga status rank is monotonic non-decreasing")
-                            .thresholdSource("code:SagaStatus.rank")
-                            .evidenceEventIds(eventId)
-                            .measuredAt(eventTimestamp));
-        }
+    /**
+     * A run that moved backwards through its own lifecycle.
+     *
+     * <p>Takes the pair the timeline found rather than a before-and-after pair of stored
+     * statuses. Those two things used to be conflated, and the difference is the whole
+     * finding: the stored status changes whenever a <em>read</em> lands on an event that
+     * implies something else, so an execution whose completion was read before its middle
+     * step produced COMPLETED → IN_PROGRESS and was reported for it. Nothing had regressed
+     * — the platform had read the run backwards and blamed the run.
+     *
+     * <p>{@link EvidenceTimeline} only ever offers a pair it can order from the evidence,
+     * so what arrives here is a step down the lifecycle between two observations that
+     * really did happen in that order.
+     */
+    public void detectStateRegression(String sagaId, EvidenceTimeline.Regression regression) {
+        if (regression == null) return;
+        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.STATE_REGRESSION)) return;
+
+        SagaStatus from = regression.from();
+        SagaStatus to = regression.to();
+        createAnomaly(sagaId, AnomalyType.STATE_REGRESSION,
+                String.format("State regression: %s → %s (rank %d → %d) between '%s' and '%s'",
+                        from, to, from.progressRank(), to.progressRank(),
+                        regression.earlier().getEventType(), regression.later().getEventType()),
+                details()
+                        .observedValue(String.format("%s -> %s", from, to))
+                        .expectedValue("saga status rank is monotonic non-decreasing in event time")
+                        .thresholdSource("code:SagaStatus.progressRank")
+                        .evidenceEvents(regression.earlier(), regression.later())
+                        .measuredAt(regression.later().getTimestamp()));
     }
 
-    public void detectForbiddenPostTerminal(String sagaId, SagaStatus currentStatus, String eventType,
-            String eventId, Instant eventTimestamp) {
-        if (currentStatus == SagaStatus.COMPLETED || currentStatus == SagaStatus.COMPENSATED
-                || currentStatus == SagaStatus.FAILED) {
-            if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL)) return;
-            createAnomaly(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL,
-                    String.format("Event '%s' received after saga reached terminal status %s",
-                            eventType, currentStatus),
-                    details()
-                            .observedValue(String.format("%s after terminal status %s", eventType, currentStatus))
-                            .expectedValue("no events after terminal saga status")
-                            .thresholdSource("code:terminal-status-guard")
-                            .evidenceEventIds(eventId)
-                            .measuredAt(eventTimestamp));
+    /**
+     * An event that happened after the run had already ended.
+     *
+     * <p>Both events are required, and the caller establishes from the timeline that the
+     * terminal one provably precedes the late one. The previous version asked the stored
+     * status instead — "had the platform concluded this run was over by the time it got
+     * round to this event" — which is true of every event read after a completion,
+     * including the ones that happened before it. On a partition-shuffled stream that
+     * turned ordinary delivery reordering into a finding against the observed system.
+     */
+    public void detectForbiddenPostTerminal(String sagaId, SagaStatus endedAs,
+            SagaEvent terminalEvent, SagaEvent lateEvent) {
+        if (endedAs == null || !endedAs.isTerminal() || terminalEvent == null || lateEvent == null) {
+            return;
         }
+        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL)) return;
+        createAnomaly(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL,
+                String.format("Event '%s' at %s happened after '%s' ended the saga as %s at %s",
+                        lateEvent.getEventType(), lateEvent.getTimestamp(),
+                        terminalEvent.getEventType(), endedAs, terminalEvent.getTimestamp()),
+                details()
+                        .observedValue(String.format("%s after terminal status %s",
+                                lateEvent.getEventType(), endedAs))
+                        .expectedValue("no events after terminal saga status")
+                        .thresholdSource("code:terminal-status-guard")
+                        .evidenceEvents(terminalEvent, lateEvent)
+                        .measuredAt(lateEvent.getTimestamp()));
+    }
+
+    /**
+     * Two observations that could each be the run's last, with nothing to order them.
+     *
+     * <p>Raised instead of picking one. The pair carries the same instant and belongs to
+     * steps the workflow graph does not connect, so neither the clock nor the
+     * specification says which happened first — and they imply different outcomes, so the
+     * choice is the run's outcome. An observer that resolves this quietly publishes one of
+     * two mutually exclusive endings as fact.
+     *
+     * <p>An absence claim: it is about what the evidence lacks, so it is withdrawn like
+     * any other when more observations arrive.
+     */
+    public void detectIndeterminateOrder(String sagaId, List<SagaEvent> contested) {
+        if (contested == null || contested.size() < 2) return;
+        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.INDETERMINATE_ORDER)) return;
+
+        String types = distinctTypes(contested);
+        createAnomaly(sagaId, AnomalyType.INDETERMINATE_ORDER,
+                String.format("Cannot determine which of [%s] happened last; they share an "
+                                + "event time and the workflow declares no dependency between "
+                                + "their steps. The saga's outcome is not stated.", types),
+                details()
+                        .observedValue(String.format("[%s] all at %s", types,
+                                contested.get(0).getTimestamp()))
+                        .expectedValue("event time or workflow dependency orders the run's "
+                                + "outcome-bearing events")
+                        .thresholdSource("code:EvidenceTimeline.businessOrder")
+                        .evidenceEvents(contested)
+                        .measuredAt(lastTimestamp(contested)));
     }
 
     /**
@@ -315,56 +421,164 @@ public class AnomalyDetectionService {
         }
     }
 
-    public void detectOrphanEvent(String sagaId, String eventId, String eventType, Instant eventTimestamp) {
+    /**
+     * "No event that starts this run's workflow has been observed."
+     *
+     * <h2>Two things this used to get wrong</h2>
+     * It was asked once, when the execution row was created, about the single event that
+     * created it. So it was really answering "was the first event I happened to read a
+     * start event" — a question about the observer's read order. And it was withdrawn only
+     * as a side effect of the workflow being resolved late, which coupled a claim about one
+     * kind of evidence to a change in another: where the workflow was already known — a
+     * source mapping that declares it — the start event could arrive, be stored, and the
+     * finding would go on saying it had not.
+     *
+     * <p>Now it is asked of the whole run, every time, and answered from the evidence: if
+     * an observed event starts this workflow the claim is false and is withdrawn; if none
+     * does it is true and is raised once.
+     *
+     * <h2>And it says which workflow</h2>
+     * The text named {@code ORDER_CREATED} and cited {@code workflow:ORDER_SAGA.start_event}
+     * whatever workflow the run belonged to, so a fulfillment saga was told it should have
+     * begun with an event no fulfillment saga emits. That is an assumption of this
+     * platform's, presented as the specification's requirement.
+     *
+     * @param events every observation of this run, the newest included
+     */
+    public void detectOrphanEvent(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
+        Set<String> startEventTypes = workflow != null ? workflow.startEventTypes() : Set.of();
+
+        boolean startObserved = events.stream()
+                .anyMatch(e -> startEventTypes.contains(e.getEventType()));
+        if (startObserved) {
+            // Cheap: only asked when a start event is actually in hand, which happens once.
+            if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) {
+                int withdrawn = anomalyRepository.retractClaims(sagaId,
+                        Set.of(AnomalyType.ORPHAN_EVENT), Instant.now(),
+                        "a start event of workflow " + workflow.getName()
+                                + " was observed after this finding was made");
+                if (withdrawn > 0) {
+                    log.info("Withdrew the orphan finding against execution {}: its start "
+                            + "event arrived after the rest of the run", sagaId);
+                }
+            }
+            return;
+        }
+
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) return;
+
+        SagaEvent earliest = events.isEmpty() ? null : events.get(0);
+        if (earliest == null) return;
+
+        String expected = startEventTypes.isEmpty()
+                ? "an event that some loaded workflow declares as a start"
+                : "one of " + startEventTypes + " to start " + workflow.getName();
         createAnomaly(sagaId, AnomalyType.ORPHAN_EVENT,
-                String.format("Event '%s' arrived for saga %s but no ORDER_CREATED was received first — possible wrong correlation key",
-                        eventType, sagaId),
+                String.format("No event that starts %s has been observed for saga %s "
+                                + "(earliest seen: '%s') — possible wrong correlation key",
+                        workflow != null ? workflow.getName() : "any known workflow",
+                        sagaId, earliest.getEventType()),
                 details()
-                        .observedValue(String.format("first observed event is %s", eventType))
-                        .expectedValue("first event is ORDER_CREATED")
-                        .thresholdSource("workflow:ORDER_SAGA.start_event")
-                        .evidenceEventIds(eventId)
-                        .measuredAt(eventTimestamp));
+                        .observedValue(String.format("earliest observed event is %s",
+                                earliest.getEventType()))
+                        .expectedValue(expected)
+                        .thresholdSource(workflow != null
+                                ? "workflow:" + workflow.getName() + ".start_event"
+                                : "registry:no-workflow-resolved")
+                        .evidenceEvents(earliest)
+                        .measuredAt(earliest.getTimestamp()));
     }
 
     
 
 
-    public void detectMissingTraceContext(String sagaId, String eventType, String eventId, String payload,
-            Instant eventTimestamp, List<SagaEvent> sagaEvents) {
+    /**
+     * Reports an event that dropped the trace its siblings carry.
+     *
+     * <p>Reads the trace id from the column the source's mapping filled, not from a
+     * payload field named {@code traceId}. That name was this platform's own: a system
+     * keeping its trace id under {@code context.trace}, or in a {@code traceparent}
+     * header, had every event look untraced, and this detector went permanently silent
+     * for it while the RCA report lost its link to the traces.
+     *
+     * <p>Silence is still the right answer when <em>no</em> event of the saga reports a
+     * trace: that source does not publish trace context, which is a fact about the
+     * source and not a broken propagation. The anomaly is only for the case that is
+     * genuinely wrong — some events carry the trace and this one lost it.
+     */
+    public void detectMissingTraceContext(String sagaId, List<SagaEvent> sagaEvents) {
         if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_TRACE_CONTEXT)) return;
-        boolean hasTraceId = false;
-        if (payload != null && !payload.isBlank()) {
-            try {
-                JsonNode node = objectMapper.readTree(payload);
-                hasTraceId = node.has("traceId") && !node.get("traceId").isNull()
-                        && !node.get("traceId").asText().isBlank();
-            } catch (Exception e) {
-                
-            }
-        }
-        if (!hasTraceId) {
-            boolean sagaHasAnyTrace = sagaEvents.stream()
-                    .anyMatch(e -> {
-                        if (e.getPayload() == null || e.getPayload().isBlank()) return false;
-                        try {
-                            JsonNode n = objectMapper.readTree(e.getPayload());
-                            return n.has("traceId") && !n.get("traceId").isNull()
-                                    && !n.get("traceId").asText().isBlank();
-                        } catch (Exception ex) { return false; }
-            });
-            if (sagaHasAnyTrace) {
-                createAnomaly(sagaId, AnomalyType.MISSING_TRACE_CONTEXT,
-                        String.format("Event '%s' missing traceId - trace propagation broken", eventType),
-                        details()
-                                .observedValue(String.format("event '%s' payload has no traceId", eventType))
-                                .expectedValue("payload contains non-empty traceId")
-                                .thresholdSource("otel:trace-context-propagation")
-                                .evidenceEventIds(eventId)
-                                .measuredAt(eventTimestamp));
-            }
-        }
+
+        // Asked of the whole run rather than of the observation that has just arrived.
+        // It used to be handed only that one, and asked whether any sibling *already
+        // stored* carried a trace -- so reading the untraced event before its traced
+        // siblings meant no sibling had one yet, nothing was reported, and it was never
+        // looked at again. Whether propagation broke is a property of the run; which event
+        // arrived first is a property of the delivery.
+        boolean sagaHasAnyTrace = sagaEvents.stream().anyMatch(AnomalyDetectionService::hasTrace);
+        if (!sagaHasAnyTrace) return;
+
+        SagaEvent untraced = sagaEvents.stream()
+                .filter(e -> !hasTrace(e))
+                .findFirst()
+                .orElse(null);
+        if (untraced == null) return;
+
+        createAnomaly(sagaId, AnomalyType.MISSING_TRACE_CONTEXT,
+                String.format("Event '%s' missing traceId - trace propagation broken",
+                        untraced.getEventType()),
+                details()
+                        .observedValue(String.format("event '%s' reports no trace id",
+                                untraced.getEventType()))
+                        .expectedValue("a trace id at the path this source's mapping declares")
+                        .thresholdSource("otel:trace-context-propagation")
+                        .evidenceEvents(untraced)
+                        .measuredAt(untraced.getTimestamp()));
+    }
+
+    /**
+     * Withdraws the findings about this execution that later evidence may have falsified.
+     *
+     * <p>A claim of absence — "no start event was seen", "this saga is stuck", "the
+     * compensation was never acknowledged" — is only ever true of the observations in hand.
+     * When the picture changes underneath it, leaving it standing means reporting something
+     * the platform now knows to be wrong, and deleting it means quietly removing a finding
+     * that was already shown to someone. Withdrawing keeps the row and the reason, and the
+     * scheduled passes raise it again if it still holds.
+     *
+     * @return how many findings were withdrawn
+     */
+    public int retractAbsenceClaims(String sagaId, String reason) {
+        return anomalyRepository.retractClaims(
+                sagaId, AnomalyType.absenceClaims(), Instant.now(), reason);
+    }
+
+    /**
+     * The last moment this run can be said to have shown a sign of life.
+     *
+     * <p>"Stuck" is a claim that nothing has happened for a while, and the elapsed time was
+     * measured as {@code now - event.timestamp}: the observer's clock minus the source's.
+     * Any lag between the two became elapsed silence, so a backfill, a replay, or simply a
+     * source whose clock runs behind made every run it touched look stuck the instant it
+     * was ingested. Reproduced live: an ORDER_CREATED stamped ten minutes earlier and
+     * injected raised SAGA_STUCK within one scheduler pass, against a run whose event the
+     * platform had read a second before.
+     *
+     * <p>Whether the platform has heard anything is a question only the platform's own
+     * clock can answer, and {@code receivedAt} is where that answer is recorded. The
+     * source's stamp is not consulted at all here — not even as a tie-break. It says when
+     * the work happened, which is the right clock for durations between events and the
+     * wrong one for elapsed silence: a source stamping the past invents silence that never
+     * occurred, and one stamping the future conceals silence that did.
+     *
+     * <p>The stamp is still reported in the finding, so an operator can see both.
+     */
+    private static Instant lastHeardAt(SagaEvent event) {
+        return event.getReceivedAt() != null ? event.getReceivedAt() : event.getTimestamp();
+    }
+
+    private static boolean hasTrace(SagaEvent event) {
+        return event != null && event.getTraceId() != null && !event.getTraceId().isBlank();
     }
 
 
@@ -390,17 +604,21 @@ public class AnomalyDetectionService {
                 }
             }
 
-            if (lastEvent.getTimestamp().plus(timeoutSeconds, ChronoUnit.SECONDS).isBefore(now)) {
-                boolean alreadyDetected = anomalyRepository.findBySagaId(saga.getSagaId()).stream()
+            Instant lastHeardAt = lastHeardAt(lastEvent);
+            if (lastHeardAt.plus(timeoutSeconds, ChronoUnit.SECONDS).isBefore(now)) {
+                boolean alreadyDetected = anomalyRepository.findStandingBySagaId(saga.getSagaId())
+                        .stream()
                         .anyMatch(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK
-                                && a.getDetectedAt().isAfter(lastEvent.getTimestamp()));
+                                && a.getDetectedAt().isAfter(lastHeardAt));
                 if (!alreadyDetected) {
                     createAnomaly(saga.getSagaId(), AnomalyType.SAGA_STUCK,
-                            String.format("Saga stuck: no event since %s (last: %s, timeout: %ds)",
-                                    lastEvent.getTimestamp(), lastEvent.getEventType(), timeoutSeconds),
+                            String.format("Saga stuck: nothing heard since %s (last: %s, "
+                                            + "stamped %s, timeout: %ds)",
+                                    lastHeardAt, lastEvent.getEventType(),
+                                    lastEvent.getTimestamp(), timeoutSeconds),
                             details()
-                                    .observedValue(String.format("no event since %s after %s",
-                                            lastEvent.getTimestamp(), lastEvent.getEventType()))
+                                    .observedValue(String.format("nothing heard since %s, after %s",
+                                            lastHeardAt, lastEvent.getEventType()))
                                     .expectedValue(String.format("next event within %ds", timeoutSeconds))
                                     .thresholdSource(timeoutSource(workflow, lastEvent.getEventType()))
                                     .evidenceEvents(lastEvent)
@@ -751,18 +969,6 @@ public class AnomalyDetectionService {
             }
         }
     }
-
-    private int statusRank(SagaStatus status) {
-        return switch (status) {
-            case STARTED -> 1;
-            case IN_PROGRESS -> 2;
-            case COMPENSATING -> 3;
-            case FAILED -> 4;               
-            case COMPENSATED -> 5;           
-            case COMPLETED -> 6;             
-        };
-    }
-
 
     // ── Spec resolution and role-based event lookup ──────────────────────────
     //
