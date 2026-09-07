@@ -1,0 +1,107 @@
+# A fan-out whose two arms are independent, and where one arm's failure compensates the
+# other. Deliberately in test resources: no service implements it.
+#
+# It is the shape of sylleryum/kafka-microservices-with-saga, which is where the defect
+# this fixture exists for was found. PARALLEL_CHECKOUT already covers a fan-out and a join,
+# but declares no compensation, so it cannot express the case that mattered most: a
+# compensating run where the genuine diagnosis (a compensation that was never acknowledged)
+# has to survive alongside the two sibling arms being observed in either order.
+#
+#                    ┌─► HOLD_FUNDS ─────┐
+#   ACCEPT_BASKET ───┤                   ├──► CONFIRM_BASKET ──► COMPLETED
+#                    └─► HOLD_INVENTORY ─┘
+#
+#   HOLD_INVENTORY failed ──► COMPENSATING ──► RELEASE_FUNDS
+#
+# The two arms are declared under the SAME condition, which is what says both of them
+# happen. Event names are unique to this file so it cannot collide with the start events of
+# the other workflows on the classpath.
+workflow:
+  name: PARALLEL_FULFILMENT
+  version: "1.0"
+
+  steps:
+    - id: ACCEPT_BASKET
+      service: basket-service
+      timeout: 5s
+      events:
+        started: BASKET_ACCEPTED
+        completed: BASKET_ACCEPTED
+
+    - id: HOLD_FUNDS
+      service: funds-service
+      timeout: 10s
+      compensation: RELEASE_FUNDS
+      events:
+        completed: FUNDS_HELD
+        failed: FUNDS_REFUSED
+
+    - id: HOLD_INVENTORY
+      service: inventory-service
+      timeout: 10s
+      events:
+        completed: INVENTORY_HELD
+        failed: INVENTORY_REFUSED
+
+    # Behind the join: cannot begin until both arms have finished.
+    - id: CONFIRM_BASKET
+      service: basket-service
+      timeout: 5s
+      events:
+        completed: BASKET_CONFIRMED
+
+  compensationSteps:
+    # No `completed` event: like the system this mirrors, nothing is published when the
+    # release finishes, so a compensating run settles at COMPENSATING.
+    - id: RELEASE_FUNDS
+      service: funds-service
+      timeout: 10s
+      events:
+        started: FUNDS_RELEASE_REQUESTED
+
+  transitions:
+    - from: STARTED
+      to: ACCEPT_BASKET
+
+    # Fan-out: one outcome, two arms, both of which run.
+    - from: ACCEPT_BASKET
+      to: HOLD_FUNDS
+      condition: SUCCESS
+    - from: ACCEPT_BASKET
+      to: HOLD_INVENTORY
+      condition: SUCCESS
+
+    # Fan-in.
+    - from: HOLD_FUNDS
+      to: CONFIRM_BASKET
+      condition: SUCCESS
+    - from: HOLD_INVENTORY
+      to: CONFIRM_BASKET
+      condition: SUCCESS
+
+    - from: CONFIRM_BASKET
+      to: COMPLETED
+      condition: SUCCESS
+
+    # Funds refused leaves no inventory held worth releasing, so the run just ends.
+    - from: HOLD_FUNDS
+      to: FAILED
+      condition: FAILED
+
+    # Inventory refused leaves funds held, which do need releasing.
+    - from: HOLD_INVENTORY
+      to: COMPENSATING
+      condition: FAILED
+
+    - from: RELEASE_FUNDS
+      to: COMPENSATED
+      condition: SUCCESS
+
+  validEventTypes:
+    BASKET_ACCEPTED: ACCEPT_BASKET
+    FUNDS_HELD: HOLD_FUNDS
+    FUNDS_REFUSED: HOLD_FUNDS
+    INVENTORY_HELD: HOLD_INVENTORY
+    INVENTORY_REFUSED: HOLD_INVENTORY
+    BASKET_CONFIRMED: CONFIRM_BASKET
+    FUNDS_RELEASE_REQUESTED: RELEASE_FUNDS
