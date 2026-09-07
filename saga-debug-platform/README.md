@@ -49,7 +49,7 @@ Ba service nghiệp vụ chỉ là **demo sinh dữ liệu saga thật**. Toàn 
 
 ```
 Kafka ─┐
-HTTP  ─┴► EventIngestionService ─► CorrelationService.processEvent
+HTTP  ─┴► EventIngestionService ─► ExecutionAliasResolver ─► CorrelationService.processEvent
                                         ├─► 10 detector bất thường chạy inline
                                         └─► lưu sự kiện + suy trạng thái từ đặc tả
 
@@ -82,8 +82,20 @@ chuỗi mã luật, vốn khiến `"R07"` luôn thắng `"R10"` vì lý do thu�
 ranh giới *suy ra từ đặc tả* không bao giờ bị trình bày như một ranh giới *quan sát được*.
 
 **5. Gắn vào hệ thống có sẵn mà không sửa code của hệ đó.**
-`SourceMapping` khai báo trường dữ liệu của hệ nguồn nằm ở đâu; `SourceMappingInferrer`
+`SourceMapping` khai báo trường dữ liệu của hệ nguồn nằm ở đâu — trong payload, trong khoá
+bản ghi, trong header, hay chính tên topic — và chấp nhận nhiều đường dẫn cho một trường, vì
+hệ thật không để một trường ở cùng một chỗ trong mọi sự kiện. `SourceMappingInferrer`
 **đề xuất** file đó từ một mẫu sự kiện, kèm bằng chứng cho từng trường suy ra.
+
+**6. Tương quan không đòi hỏi một id chung xuyên suốt.**
+Yêu cầu mọi service phát cùng một định danh chỉ đúng với hệ đã có sẵn saga orchestrator —
+tức là hệ đã biết giao dịch phân tán của mình là gì. Hệ cần công cụ gỡ lỗi nhất lại là hệ
+lớn lên mà không có điều đó: order-service biết mã đơn, payment-service biết mã thanh toán,
+và chỉ một sự kiện nhắc tới cả hai. `ExecutionAliasResolver` nối chúng lại **từ chính sự
+kiện mang cả hai định danh** — không phải từ cửa sổ thời gian hay độ giống nhau của giá trị,
+nên một liên kết sai phải do bên phát sinh ra, không thể do trùng hợp. Khi liên kết đến muộn
+và hai nửa đã chạy riêng, hai nửa được gộp: quan sát, bất thường đã ghi và chẩn đoán đã sinh
+đều được chuyển về một lần chạy, không cái nào bị xoá.
 
 ---
 

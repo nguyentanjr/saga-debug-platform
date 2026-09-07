@@ -105,10 +105,36 @@ services:
       CORRELATION_DB_PASSWORD: demo
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+
+      # Declarations about an observed system -- how to read its events, what its saga is
+      # supposed to do, what a symptom means there -- read from a mounted directory rather
+      # than from inside the jar. Attaching to a system this image was never built with is
+      # then a file plus a restart.
+      CORRELATION_DECLARATIONS_DIR: /app/declarations
     volumes:
       - ./results:/app/results
+      - ./declarations:/app/declarations:ro
     ports:
       - "8084:8084"
+
+  # Demo tooling, not part of the observer. It creates orders and switches the payment
+  # service into failure mode so the dashboard can produce a saga run on demand. That
+  # capability used to live in correlation-service, which made the observer able to
+  # command the systems it observes -- see docs/ADR/0001-observer-boundary.md.
+  #
+  # A real deployment of correlation-service does not run this.
+  demo-scenarios:
+    build: ./demo-scenarios
+    container_name: demo-scenarios
+    depends_on:
+      - order-service
+      - payment-service
+    environment:
+      SCENARIO_ORDER_SERVICE_URL: http://order-service:8081
+      SCENARIO_PAYMENT_SERVICE_URL: http://payment-service:8082
+      DEMO_ALLOWED_ORIGIN: ${DEMO_ALLOWED_ORIGIN:-http://localhost:4200}
+    ports:
+      - "8085:8085"
 
   postgres:
     image: postgres:15

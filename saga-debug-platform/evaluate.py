@@ -435,6 +435,21 @@ def expected_rca_status(scenario: dict) -> str:
     return "EVIDENCE_AVAILABLE" if scenario.get("expected_rca") is not None else "NO_DIAGNOSIS_NEEDED"
 
 
+def label_is_unconstrained(expected, excludes) -> bool:
+    """Whether a scenario declines to say WHICH cause should be promoted.
+
+    A scenario normally names the one label it expects. Some cannot, because what they
+    are about is not a particular diagnosis but a boundary on the diagnosis: the platform
+    must decline to promote a given cause, and whatever else it concludes from the rest of
+    the evidence is not this scenario's subject. Naming a substitute label would turn the
+    scenario into an assertion about behaviour it was not written to pin down.
+
+    Recognised by `expected_rca: None` together with a non-empty `expected_rca_excludes`.
+    A scenario with neither keeps its previous meaning exactly.
+    """
+    return expected is None and bool(excludes)
+
+
 def expected_root_matches(expected, actual_root, actual_roots) -> bool:
     actual_roots = actual_roots or []
     if isinstance(expected, list):
@@ -461,12 +476,41 @@ def extra_roots(expected, actual_roots) -> list:
     return [r for r in (actual_roots or []) if r not in wanted]
 
 
+def explicit_constraints_hold(result: dict) -> bool:
+    """The two assertions a scenario can make beside (or instead of) naming a label.
+
+    `expected_rca_excludes`  — these must NOT be the promoted cause.
+    `expected_evidence_roots` — these MUST appear in the candidate list.
+
+    Together they express "detected, reported as evidence, and not published as the
+    cause", which is what a claim about the observation process is entitled to. Both
+    default to empty, so a scenario declaring neither is scored exactly as before.
+    """
+    promoted = result.get("rca_primary_roots") or []
+    evidence = result.get("rca_evidence_roots") or []
+    for label in result.get("rca_expected_excludes") or []:
+        if label in promoted:
+            return False
+    for label in result.get("rca_expected_evidence") or []:
+        if label not in evidence:
+            return False
+    return True
+
+
 def rca_expectation_matches_strict(result: dict, scenario: dict) -> bool:
     expected_status = expected_rca_status(scenario)
     actual_status = result.get("rca_status")
 
+    if not explicit_constraints_hold(result):
+        return False
+
     if expected_status in ("EVIDENCE_AVAILABLE", "SELECTED"):
-        return actual_status in ("EVIDENCE_AVAILABLE", "SELECTED") and expected_root_matches_strict(
+        if actual_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+            return False
+        if label_is_unconstrained(scenario.get("expected_rca"),
+                                  scenario.get("expected_rca_excludes")):
+            return True
+        return expected_root_matches_strict(
             scenario.get("expected_rca"),
             result.get("rca_primary_roots"),
         )
@@ -481,8 +525,16 @@ def rca_expectation_matches(result: dict, scenario: dict) -> bool:
     expected_status = expected_rca_status(scenario)
     actual_status = result.get("rca_status")
 
+    if not explicit_constraints_hold(result):
+        return False
+
     if expected_status in ("EVIDENCE_AVAILABLE", "SELECTED"):
-        return actual_status in ("EVIDENCE_AVAILABLE", "SELECTED") and expected_root_matches(
+        if actual_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+            return False
+        if label_is_unconstrained(scenario.get("expected_rca"),
+                                  scenario.get("expected_rca_excludes")):
+            return True
+        return expected_root_matches(
             scenario.get("expected_rca"),
             result.get("rca_root_cause"),
             result.get("rca_primary_roots"),
@@ -500,13 +552,26 @@ def make_result(scenario: dict, run_index: int) -> dict:
         "run_index":          run_index + 1,
         "timestamp":          datetime.now(timezone.utc).isoformat(),
         "saga_id":            None,
+        # The key the platform actually filed this run under. Identity there is
+        # (source, rawId) rendered as "source::rawId" (ADR 0002), while "saga_id" above is
+        # the identifier the demo system issued. Recording both is what lets a reported
+        # number be traced back to the row it was measured from.
+        "execution_id":       None,
         "saga_status":        None,
         "saga_duration_ms":   None,
         "rca_root_cause":     None,
         "rca_status":         None,
+        # What the platform promoted. Empty means it promoted nothing, which is a
+        # result and not a gap to be filled in from the candidate list.
         "rca_primary_roots":  [],
+        # Every cause named in the candidate list: evidence, never scored as a selection.
+        "rca_evidence_roots": [],
         "rca_expected":       scenario["expected_rca"],
         "rca_expected_status": expected_rca_status(scenario),
+        # Boundary assertions, carried on the run so the metric functions can read them
+        # without needing the scenario dict. Empty for every scenario that names a label.
+        "rca_expected_excludes": list(scenario.get("expected_rca_excludes") or []),
+        "rca_expected_evidence": list(scenario.get("expected_evidence_roots") or []),
         "rca_severity":       None,
         "rca_latency_ms":     None,
         "rca_accurate":       False,
@@ -523,6 +588,21 @@ def make_result(scenario: dict, run_index: int) -> dict:
 
 
 def selected_root_cause(rca: dict | None):
+    """The cause the platform published, or None when it published none.
+
+    Reads the answer rather than reconstructing one. This function used to fall through
+    to `evidence_root_causes` — the whole candidate list — when both `primaryRootCauses`
+    and `rootCause` were empty. That fallback was written when they were ALWAYS empty:
+    before the promotion fix, RcaService pinned both to null, so the harness had no other
+    way to learn what the ranking had concluded.
+
+    Both fields are now authoritative. Keeping the fallback made the evaluator disagree
+    with the platform in exactly the case the platform is being careful about: a run whose
+    only strong candidate is a claim about the observer's own reception (R14) promotes
+    nothing on purpose, and the fallback would have named that candidate as the run's
+    cause anyway — scoring the platform against a diagnosis it deliberately refused to
+    make.
+    """
     if not rca:
         return None
     if rca.get("rcaStatus") not in ("EVIDENCE_AVAILABLE", "SELECTED"):
@@ -530,13 +610,17 @@ def selected_root_cause(rca: dict | None):
     primary_roots = rca.get("primaryRootCauses") or []
     if primary_roots:
         return primary_roots[0]
-    if rca.get("rootCause"):
-        return rca.get("rootCause")
-    roots = evidence_root_causes(rca)
-    return roots[0] if roots else None
+    return rca.get("rootCause") or None
 
 
 def evidence_root_causes(rca: dict | None):
+    """Every root cause named anywhere in the candidate list.
+
+    Evidence a reader should see, NOT a set of selected causes. Deliberately not used for
+    scoring: promotion is the platform's own decision and is read from `primaryRootCauses`
+    (see `selected_root_cause`). Kept because reporting what was considered is useful, and
+    because the baselines score themselves against the same candidate pool.
+    """
     if not rca:
         return []
     roots = []
@@ -561,6 +645,7 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
     # Collect actual anomalies from saga detail
     detail = get_saga_detail(saga_id)
     if detail:
+        result["execution_id"] = detail.get("sagaId")
         result["saga_status"] = detail.get("status")
         result["saga_duration_ms"] = detail.get("durationMs")
         result["anomalies_actual"] = [
@@ -569,12 +654,15 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
 
     if rca:
         result["rca_status"] = rca.get("rcaStatus")
-        if result["rca_status"] in ("EVIDENCE_AVAILABLE", "SELECTED"):
-            result["rca_primary_roots"] = rca.get("primaryRootCauses") or evidence_root_causes(rca)
-        else:
-            result["rca_primary_roots"] = rca.get("primaryRootCauses") or []
+        # What the platform promoted, whatever its status. The evidence-available branch
+        # used to fall back to the whole candidate list here; see selected_root_cause for
+        # why that reading is no longer true of this platform. An empty list now means
+        # what it says: nothing was promoted.
+        result["rca_primary_roots"] = rca.get("primaryRootCauses") or []
         result["rca_root_cause"] = selected_root_cause(rca)
         result["rca_severity"] = rca.get("severity")
+        # Evidence, recorded beside the decision rather than mistaken for it.
+        result["rca_evidence_roots"] = evidence_root_causes(rca)
         result["rca_candidates"] = captured_candidates(rca)
         result["baseline_picks"] = baseline_picks(result["rca_candidates"])
 
@@ -1320,10 +1408,31 @@ INJECT_SCENARIOS = [
         "category": "C",
         "split": "train",
         "reproducibility": "synthetic",
-        "description": "C1 — events with reverse-chronological timestamps → OUT_OF_ORDER",
+        "description": "C1 — reverse-chronological timestamps → OUT_OF_ORDER detected, "
+                       "reported as evidence, never promoted as the cause",
         "request": None,
         "expected_saga_status": None,
-        "expected_rca": "OUT_OF_ORDER_DELIVERY",
+        # This scenario used to expect OUT_OF_ORDER_DELIVERY as the promoted cause. That
+        # expectation is now unsatisfiable by design, and was wrong before it was
+        # unsatisfiable: R14's claim is about the order THIS PLATFORM read records in, not
+        # about an ordering contract the observed system broke, so it is declared
+        # subject = OBSERVATION_PROCESS and is not eligible for promotion.
+        #
+        # What the scenario is actually about is unchanged and is now stated in three
+        # parts, none of them weaker than before:
+        #   expected_anomalies    OUT_OF_ORDER is still detected
+        #   expected_evidence_roots  it still reaches RCA and is still published
+        #   expected_rca_excludes    it is not published as the run's root cause
+        #
+        # No substitute label is named. These two back-dated events also contradict the
+        # declared graph — by event time PROCESS_PAYMENT precedes CREATE_ORDER — so
+        # INVALID_TRANSITION fires and is promoted. That is a true finding about the
+        # injected data, but it is SC10's subject, not this one's; asserting it here would
+        # be writing down observed behaviour rather than an expectation.
+        "expected_rca": None,
+        "expected_rca_status": "EVIDENCE_AVAILABLE",
+        "expected_rca_excludes": ["OUT_OF_ORDER_DELIVERY"],
+        "expected_evidence_roots": ["OUT_OF_ORDER_DELIVERY"],
         "expected_anomalies": ["OUT_OF_ORDER"],
         "runner": run_inject_scenario,
         "n_runs": 2,
@@ -2278,6 +2387,12 @@ def compute_classification_metrics(all_runs):
         actual = r.get("rca_root_cause")
         actual_roots = r.get("rca_primary_roots") or []
 
+        # A scenario that names no label cannot contribute to label precision or
+        # recall — there is nothing to be right or wrong about. It is still scored
+        # for accuracy through rca_accurate, which checks its boundary assertions.
+        if label_is_unconstrained(expected, r.get("rca_expected_excludes")):
+            continue
+
         # Root-cause classification only applies when the scenario expects
         # concrete RCA evidence. Abstention/healthy semantics are reported
         # separately via rcaStatus accuracy.
@@ -2359,6 +2474,11 @@ def compute_classification_metrics_strict(all_runs):
         expected = r.get("rca_expected")
         actual_roots = r.get("rca_primary_roots") or []
         wanted = set(expected) if isinstance(expected, list) else ({expected} if expected else set())
+
+        # See the note in compute_classification_metrics: no expected label, no
+        # contribution to label counts.
+        if label_is_unconstrained(expected, r.get("rca_expected_excludes")):
+            continue
 
         if expected_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
             # Nothing should have been reported. Every candidate is a false positive.
