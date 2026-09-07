@@ -22,13 +22,29 @@ import java.time.Duration;
  *
  * <p>Best-effort by nature: entries expire, the cache is per instance, and it is not
  * a correctness boundary. The unique constraint on {@code saga_events.event_id} is.
+ *
+ * <h2>What is remembered, and why it is not just a flag</h2>
+ * Each entry records <em>which record</em> carried the event, not merely that one did.
+ * The two things a duplicate can mean are told apart by exactly that: an observation
+ * re-read after a restart or an offset reset arrives on the same record, while a source
+ * that published an event twice produced two. When this held a boolean, everything the
+ * cache caught was skipped in silence — including genuine duplicates arriving inside one
+ * run — and everything it missed was reported as the observed system's fault.
  */
 @Component
 public class DeduplicationCache {
 
     private static final Logger log = LoggerFactory.getLogger(DeduplicationCache.class);
 
-    private final Cache<String, Boolean> cache;
+    /**
+     * A transport reference is optional, and a cache cannot hold a null value, so an
+     * event processed without one is recorded under this instead. It never equals a real
+     * reference, so it can only ever mean "seen, on a record this cache cannot name".
+     */
+    private static final String NO_TRANSPORT_REF = "";
+
+    /** Event id to the transport reference of the record that carried it. */
+    private final Cache<String, String> cache;
 
     public DeduplicationCache() {
         this.cache = Caffeine.newBuilder()
@@ -43,10 +59,39 @@ public class DeduplicationCache {
         return eventId != null && cache.getIfPresent(eventId) != null;
     }
 
+    /**
+     * Whether this event was already processed, and demonstrably from a different record.
+     *
+     * <p>True only when both references are real and they differ — which is a source that
+     * published one event twice, and the one case the fast path must not swallow. An
+     * entry recorded without a reference, or a lookup made without one, answers false:
+     * not knowing that two records differ is not the same as knowing they do, and the
+     * caller keeps its previous behaviour rather than guessing.
+     */
+    public boolean seenOnDifferentRecord(String eventId, String transportRef) {
+        if (eventId == null || transportRef == null || transportRef.isBlank()) {
+            return false;
+        }
+        String recorded = cache.getIfPresent(eventId);
+        return recorded != null && !NO_TRANSPORT_REF.equals(recorded) && !recorded.equals(transportRef);
+    }
+
     /** Records the event as processed. Call only after it is durably stored. */
     public void markProcessed(String eventId) {
+        markProcessed(eventId, null);
+    }
+
+    /**
+     * Records the event as processed, and the record it arrived on.
+     *
+     * <p>Call only once the event is durably stored; see the note on separating checking
+     * from marking above.
+     */
+    public void markProcessed(String eventId, String transportRef) {
         if (eventId != null) {
-            cache.put(eventId, Boolean.TRUE);
+            cache.put(eventId, transportRef != null && !transportRef.isBlank()
+                    ? transportRef
+                    : NO_TRANSPORT_REF);
         }
     }
 
