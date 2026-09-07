@@ -55,6 +55,21 @@ public class EventTimeResolver {
     }
 
     /**
+     * Resolves from a value the source's mapping already read.
+     *
+     * <p>The path-based overload can only look inside the document. An event time is not
+     * always in there: a transport header is where plenty of systems put it, and the
+     * mapping can name one. Taking the resolved value means every form a mapping accepts
+     * works for the clock too, not only for the fields read after it.
+     */
+    public Resolved resolveValue(String value, Instant transportTime) {
+        Instant parsed = parseText(value);
+        return parsed != null
+                ? new Resolved(parsed, Source.PAYLOAD)
+                : new Resolved(transportTime, Source.TRANSPORT);
+    }
+
+    /**
      * @param path where this source keeps its event time, which is rarely a top-level
      *             field called {@code timestamp}
      */
@@ -93,25 +108,37 @@ public class EventTimeResolver {
         }
 
         if (node.isTextual()) {
-            String text = node.asText().trim();
-            if (text.isEmpty()) {
-                return null;
-            }
-            try {
-                return Instant.parse(text);
-            } catch (DateTimeParseException e) {
-                // Some serializers render Instant as a decimal epoch ("1716500000.123").
-                try {
-                    double epochSeconds = Double.parseDouble(text);
-                    return Instant.ofEpochMilli(Math.round(epochSeconds * 1000d));
-                } catch (NumberFormatException ignored) {
-                    log.warn("Unparseable event timestamp '{}'; falling back to transport time", text);
-                    return null;
-                }
-            }
+            return parseText(node.asText());
         }
 
         return null;
+    }
+
+    /**
+     * Every rendering of an instant this platform has met, from a string.
+     *
+     * <p>A mapped value always arrives as text, so the numeric branches above are
+     * reachable through here too: an epoch renders as digits either way.
+     */
+    private Instant parseText(String value) {
+        String text = value == null ? "" : value.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Instant.parse(text);
+        } catch (DateTimeParseException e) {
+            // Some serializers render Instant as an epoch, whole or decimal.
+            try {
+                double epochSeconds = Double.parseDouble(text);
+                return text.contains(".")
+                        ? Instant.ofEpochMilli(Math.round(epochSeconds * 1000d))
+                        : fromEpoch((long) epochSeconds);
+            } catch (NumberFormatException ignored) {
+                log.warn("Unparseable event timestamp '{}'; falling back to transport time", text);
+                return null;
+            }
+        }
     }
 
     private Instant fromEpoch(long value) {

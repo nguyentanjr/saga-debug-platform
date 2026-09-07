@@ -7,7 +7,6 @@ import com.example.correlation.ingestion.SourceMappingRegistry;
 import com.example.correlation.messaging.EventTimeResolver;
 import com.example.correlation.service.CorrelationService;
 import com.example.correlation.service.DeduplicationCache;
-import com.example.correlation.service.EventSchemaValidator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,10 +53,12 @@ class IngestControllerTest {
         controller = new IngestController(new EventIngestionService(
                 correlationService,
                 mapper,
-                new EventSchemaValidator(),
+                new com.example.correlation.ingestion.SourceCompletenessCheck(),
                 new DeduplicationCache(),
                 new EventTimeResolver(),
-                mappings),
+                mappings,
+                new com.example.correlation.ingestion.PassthroughAliasResolver(),
+                new com.example.correlation.ingestion.InlineTransactionManager()),
                 new SourceMappingInferrer());
     }
 
@@ -80,7 +81,7 @@ class IngestControllerTest {
         // reaches the correlation service.
         IngestedEvent ingested = captured();
         assertThat(ingested.eventId()).isEqualTo("http-1");
-        assertThat(ingested.sagaId()).isEqualTo("ORD-77");
+        assertThat(ingested.executionKey().rawId()).isEqualTo("ORD-77");
         assertThat(ingested.eventType()).isEqualTo("PAYMENT_COMPLETED");
         assertThat(ingested.serviceName()).isEqualTo("billing-api");
     }
@@ -173,7 +174,9 @@ class IngestControllerTest {
     private ResponseEntity<Map<String, Object>> post(String json) {
         try {
             JsonNode body = mapper.readTree(json);
-            return controller.ingest(SOURCE, body);
+            // No transport headers: these tests are about the body and the batch reply.
+            // TransportPortabilityTest is where the envelope itself is covered.
+            return controller.ingest(SOURCE, body, Map.of());
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalArgumentException("test payload is not JSON", e);
         }

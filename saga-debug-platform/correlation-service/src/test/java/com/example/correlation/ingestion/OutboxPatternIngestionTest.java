@@ -5,7 +5,6 @@ import com.example.correlation.messaging.EventTimeResolver;
 import com.example.correlation.messaging.SagaEventConsumer;
 import com.example.correlation.service.CorrelationService;
 import com.example.correlation.service.DeduplicationCache;
-import com.example.correlation.service.EventSchemaValidator;
 import com.example.correlation.workflow.WorkflowRegistry;
 import com.example.correlation.workflow.WorkflowSpec;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -71,10 +70,12 @@ class OutboxPatternIngestionTest {
         consumer = new SagaEventConsumer(new EventIngestionService(
                 correlationService,
                 new ObjectMapper(),
-                new EventSchemaValidator(),
+                new com.example.correlation.ingestion.SourceCompletenessCheck(),
                 new DeduplicationCache(),
                 new EventTimeResolver(),
-                registry));
+                registry,
+                new PassthroughAliasResolver(),
+                new com.example.correlation.ingestion.InlineTransactionManager()));
     }
 
     // ── the mappings are found ────────────────────────────────────────────────
@@ -97,7 +98,7 @@ class OutboxPatternIngestionTest {
         consumer.handleEvent(roomRecord("""
                 {"status":"BOOKED"}""", "evt-room-1"));
 
-        assertThat(captured().sagaId()).isEqualTo(SAGA_ID);
+        assertThat(captured().executionKey().rawId()).isEqualTo(SAGA_ID);
     }
 
     @Test
@@ -157,8 +158,29 @@ class OutboxPatternIngestionTest {
                 {"status":"FAILED"}""", "evt-pay-1"));
 
         IngestedEvent ingested = captured();
-        assertThat(ingested.sagaId()).isEqualTo(SAGA_ID);
+        assertThat(ingested.executionKey().rawId()).isEqualTo(SAGA_ID);
         assertThat(ingested.eventType()).isEqualTo("PAYMENT_REJECTED");
+    }
+
+    /**
+     * The observed system declares a {@code COMPLETED} payment state that its code never
+     * reaches: {@code Payment.paymentStatus()} returns only REQUESTED, FAILED or
+     * CANCELLED, and the orchestrator maps REQUESTED to SUCCEEDED. So the event meaning
+     * "the payment step succeeded" is named REQUESTED.
+     *
+     * <p>Worth a test of its own because a specification written from that project's
+     * README or from its enum — rather than from what its code emits — would declare
+     * {@code completed: PAYMENT_TAKEN} and then wait forever for an event that is never
+     * published. Every successful reservation would look unfinished. This is the gap
+     * between a design and a run that the platform exists to surface, met here in the
+     * platform's own integration work.
+     */
+    @Test
+    void successIsSignalledByRequestedBecauseCompletedIsUnreachable() {
+        consumer.handleEvent(paymentRecord("""
+                {"status":"REQUESTED"}""", "evt-pay-2"));
+
+        assertThat(captured().eventType()).isEqualTo("PAYMENT_ACCEPTED");
     }
 
     // ── nothing is guessed at ─────────────────────────────────────────────────
@@ -193,8 +215,7 @@ class OutboxPatternIngestionTest {
         assertThat(spec.classifyEvent("ROOM_BOOKED")).isPresent();
         assertThat(spec.classifyEvent("ROOM_REJECTED")).isPresent();
         assertThat(spec.classifyEvent("ROOM_CANCELLED")).isPresent();
-        assertThat(spec.classifyEvent("PAYMENT_REQUESTED")).isPresent();
-        assertThat(spec.classifyEvent("PAYMENT_TAKEN")).isPresent();
+        assertThat(spec.classifyEvent("PAYMENT_ACCEPTED")).isPresent();
         assertThat(spec.classifyEvent("PAYMENT_REJECTED")).isPresent();
     }
 
@@ -210,6 +231,16 @@ class OutboxPatternIngestionTest {
                 .contains(com.example.correlation.domain.SagaStatus.COMPENSATING);
         assertThat(spec.classifyEvent("ROOM_REJECTED").flatMap(spec::statusAfter))
                 .contains(com.example.correlation.domain.SagaStatus.FAILED);
+    }
+
+    @Test
+    void aPaymentAcceptedCompletesTheSaga() {
+        WorkflowRegistry registry = new WorkflowRegistry();
+        registry.load();
+        WorkflowSpec spec = registry.byType("ROOM_RESERVATION").orElseThrow();
+
+        assertThat(spec.classifyEvent("PAYMENT_ACCEPTED").flatMap(spec::statusAfter))
+                .contains(com.example.correlation.domain.SagaStatus.COMPLETED);
     }
 
     @Test

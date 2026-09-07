@@ -5,7 +5,6 @@ import com.example.correlation.messaging.EventTimeResolver;
 import com.example.correlation.messaging.SagaEventConsumer;
 import com.example.correlation.service.CorrelationService;
 import com.example.correlation.service.DeduplicationCache;
-import com.example.correlation.service.EventSchemaValidator;
 import com.example.correlation.workflow.WorkflowRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -52,10 +51,12 @@ class ForeignSystemIngestionTest {
         consumer = new SagaEventConsumer(new EventIngestionService(
                 correlationService,
                 new ObjectMapper(),
-                new EventSchemaValidator(),
+                new com.example.correlation.ingestion.SourceCompletenessCheck(),
                 new DeduplicationCache(),
                 new EventTimeResolver(),
-                registry));
+                registry,
+                new PassthroughAliasResolver(),
+                new com.example.correlation.ingestion.InlineTransactionManager()));
     }
 
     @Test
@@ -82,12 +83,60 @@ class ForeignSystemIngestionTest {
         IngestedEvent ingested = captured();
         assertThat(ingested.eventId()).isEqualTo("evt-8891");
         // The correlation key is a business identifier from a nested object.
-        assertThat(ingested.sagaId()).isEqualTo("ORD-42");
+        assertThat(ingested.executionKey().rawId()).isEqualTo("ORD-42");
         // Their vocabulary, translated into the specification's.
         assertThat(ingested.eventType()).isEqualTo("PAYMENT_COMPLETED");
         assertThat(ingested.serviceName()).isEqualTo("billing-api");
         assertThat(ingested.eventTime()).isEqualTo(EVENT_TIME);
         assertThat(ingested.causationId()).isEqualTo("evt-8890");
+    }
+
+    /**
+     * The trace id is read from where this system keeps it, not from a field named
+     * {@code traceId} at the top level.
+     *
+     * <p>Every other mapped field went through {@code SourceMapping}; this one did not.
+     * {@code SourceMapping.traceId} existed and was declared, but nothing ever called it,
+     * so the value was recovered downstream by searching the payload for this platform's
+     * own name for the field. For a system that nests it — as this one does — the effect
+     * was a saga whose events all reported no trace: no link from the diagnosis to the
+     * traces behind it, and the trace-context detector permanently blind for that system.
+     */
+    @Test
+    void theTraceIdIsReadFromWhereTheirSystemKeepsIt() {
+        consumer.handleEvent(record("""
+                {
+                  "id": "evt-8891",
+                  "type": "order.payment.captured",
+                  "occurredAt": "2026-01-01T00:00:04Z",
+                  "context": {
+                    "orderNumber": "ORD-42",
+                    "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                  }
+                }
+                """));
+
+        assertThat(captured().traceId()).isEqualTo("4bf92f3577b34da6a3ce929d0e0e4736");
+    }
+
+    /**
+     * A source that genuinely reports no trace yields null rather than something invented.
+     * The distinction matters downstream: "this system does not publish trace context" is
+     * a different finding from "this event lost the trace its siblings carry", and only
+     * the second is an anomaly.
+     */
+    @Test
+    void aSourceThatReportsNoTraceYieldsNoTraceId() {
+        consumer.handleEvent(record("""
+                {
+                  "id": "evt-8892",
+                  "type": "order.created",
+                  "occurredAt": "2026-01-01T00:00:04Z",
+                  "context": { "orderNumber": "ORD-42" }
+                }
+                """));
+
+        assertThat(captured().traceId()).isNull();
     }
 
     @Test
@@ -144,7 +193,7 @@ class ForeignSystemIngestionTest {
 
         SourceMapping fallback = registry.forTopic("payment-completed");
         assertThat(fallback.getName()).isEqualTo("default");
-        assertThat(fallback.getFields().getExecutionId()).isEqualTo("sagaId");
+        assertThat(fallback.getFields().getExecutionId()).containsExactly("sagaId");
     }
 
     @Test

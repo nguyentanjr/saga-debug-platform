@@ -61,12 +61,13 @@ class SecondWorkflowGeneralizationTest {
         lenient().when(registry.byType("FULFILLMENT_SAGA")).thenReturn(Optional.of(fulfillment));
         lenient().when(registry.byType(null)).thenReturn(Optional.empty());
         lenient().when(registry.forStartEvent("SHIPMENT_CREATED")).thenReturn(Optional.of(fulfillment));
-        lenient().when(registry.resolve(anyString(), anyString()))
-                .thenAnswer(inv -> Optional.of(fulfillment));
-        lenient().when(registry.resolve(null, "SHIPMENT_CREATED")).thenReturn(Optional.of(fulfillment));
-        lenient().when(registry.resolve(any(), any())).thenAnswer(inv -> {
+
+        // Resolution now takes the observed system into account, so the stub mirrors the
+        // production signature: (resolved workflow, mapping-declared workflow, source,
+        // event type).
+        lenient().when(registry.resolve(any(), any(), any(), any())).thenAnswer(inv -> {
             String type = inv.getArgument(0);
-            String eventType = inv.getArgument(1);
+            String eventType = inv.getArgument(3);
             if ("FULFILLMENT_SAGA".equals(type)) return Optional.of(fulfillment);
             return fulfillment.startEventTypes().contains(eventType)
                     ? Optional.of(fulfillment) : Optional.empty();
@@ -76,7 +77,8 @@ class SecondWorkflowGeneralizationTest {
                 sagaInstanceRepository, sagaEventRepository, anomalyDetectionService,
                 new DeduplicationCache(), registry, new ObjectMapper());
 
-        when(sagaEventRepository.findByEventId(anyString())).thenReturn(Optional.empty());
+        when(sagaEventRepository.findBySourceNameAndEventId(anyString(), anyString()))
+                .thenReturn(Optional.empty());
         when(sagaEventRepository.findBySagaIdOrderByTimestampAsc(anyString()))
                 .thenAnswer(inv -> List.copyOf(storedEvents));
         when(sagaEventRepository.save(any(SagaEvent.class))).thenAnswer(inv -> {
@@ -121,27 +123,27 @@ class SecondWorkflowGeneralizationTest {
     void aHealthyRunOfTheSecondWorkflowRaisesNoAnomaly() {
         replayHappyPath();
 
-        verify(anomalyDetectionService, never())
-                .detectOrphanEvent(anyString(), anyString(), anyString(), any());
-        // detectForbiddenPostTerminal is consulted on every event and decides for itself;
-        // what matters is that it is never consulted while the saga is already terminal,
-        // which is the condition that raises the anomaly.
-        ArgumentCaptor<SagaStatus> statuses = ArgumentCaptor.forClass(SagaStatus.class);
-        verify(anomalyDetectionService, atLeast(0)).detectForbiddenPostTerminal(
-                anyString(), statuses.capture(), anyString(), anyString(), any());
-        assertThat(statuses.getAllValues())
-                .noneMatch(status -> status == SagaStatus.COMPLETED
-                        || status == SagaStatus.FAILED
-                        || status == SagaStatus.COMPENSATED);
-
-        ArgumentCaptor<SagaStatus> from = ArgumentCaptor.forClass(SagaStatus.class);
-        ArgumentCaptor<SagaStatus> to = ArgumentCaptor.forClass(SagaStatus.class);
-        verify(anomalyDetectionService, atLeast(0)).detectStateRegression(
-                anyString(), from.capture(), to.capture(), anyString(), any());
-        for (int i = 0; i < from.getAllValues().size(); i++) {
-            assertThat(rank(to.getAllValues().get(i)))
-                    .isGreaterThanOrEqualTo(rank(from.getAllValues().get(i)));
+        // Consulted on every event now, and it decides for itself: the claim is about the
+        // run's whole evidence, not about which event happened to create the row. What
+        // matters is that every run it was handed already contained a start event, which is
+        // the condition under which it raises nothing.
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SagaEvent>> orphanEvidence = ArgumentCaptor.forClass(List.class);
+        verify(anomalyDetectionService, atLeast(0))
+                .detectOrphanEvent(any(), anyString(), orphanEvidence.capture());
+        for (List<SagaEvent> run : orphanEvidence.getAllValues()) {
+            assertThat(run).extracting(SagaEvent::getEventType)
+                    .as("every run handed to the orphan check contains a start event")
+                    .contains("SHIPMENT_CREATED");
         }
+        // These two are no longer consulted on every event to decide for themselves. The
+        // correlation service asks the reconstructed timeline whether the run really did
+        // end before this event happened, and whether it really did move backwards, so
+        // reaching the detector at all is the finding.
+        verify(anomalyDetectionService, never()).detectForbiddenPostTerminal(
+                anyString(), any(), any(), any());
+        verify(anomalyDetectionService, never()).detectStateRegression(
+                anyString(), org.mockito.ArgumentMatchers.notNull());
         // Same shape again: the transition check runs on every consecutive pair, and the
         // detector raises nothing when the pair is declared. Assert that every pair it
         // was handed is one this workflow declares.
@@ -203,7 +205,7 @@ class SecondWorkflowGeneralizationTest {
         send("x1", "ORDER_CREATED", T0);
 
         verify(anomalyDetectionService)
-                .detectOrphanEvent(anyString(), anyString(), anyString(), any());
+                .detectOrphanEvent(any(), anyString(), any());
     }
 
     @Test

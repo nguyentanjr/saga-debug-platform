@@ -56,8 +56,28 @@ public record RawObservation(
         return new RawObservation(sourceRef, payload, transportTime, null, null, Map.of());
     }
 
-    /** The value of one header, or null when the transport did not carry it. */
+    /**
+     * The value of one header, or null when the transport did not carry it.
+     *
+     * <p>Exact match first, then case-insensitive. Kafka header names are case-sensitive
+     * and HTTP's are not, so a mapping written as {@code header:eventType} has to keep
+     * meaning the same thing whichever transport delivered the observation — otherwise
+     * the mapping file becomes transport-specific, which is the one thing
+     * {@link RawObservation} exists to prevent.
+     */
     public String header(String name) {
-        return name != null ? headers.get(name) : null;
+        if (name == null) {
+            return null;
+        }
+        String exact = headers.get(name);
+        if (exact != null) {
+            return exact;
+        }
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            if (header.getKey().equalsIgnoreCase(name)) {
+                return header.getValue();
+            }
+        }
+        return null;
     }
 }

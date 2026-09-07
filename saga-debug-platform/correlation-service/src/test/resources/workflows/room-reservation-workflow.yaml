@@ -1,14 +1,25 @@
 # The saga implemented by semotpan/saga-orchestration, written as a specification this
 # platform can check executions against.
 #
-# Read out of RoomReservationSaga, SagaStepStatus, RoomBookingStatus and PaymentStatus in
-# that repository — not invented here. The saga has two steps and one compensation:
+# Read out of RoomReservationSaga, RoomBookingEventHandler, Payment.paymentStatus() and
+# the status enums in that repository — not from its README. The distinction mattered:
+# the enums declare states the code never reaches, and a specification written from the
+# declared states would have expected an event that never arrives. See the note on
+# TAKE_PAYMENT below.
+#
+# The saga has two steps and one compensation:
 #
 #   book the room -> take the payment
 #   payment rejected -> release the room booking
 #
 # Nothing in that project was modified. The whole integration is this file plus the two
 # ingestion mappings: three YAML files, no Java.
+#
+# HOW TO PROVOKE EACH PATH, for anyone reproducing this:
+#   room rejected   - request a room that does not exist or is already booked
+#                     (RoomBookingEventHandler: possibleRoom.isEmpty() || isBooked())
+#   payment rejected - use a credit card number ending in 9999
+#                     (Payment.paymentStatus(), marked FIXME "demo purpose")
 
 workflow:
   name: ROOM_RESERVATION
@@ -27,13 +38,16 @@ workflow:
       service: payment-service
       timeout: 30s
       events:
-        started: PAYMENT_REQUESTED
-        completed: PAYMENT_TAKEN
+        # PAYMENT_ACCEPTED is the mapped name for PaymentStatus.REQUESTED, which is what
+        # this implementation emits on success — its COMPLETED state is unreachable. No
+        # `started` event is declared because nothing is published when the step begins;
+        # declaring one would have the platform wait for an event that never arrives.
+        completed: PAYMENT_ACCEPTED
         failed: PAYMENT_REJECTED
 
   compensationSteps:
     # Releasing the room is what the reservation service asks for when payment is
-    # rejected; the hotel service reports it as RoomBookingStatus.CANCELLED.
+    # rejected; the hotel service reports it as RoomBookingRequestStatus.CANCELLED.
     - id: RELEASE_ROOM
       service: hotel-service
       timeout: 30s

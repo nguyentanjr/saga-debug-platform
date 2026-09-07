@@ -5,7 +5,6 @@ import com.example.correlation.ingestion.EventIngestionService;
 import com.example.correlation.ingestion.SourceMappingRegistry;
 import com.example.correlation.service.CorrelationService;
 import com.example.correlation.service.DeduplicationCache;
-import com.example.correlation.service.EventSchemaValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,10 +49,12 @@ class SagaEventConsumerTest {
         consumer = new SagaEventConsumer(new EventIngestionService(
                 correlationService,
                 new ObjectMapper(),
-                new EventSchemaValidator(),
+                new com.example.correlation.ingestion.SourceCompletenessCheck(),
                 deduplicationCache,
                 new EventTimeResolver(),
-                loadedMappings()));
+                loadedMappings(),
+                new com.example.correlation.ingestion.PassthroughAliasResolver(),
+                new com.example.correlation.ingestion.InlineTransactionManager()));
     }
 
     private static SourceMappingRegistry loadedMappings() {
@@ -62,19 +63,29 @@ class SagaEventConsumerTest {
         return registry;
     }
 
+    /**
+     * The deduplication key is namespaced by source, not the bare event id. Two observed
+     * systems both numbering their events from one would otherwise have the second
+     * system's events discarded as duplicates of the first system's.
+     */
+    private static String dedupKey(String eventId) {
+        return com.example.correlation.domain.ExecutionKey.DEFAULT_SOURCE
+                + com.example.correlation.domain.ExecutionKey.SEPARATOR + eventId;
+    }
+
     @Test
     void marksTheEventOnlyAfterItHasBeenProcessed() {
         consumer.handleEvent(record("e1"));
 
         IngestedEvent ingested = captured();
         assertThat(ingested.eventId()).isEqualTo("e1");
-        assertThat(ingested.sagaId()).isEqualTo("saga-1");
+        assertThat(ingested.executionKey().rawId()).isEqualTo("saga-1");
         assertThat(ingested.eventType()).isEqualTo("PAYMENT_COMPLETED");
         assertThat(ingested.eventTime()).isEqualTo(EVENT_TIME);
         // Not declared in this envelope and no longer guessed from the topic name.
         assertThat(ingested.stepName()).isEqualTo("UNKNOWN");
         assertThat(ingested.serviceName()).isEqualTo("unknown");
-        assertThat(deduplicationCache.seen("e1")).isTrue();
+        assertThat(deduplicationCache.seen(dedupKey("e1"))).isTrue();
     }
 
     @Test
@@ -85,7 +96,7 @@ class SagaEventConsumerTest {
         assertThatThrownBy(() -> consumer.handleEvent(record("e1")))
                 .isInstanceOf(DataAccessResourceFailureException.class);
 
-        assertThat(deduplicationCache.seen("e1")).isFalse();
+        assertThat(deduplicationCache.seen(dedupKey("e1"))).isFalse();
     }
 
     @Test
@@ -101,7 +112,7 @@ class SagaEventConsumerTest {
         consumer.handleEvent(record("e1"));
 
         verify(correlationService, times(1)).processEvent(any(IngestedEvent.class));
-        assertThat(deduplicationCache.seen("e1")).isTrue();
+        assertThat(deduplicationCache.seen(dedupKey("e1"))).isTrue();
     }
 
     @Test
@@ -127,7 +138,7 @@ class SagaEventConsumerTest {
 
         IngestedEvent ingested = captured();
         assertThat(ingested.eventId()).isEqualTo("n1");
-        assertThat(ingested.sagaId()).isEqualTo("saga-9");
+        assertThat(ingested.executionKey().rawId()).isEqualTo("saga-9");
         assertThat(ingested.eventType()).isEqualTo("PARCEL_DISPATCHED");
         assertThat(ingested.stepName()).isEqualTo("DISPATCH_PARCEL");
         assertThat(ingested.serviceName()).isEqualTo("courier-service");
@@ -150,7 +161,7 @@ class SagaEventConsumerTest {
 
         IngestedEvent ingested = captured();
         assertThat(ingested.eventId()).isEqualTo("o1");
-        assertThat(ingested.sagaId()).isEqualTo("saga-8");
+        assertThat(ingested.executionKey().rawId()).isEqualTo("saga-8");
         assertThat(ingested.stepName()).isEqualTo("UNKNOWN");
         assertThat(ingested.serviceName()).isEqualTo("unknown");
     }

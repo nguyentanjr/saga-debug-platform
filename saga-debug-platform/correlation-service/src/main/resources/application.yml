@@ -48,6 +48,17 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 correlation:
+  # Where an operator keeps the YAML describing a system this build was never told about:
+  # <dir>/ingestion/*.yaml for how to read its events, <dir>/workflows/*.yaml for what its
+  # saga is supposed to do, <dir>/rules/*.yaml for what a symptom means there. Empty means
+  # the packaged declarations only.
+  #
+  # Attaching to a new system is then a file on disk and a restart, not a rebuild of this
+  # service — which is what makes "the integration is three YAML files" true of a
+  # deployment and not only of the source tree.
+  declarations:
+    dir: ${CORRELATION_DECLARATIONS_DIR:}
+
   kafka:
     # Which topics carry saga telemetry. Adding a workflow means extending this
     # pattern, not editing SagaEventConsumer. Kafka picks up newly created matching

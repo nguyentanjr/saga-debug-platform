@@ -30,6 +30,11 @@
 
 source:
   name: hotel-saga-room-booking
+
+  # Both reply topics are one observed system, so both mappings name it and their events
+  # share one execution namespace. Without this the same saga id is filed twice -- once
+  # per mapping -- and every run reads as two half-finished executions.
+  system: hotel-saga
   topicPattern: 'room-booking\.outbox\.events'
 
   fields:

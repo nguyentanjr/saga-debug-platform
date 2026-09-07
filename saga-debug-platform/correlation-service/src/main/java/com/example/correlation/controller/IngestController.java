@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -99,12 +101,26 @@ public class IngestController {
     }
 
     /**
-     * @param source which mapping to read the body with; matched against the same
-     *               {@code topicPattern} that Kafka topics are
+     * The header carrying what a broker would call the record key.
+     *
+     * <p>HTTP has no key, and a mapping written as {@code executionId: key} is not a
+     * statement about Kafka — it says the correlation key travels beside the body rather
+     * than inside it, which is what the transactional outbox pattern does on every
+     * transport. Naming one conventional header lets the same mapping file be read over
+     * either transport, which is the whole promise of {@link RawObservation}.
+     */
+    public static final String KEY_HEADER = "X-Observation-Key";
+
+    /**
+     * @param source  which mapping to read the body with; matched against the same
+     *                {@code topicPattern} that Kafka topics are
+     * @param headers the request's own headers, offered to the mapping exactly as a
+     *                broker's headers are
      */
     @PostMapping("/{source}")
     public ResponseEntity<Map<String, Object>> ingest(@PathVariable("source") String source,
-            @RequestBody JsonNode body) {
+            @RequestBody JsonNode body,
+            @RequestHeader Map<String, String> headers) {
 
         List<JsonNode> events = body.isArray()
                 ? toList(body)
@@ -126,12 +142,21 @@ public class IngestController {
         int duplicates = 0;
         int rejected = 0;
 
+        // The transport envelope, which this adapter used to discard. A mapping reading
+        // its correlation key from the record key and its identity from a header — the
+        // ordinary shape of an outbox published by Debezium, and what the semotpan
+        // integration is built on — worked over Kafka and was rejected as
+        // NOT_CORRELATABLE over HTTP. Same mapping file, same events, different answer,
+        // and the rejection blamed the sending system for a gap in this adapter.
+        Map<String, String> transportHeaders = normalise(headers);
+        String key = transportHeaders.get(KEY_HEADER.toLowerCase(Locale.ROOT));
+
         for (JsonNode event : events) {
             // No fallback identity: unlike a Kafka record, an HTTP body has no offset to
             // fall back on, so an event without an id cannot be deduplicated and is
             // rejected rather than being given a synthetic one that changes per request.
             IngestionResult result = ingestionService.ingest(new RawObservation(
-                    source, event.toString(), receivedAt, null, null, Map.of()));
+                    source, event.toString(), receivedAt, null, key, transportHeaders));
 
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("outcome", result.outcome().name());
@@ -160,6 +185,25 @@ public class IngestController {
         return ResponseEntity
                 .status(accepted > 0 || duplicates > 0 ? HttpStatus.ACCEPTED : HttpStatus.BAD_REQUEST)
                 .body(response);
+    }
+
+    /**
+     * Header names lowercased, because HTTP header names are case-insensitive and a
+     * mapping that says {@code header:id} must not depend on how a particular client
+     * capitalised it. Kafka's are case-sensitive, so this is the one place the two
+     * transports genuinely differ and it is handled here rather than in the mapping.
+     */
+    private static Map<String, String> normalise(Map<String, String> headers) {
+        if (headers == null || headers.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> normalised = new LinkedHashMap<>();
+        headers.forEach((name, value) -> {
+            if (name != null && value != null) {
+                normalised.put(name.toLowerCase(Locale.ROOT), value);
+            }
+        });
+        return normalised;
     }
 
     private static List<JsonNode> toList(JsonNode array) {

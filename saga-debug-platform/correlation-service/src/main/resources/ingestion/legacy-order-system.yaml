@@ -49,6 +49,13 @@ source:
     # specification — the difference ExecutionProjection records as StartProvenance.
     causationId: context.causedBy
 
+    # The trace id, which this system nests under its own context object rather than
+    # putting at the top level under the name this platform happens to use. Declaring it
+    # is what links a diagnosis here to the traces in Jaeger; without the declaration the
+    # platform would report this system as publishing no trace context at all, which is
+    # a statement about the platform's assumptions rather than about the system.
+    traceId: context.traceId
+
   # Their vocabulary against the workflow specification's. Renaming either side would be
   # a change to a system this platform is only meant to observe.
   eventTypes:
