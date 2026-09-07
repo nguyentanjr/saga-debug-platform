@@ -17,8 +17,35 @@ public class SagaEvent {
     @Column(name = "event_id", nullable = false, unique = true)
     private String eventId;
 
+    /**
+     * The namespaced execution key: {@code source::rawId}. See {@link ExecutionKey}.
+     *
+     * <p>Not the identifier the producer published. Two observed systems are two id
+     * spaces, and filing both under a raw string merged unrelated runs into one.
+     */
     @Column(name = "saga_id", nullable = false)
     private String sagaId;
+
+    /**
+     * The mapping that read this observation.
+     *
+     * <p>Redundant with the prefix of {@code sagaId} on purpose: it is what queries filter
+     * and group by, and a CHECK constraint ties the two together so the invariant holds
+     * for writers that never went through {@link ExecutionKey}.
+     */
+    @Column(name = "source_name", nullable = false)
+    private String sourceName;
+
+    /**
+     * On what grounds this observation was filed under {@code sagaId}.
+     *
+     * <p>Every finding downstream is a statement about a sequence, and the sequence is
+     * only as sound as the correlation that built it. Recording the basis keeps a link the
+     * platform derived from reading like an identifier the producer stamped.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "correlation_basis")
+    private CorrelationBasis correlationBasis;
 
     @Column(name = "event_type", nullable = false)
     private String eventType;
@@ -56,6 +83,32 @@ public class SagaEvent {
     @Column(name = "parent_span_id")
     private String parentSpanId;
 
+    /**
+     * The trace this event belongs to, as the source's mapping said to read it.
+     *
+     * <p>Stored rather than re-derived from the payload, because deriving it meant
+     * looking for a field named {@code traceId} — this platform's own name for it. A
+     * source that keeps its trace id elsewhere reported no trace at all.
+     */
+    @Column(name = "trace_id")
+    private String traceId;
+
+    /**
+     * The transport's own name for the record that carried this observation, or null.
+     *
+     * <p>For Kafka, {@code topic-partition-offset}: it identifies a position in a log, not
+     * a business event, and that is exactly what makes it useful here. Re-reading a topic
+     * presents the same position again; a producer that published an event twice occupies
+     * two. Without it the platform could see that an event id had arrived before but not
+     * whether it had arrived <em>from the same record</em>, and reported its own replay as
+     * the observed system's duplicate delivery.
+     *
+     * <p>Null when the transport offers no identity — HTTP ingestion, and rows written
+     * before this was recorded. Null is read as "cannot tell", never as "replay".
+     */
+    @Column(name = "transport_ref")
+    private String transportRef;
+
     public String getCausationId() { return causationId; }
     public void setCausationId(String causationId) { this.causationId = causationId; }
 
@@ -65,6 +118,12 @@ public class SagaEvent {
     public String getParentSpanId() { return parentSpanId; }
     public void setParentSpanId(String parentSpanId) { this.parentSpanId = parentSpanId; }
 
+    public String getTraceId() { return traceId; }
+    public void setTraceId(String traceId) { this.traceId = traceId; }
+
+    public String getTransportRef() { return transportRef; }
+    public void setTransportRef(String transportRef) { this.transportRef = transportRef; }
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -73,6 +132,12 @@ public class SagaEvent {
 
     public String getSagaId() { return sagaId; }
     public void setSagaId(String sagaId) { this.sagaId = sagaId; }
+
+    public String getSourceName() { return sourceName; }
+    public void setSourceName(String sourceName) { this.sourceName = sourceName; }
+
+    public CorrelationBasis getCorrelationBasis() { return correlationBasis; }
+    public void setCorrelationBasis(CorrelationBasis basis) { this.correlationBasis = basis; }
 
     public String getEventType() { return eventType; }
     public void setEventType(String eventType) { this.eventType = eventType; }

@@ -2,6 +2,7 @@ package com.example.correlation.repository;
 
 import com.example.correlation.domain.SagaEvent;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -11,9 +12,29 @@ import java.util.List;
 import java.util.Optional;
 
 public interface SagaEventRepository extends JpaRepository<SagaEvent, Long> {
+    /**
+     * Files every observation of one execution under another identifier.
+     *
+     * <p>Used when two identifiers turn out to name the same execution: see
+     * {@code ExecutionAliasResolver}. A bulk update rather than a load-and-save because
+     * the losing chain can be any length and none of it needs to pass through memory to
+     * be renamed.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE SagaEvent x SET x.sagaId = :canonical WHERE x.sagaId = :merged")
+    int repointSaga(@Param("merged") String merged, @Param("canonical") String canonical);
+
     List<SagaEvent> findBySagaIdOrderByTimestampAsc(String sagaId);
     List<SagaEvent> findBySagaIdOrderByReceivedAtAsc(String sagaId);
-    Optional<SagaEvent> findByEventId(String eventId);
+    /**
+     * One observation, addressed by the pair that identifies it.
+     *
+     * <p>Replaces a lookup by {@code eventId} alone. An event id is unique only within the
+     * system that issued it, so the bare query answered "yes, seen before" for a second
+     * system's event that merely reused a number — and the caller, a duplicate check,
+     * discarded it. The unique constraint behind this is on the pair for the same reason.
+     */
+    Optional<SagaEvent> findBySourceNameAndEventId(String sourceName, String eventId);
     long countBySagaId(String sagaId);
     int deleteByTimestampBefore(Instant cutoff);
     Optional<SagaEvent> findTopBySagaIdOrderByTimestampDesc(String sagaId);

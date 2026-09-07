@@ -2,6 +2,7 @@ package com.example.correlation.controller;
 
 import com.example.correlation.domain.*;
 import com.example.correlation.dto.SagaDetailResponse;
+import com.example.correlation.execution.ExecutionLookup;
 import com.example.correlation.dto.SagaListItem;
 import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.RcaResultRepository;
@@ -27,15 +28,21 @@ public class SagaController {
     private final SagaEventRepository sagaEventRepository;
     private final AnomalyRepository anomalyRepository;
     private final RcaResultRepository rcaResultRepository;
+    private final com.example.correlation.repository.ExecutionAliasRepository aliasRepository;
+    private final ExecutionLookup executionLookup;
 
     public SagaController(SagaInstanceRepository sagaInstanceRepository,
                           SagaEventRepository sagaEventRepository,
                           AnomalyRepository anomalyRepository,
-                          RcaResultRepository rcaResultRepository) {
+                          RcaResultRepository rcaResultRepository,
+                          com.example.correlation.repository.ExecutionAliasRepository aliasRepository,
+                          ExecutionLookup executionLookup) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
         this.rcaResultRepository = rcaResultRepository;
+        this.aliasRepository = aliasRepository;
+        this.executionLookup = executionLookup;
     }
 
     @GetMapping
@@ -87,19 +94,42 @@ public class SagaController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * One execution, addressed either by its stored key or by the identifier the observed
+     * system issued.
+     *
+     * <p>The second form is what an operator and the evaluation harness actually hold:
+     * they know the id the source published, not the namespace this platform files it
+     * under. Resolution is exact rather than a search, and refuses rather than picks when
+     * one raw id names runs in two observed systems. See {@link ExecutionLookup}.
+     */
     @GetMapping("/{sagaId}")
     public ResponseEntity<SagaDetailResponse> getSagaDetail(@PathVariable("sagaId") String sagaId) {
-        SagaInstance saga = sagaInstanceRepository.findById(sagaId).orElse(null);
+        String executionId = executionLookup.resolve(sagaId).orElse(null);
+        if (executionId == null) {
+            return ResponseEntity.notFound().build();
+        }
+        SagaInstance saga = sagaInstanceRepository.findById(executionId).orElse(null);
         if (saga == null) {
             return ResponseEntity.notFound().build();
         }
-
-        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
-        List<Anomaly> anomalies = anomalyRepository.findBySagaId(sagaId);
-        List<RcaResult> rcaResults = rcaResultRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
+        // Everything below reads the run under the key it is actually stored by, never
+        // under the string the caller happened to use to ask for it.
+        List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(executionId);
+        List<Anomaly> anomalies = anomalyRepository.findBySagaId(executionId);
+        List<RcaResult> rcaResults =
+                rcaResultRepository.findBySagaIdOrderByCreatedAtDesc(executionId);
 
         SagaDetailResponse response = new SagaDetailResponse();
         response.setSagaId(saga.getSagaId());
+        response.setSourceName(saga.getSourceName());
+        // Which identifiers this run answers to, and what event linked each one. An
+        // execution assembled from services that each knew a different id has to be able
+        // to say so rather than presenting itself as one shared id.
+        response.setIdentities(aliasRepository.findByExecutionId(executionId).stream()
+                .map(alias -> new SagaDetailResponse.IdentityLink(
+                        alias.getAliasKey(), alias.getSourceName(), alias.getLinkedByEventId()))
+                .toList());
         response.setWorkflowType(saga.getWorkflowType());
         response.setStatus(saga.getStatus());
         response.setStartTime(saga.getStartTime());

@@ -7,6 +7,25 @@ import java.util.List;
 
 public class SagaDetailResponse {
     private String sagaId;
+
+    /**
+     * The observed system this run belongs to; the namespace half of {@code sagaId}.
+     *
+     * <p>Sent separately as well as inside the key so a client can group and filter by
+     * system without parsing identifiers.
+     */
+    private String sourceName;
+
+    /**
+     * Every identifier this execution answers to, each with the observation that revealed
+     * it.
+     *
+     * <p>A run assembled from services that each knew a different id is a claim, and a
+     * report that makes claims has to show its working. Without this the merged execution
+     * looks like a single id that every service happened to agree on, which is the one
+     * thing it is not.
+     */
+    private List<IdentityLink> identities;
     private String workflowType;
     private SagaStatus status;
     private Instant startTime;
@@ -18,6 +37,24 @@ public class SagaDetailResponse {
 
     public String getSagaId() { return sagaId; }
     public void setSagaId(String sagaId) { this.sagaId = sagaId; }
+
+    public String getSourceName() { return sourceName; }
+    public void setSourceName(String sourceName) { this.sourceName = sourceName; }
+
+    public List<IdentityLink> getIdentities() { return identities; }
+    public void setIdentities(List<IdentityLink> identities) { this.identities = identities; }
+
+    /**
+     * One identifier this execution is known by.
+     *
+     * @param identifier the value as the observed system published it
+     * @param source     the system whose namespace it belongs to
+     * @param linkedByEventId the observation that carried this identifier alongside
+     *                        another, which is the evidence for the link; null for the
+     *                        execution's own declared key
+     */
+    public record IdentityLink(String identifier, String source, String linkedByEventId) {
+    }
 
     public String getWorkflowType() { return workflowType; }
     public void setWorkflowType(String workflowType) { this.workflowType = workflowType; }

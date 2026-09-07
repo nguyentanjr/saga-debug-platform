@@ -1,5 +1,6 @@
 package com.example.correlation.controller;
 
+import com.example.correlation.execution.ExecutionLookup;
 import com.example.correlation.service.CorrelationService;
 import com.example.correlation.service.RcaService;
 import org.slf4j.Logger;
@@ -23,10 +24,13 @@ public class AdminEventController {
 
     private final CorrelationService correlationService;
     private final RcaService rcaService;
+    private final ExecutionLookup executionLookup;
 
-    public AdminEventController(CorrelationService correlationService, RcaService rcaService) {
+    public AdminEventController(CorrelationService correlationService, RcaService rcaService,
+            ExecutionLookup executionLookup) {
         this.correlationService = correlationService;
         this.rcaService = rcaService;
+        this.executionLookup = executionLookup;
     }
 
     
@@ -52,16 +56,31 @@ public class AdminEventController {
                 ? Instant.parse(timestampStr)
                 : Instant.now();
 
+        // Injected by hand, so it is namespaced under the default source like any
+        // observation that matched no mapping: an operator's test event must not be able
+        // to land inside a real system's execution.
+        com.example.correlation.domain.ExecutionKey key = com.example.correlation.domain.ExecutionKey
+                .of(com.example.correlation.domain.ExecutionKey.DEFAULT_SOURCE, sagaId);
+
         correlationService.processEvent(new com.example.correlation.domain.IngestedEvent(
-                eventId, sagaId, eventType, stepName, serviceName,
-                timestamp, payload, Instant.now(),
-                body.get("causationId"), body.get("spanId"), body.get("parentSpanId")));
+                new com.example.correlation.domain.IngestedEvent.Identity(
+                        key.source(), key, eventId, body.get("orderId"),
+                        com.example.correlation.domain.CorrelationBasis.DECLARED_KEY),
+                null, eventType, stepName, serviceName, timestamp, payload, Instant.now(),
+                new com.example.correlation.domain.IngestedEvent.Causality(
+                        body.get("causationId"), body.get("spanId"),
+                        body.get("parentSpanId"), body.get("traceId"))));
 
         log.info("Injected event: sagaId={}, eventType={}", sagaId, eventType);
 
+        // Both halves of what just happened. The caller asked under its own identifier
+        // and the observation was filed under a namespaced key; reporting only the former
+        // told a caller an id that addresses nothing, which is how the evaluation harness
+        // came to poll a run that existed the whole time.
         return ResponseEntity.ok(Map.of(
                 "status", "injected",
                 "sagaId", sagaId,
+                "executionId", key.canonical(),
                 "eventId", eventId,
                 "eventType", eventType
         ));
@@ -72,7 +91,11 @@ public class AdminEventController {
 
     @PostMapping("/analyze/{sagaId}")
     public ResponseEntity<?> triggerRca(@PathVariable("sagaId") String sagaId) {
-        var result = rcaService.analyze(sagaId);
+        String executionId = executionLookup.resolve(sagaId).orElse(null);
+        if (executionId == null) {
+            return ResponseEntity.notFound().build();
+        }
+        var result = rcaService.analyze(executionId);
         if (result == null) {
             return ResponseEntity.notFound().build();
         }

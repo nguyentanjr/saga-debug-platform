@@ -47,7 +47,7 @@ class RepositoryQueryDerivationTest {
     @ValueSource(strings = {
             "findBySagaIdOrderByTimestampAsc",
             "findBySagaIdOrderByReceivedAtAsc",
-            "findByEventId",
+            "findBySourceNameAndEventId",
             "countBySagaId",
             "deleteByTimestampBefore",
             "findTopBySagaIdOrderByTimestampDesc",
@@ -101,7 +101,7 @@ class RepositoryQueryDerivationTest {
                 "findByStatusAndStartTimeBetween", "findByStatusIn",
                 "findByStatusInAndLastUpdatedAfter", "findByStatusInAndEndTimeAfter",
                 "findByStatusInAndLastUpdatedBefore", "findBySagaIdOrderByTimestampAsc",
-                "findBySagaIdOrderByReceivedAtAsc", "findByEventId", "countBySagaId",
+                "findBySagaIdOrderByReceivedAtAsc", "findBySourceNameAndEventId", "countBySagaId",
                 "deleteByTimestampBefore", "findTopBySagaIdOrderByTimestampDesc",
                 "findBySagaIdInOrderBySagaIdAscTimestampAsc", "deleteBySagaIdIn",
                 "findBySagaId", "findByDetectedAtAfter", "existsBySagaIdAndAnomalyType",

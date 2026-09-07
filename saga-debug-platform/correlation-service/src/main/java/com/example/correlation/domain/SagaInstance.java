@@ -7,9 +7,14 @@ import java.time.Instant;
 @Table(name = "saga_instances")
 public class SagaInstance {
 
+    /** The namespaced execution key: {@code source::rawId}. See {@link ExecutionKey}. */
     @Id
     @Column(name = "saga_id")
     private String sagaId;
+
+    /** The observed system this run belongs to; the namespace half of {@code sagaId}. */
+    @Column(name = "source_name", nullable = false)
+    private String sourceName = ExecutionKey.DEFAULT_SOURCE;
 
     /**
      * The workflow this execution belongs to, resolved from its first event.
@@ -52,6 +57,9 @@ public class SagaInstance {
 
     public String getSagaId() { return sagaId; }
     public void setSagaId(String sagaId) { this.sagaId = sagaId; }
+
+    public String getSourceName() { return sourceName; }
+    public void setSourceName(String sourceName) { this.sourceName = sourceName; }
 
     public String getWorkflowType() { return workflowType; }
     public void setWorkflowType(String workflowType) { this.workflowType = workflowType; }
