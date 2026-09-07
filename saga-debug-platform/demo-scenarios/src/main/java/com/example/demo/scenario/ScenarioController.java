@@ -1,8 +1,5 @@
-package com.example.correlation.controller;
+package com.example.demo.scenario;
 
-import com.example.correlation.service.scenario.ScenarioDefinition;
-import com.example.correlation.service.scenario.ScenarioRunResponse;
-import com.example.correlation.service.scenario.ScenarioService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

@@ -19,6 +19,9 @@ export class SagaService {
 
   private apiUrl = environment.apiUrl;
 
+  /** The demo scenario driver, not the observer. See environment.ts. */
+  private demoUrl = environment.demoUrl;
+
   constructor(private http: HttpClient) {}
 
   getSagas(page: number = 0, size: number = 20, status?: string): Observable<Page<SagaListItem>> {
@@ -51,10 +54,10 @@ export class SagaService {
   }
 
   getScenarios(): Observable<ScenarioDefinition[]> {
-    return this.http.get<ScenarioDefinition[]>(`${this.apiUrl}/api/scenarios`);
+    return this.http.get<ScenarioDefinition[]>(`${this.demoUrl}/api/scenarios`);
   }
 
   runScenario(scenarioId: string): Observable<ScenarioRunResponse> {
-    return this.http.post<ScenarioRunResponse>(`${this.apiUrl}/api/scenarios/${scenarioId}/run`, {});
+    return this.http.post<ScenarioRunResponse>(`${this.demoUrl}/api/scenarios/${scenarioId}/run`, {});
   }
 }

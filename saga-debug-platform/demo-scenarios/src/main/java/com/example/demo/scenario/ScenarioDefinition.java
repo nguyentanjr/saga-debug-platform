@@ -1,4 +1,4 @@
-package com.example.correlation.service.scenario;
+package com.example.demo.scenario;
 
 public record ScenarioDefinition(
         String id,

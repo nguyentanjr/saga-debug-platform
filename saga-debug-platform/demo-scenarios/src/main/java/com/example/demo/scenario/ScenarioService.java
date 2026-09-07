@@ -1,4 +1,4 @@
-package com.example.correlation.service.scenario;
+package com.example.demo.scenario;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +27,28 @@ public class ScenarioService {
         this.orderServiceUrl = orderServiceUrl;
         this.paymentServiceUrl = paymentServiceUrl;
     }
+
+    /**
+     * The observer's key for a run of the demo services.
+     *
+     * <p>The demo services publish through no source mapping, so the observer files their
+     * runs under its default namespace. Reporting the bare id would hand the dashboard a
+     * link to an execution that does not exist.
+     *
+     * <p>Built from a string here rather than by calling the observer's {@code ExecutionKey},
+     * deliberately: this module must not depend on correlation-service. The observer must
+     * not be able to command the systems it observes, and a compile dependency in either
+     * direction is how that boundary erodes (docs/ADR/0001-observer-boundary.md). The
+     * {@code source::rawId} form is the observer's public key format — it appears in its
+     * URLs and its API — not an internal detail, so depending on the format rather than on
+     * the class is the smaller coupling. See docs/ADR/0002-execution-identity.md.
+     */
+    private static String observerKeyFor(String sagaId) {
+        return OBSERVER_DEFAULT_SOURCE + "::" + sagaId;
+    }
+
+    /** Matches {@code ExecutionKey.DEFAULT_SOURCE} in correlation-service. */
+    private static final String OBSERVER_DEFAULT_SOURCE = "default";
 
     public List<ScenarioDefinition> listScenarios() {
         return List.of(
@@ -167,7 +189,7 @@ public class ScenarioService {
         return new ScenarioRunResponse(
                 scenarioId,
                 name,
-                String.valueOf(order.get("sagaId")),
+                observerKeyFor(String.valueOf(order.get("sagaId"))),
                 String.valueOf(order.get("id")),
                 expectedOutcome,
                 expectedRca,

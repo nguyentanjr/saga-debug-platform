@@ -1,0 +1,14 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: demo-scenarios
+
+scenario:
+  order-service-url: ${SCENARIO_ORDER_SERVICE_URL:http://order-service:8081}
+  payment-service-url: ${SCENARIO_PAYMENT_SERVICE_URL:http://payment-service:8082}
+
+# The dashboard calls this service directly for the "Run scenario" buttons.
+demo:
+  allowed-origin: ${DEMO_ALLOWED_ORIGIN:http://localhost:4200}

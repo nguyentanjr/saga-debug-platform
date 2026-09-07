@@ -1,4 +1,4 @@
-package com.example.correlation.service.scenario;
+package com.example.demo.scenario;
 
 import java.util.List;
 
