@@ -874,6 +874,32 @@ public class AnomalyDetectionService {
         }
     }
 
+    /**
+     * Compensation that started, was declared to report completion, and has not.
+     *
+     * <h2>Why the declaration has to be consulted first</h2>
+     * This detector used to ask one question -- was a compensation completion event seen --
+     * and treat "no" as a fault. That reads an absence as evidence without first asking
+     * whether anything was ever going to fill it. One of the systems validated here settles
+     * the question: its {@code ROLLBACK_STOCK} declares a {@code started} event and no
+     * {@code completed} one, which is not an omission but the shape of that system. Every
+     * compensating run on it was therefore reported as unacknowledged, on every pass,
+     * permanently -- a finding about the platform's expectation wearing the observed
+     * system's name.
+     *
+     * <p>An absence claim needs the specification to say the event was owed (invariant
+     * I10). So the question is now asked per step, and only of steps whose declaration says
+     * they report completion. A step that never promised an acknowledgement cannot be
+     * missing one.
+     *
+     * <h2>What survives</h2>
+     * On a system that does declare the completion, nothing changes: a rollback that
+     * started and never reported back is still reported, with the same evidence. What is
+     * given up is the ability to notice a compensation stalling on a system that publishes
+     * no completion at all -- and that was never observable here, because the two cases
+     * look identical in the evidence. Noticing it would need something the declaration does
+     * not offer, not a stricter reading of silence.
+     */
     public void detectMissingCompensationAck() {
         Instant cutoff = Instant.now().minus(detectionProperties.getCompensationAckCutoff());
 
@@ -891,22 +917,41 @@ public class AnomalyDetectionService {
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
             List<SagaEvent> compStartEvents = compensationEvents(
                     workflow, events, WorkflowSpec.EventRole.Role.STARTED);
-            boolean hasCompStart = !compStartEvents.isEmpty();
-            boolean hasCompDone = !compensationEvents(
-                    workflow, events, WorkflowSpec.EventRole.Role.COMPLETED).isEmpty();
+            Set<String> acknowledgedSteps = stepIdsOf(workflow, compensationEvents(
+                    workflow, events, WorkflowSpec.EventRole.Role.COMPLETED));
 
-            if (hasCompStart && !hasCompDone) {
-                String startedTypes = distinctTypes(compStartEvents);
+            // Only the steps whose declaration owes an acknowledgement, and has not given
+            // one. A step that declares no completion is dropped here, silently and on
+            // purpose: there is nothing to report about a promise that was never made.
+            List<SagaEvent> owed = compStartEvents.stream()
+                    .filter(event -> workflow.classifyEvent(event.getEventType())
+                            .map(role -> workflow.declaresCompletionEvent(role.stepId())
+                                    && !acknowledgedSteps.contains(role.stepId()))
+                            .orElse(false))
+                    .toList();
+
+            if (!owed.isEmpty()) {
+                String startedTypes = distinctTypes(owed);
                 createAnomaly(saga.getSagaId(), AnomalyType.MISSING_COMPENSATION_ACK,
                         String.format("Compensation started (%s) but never acknowledged", startedTypes),
                         details()
                                 .observedValue(startedTypes + " without a compensation completion event")
-                                .expectedValue("the compensation step reports completion")
+                                .expectedValue("the compensation step reports completion, which this "
+                                        + "workflow declares it does")
                                 .thresholdSource("workflow:" + workflow.getName() + ".compensation.ack")
-                                .evidenceEvents(compStartEvents)
+                                .evidenceEvents(owed)
                                 .measuredAt(Instant.now()));
             }
         }
+    }
+
+    /** The steps a set of classified events belong to; events the workflow cannot place are dropped. */
+    private Set<String> stepIdsOf(WorkflowSpec workflow, List<SagaEvent> events) {
+        return events.stream()
+                .map(event -> workflow.classifyEvent(event.getEventType()).orElse(null))
+                .filter(Objects::nonNull)
+                .map(WorkflowSpec.EventRole::stepId)
+                .collect(Collectors.toSet());
     }
 
     public void detectDelayedCompensation() {
