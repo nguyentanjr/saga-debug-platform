@@ -274,8 +274,11 @@ public class AnomalyDetectionService {
      * — the platform had read the run backwards and blamed the run.
      *
      * <p>{@link EvidenceTimeline} only ever offers a pair it can order from the evidence,
-     * so what arrives here is a step down the lifecycle between two observations that
-     * really did happen in that order.
+     * and whose earlier half is terminal, so what arrives here is an observation that
+     * really did happen after the run had ended and contradicted that ending. The terminal
+     * requirement is what makes the finding safe to file as an occurrence claim on the
+     * partial evidence an observer always has: more observations cannot withdraw it, so it
+     * never has to be. See {@code EvidenceTimeline#firstRegression}.
      */
     public void detectStateRegression(String sagaId, EvidenceTimeline.Regression regression) {
         if (regression == null) return;
