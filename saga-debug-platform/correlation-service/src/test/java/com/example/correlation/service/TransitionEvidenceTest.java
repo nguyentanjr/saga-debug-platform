@@ -410,6 +410,123 @@ class TransitionEvidenceTest {
         assertThat(raised()).doesNotContain(AnomalyType.FORBIDDEN_POST_TERMINAL);
     }
 
+    // ── 9. F3: the post-terminal question is asked of the run, not of the arrival ──
+
+    /**
+     * The F3 counterexample. One run, three observations whose business order the clock
+     * settles outright — {@code PAYMENT_FAILED} at t20 provably follows the ending at t10 —
+     * and yet the finding used to depend on which of them was read last:
+     *
+     * <pre>
+     *   arrival [e1, e2, e3] -> FORBIDDEN_POST_TERMINAL raised
+     *   arrival [e1, e3, e2] -> silence
+     * </pre>
+     *
+     * <p>{@code EvidenceTimeline} was order-independent throughout; the question put to it
+     * was not. It was asked once, of the event in hand, so the terminal observation that
+     * arrives <em>after</em> the late one was never matched against what it had already
+     * ended. Same evidence, two verdicts — I9, and unlike {@code OUT_OF_ORDER} this finding
+     * has no claim on delivery order to exempt it.
+     */
+    @Test
+    void aPostTerminalEventIsFoundInEveryDeliveryOrder() {
+        List<String[]> run = List.of(
+                new String[]{"e1", "ORDER_CREATED", "0"},
+                new String[]{"e2", "INVENTORY_RESERVED", "10"},
+                new String[]{"e3", "PAYMENT_FAILED", "20"});
+
+        for (List<String[]> order : permutations(run)) {
+            setUp();
+            order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+            assertThat(raised())
+                    .as("delivery order %s", order.stream().map(e -> e[1]).toList())
+                    .contains(AnomalyType.FORBIDDEN_POST_TERMINAL);
+        }
+    }
+
+    /**
+     * And the other half of the same invariant: asking the question of the whole run must
+     * not make it easier to answer yes. A run where nothing happened after the ending stays
+     * silent in all six orders — including the three where the ending is read before the
+     * observations the clock puts ahead of it.
+     */
+    @Test
+    void noDeliveryOrderOfARunWithNoPostTerminalEventRaisesOne() {
+        List<String[]> run = List.of(
+                new String[]{"e1", "ORDER_CREATED", "0"},
+                new String[]{"e2", "PAYMENT_COMPLETED", "1"},
+                new String[]{"e3", "INVENTORY_RESERVED", "2"});
+
+        for (List<String[]> order : permutations(run)) {
+            setUp();
+            order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+            assertThat(raised())
+                    .as("delivery order %s", order.stream().map(e -> e[1]).toList())
+                    .doesNotContain(AnomalyType.FORBIDDEN_POST_TERMINAL);
+        }
+    }
+
+    /**
+     * What F3 buys, and what it does not, when more than one pair qualifies.
+     *
+     * <p>Five observations with three provably post-terminal pairs — (e3,e4), (e3,e5) and
+     * (e4,e5). The finding's <em>existence</em> is now a property of the evidence: it is
+     * raised in all 120 delivery orders. That is the invariant the fix was for.
+     */
+    @Test
+    void aPostTerminalFindingIsRaisedInEveryOrderWhenSeveralPairsQualify() {
+        assertThat(postTerminalShapesOverEveryOrderOf(severalQualifyingPairs()))
+                .as("orders that raised no finding")
+                .doesNotContainKey(NO_FINDING);
+    }
+
+    /**
+     * And the limit of that claim, pinned rather than argued.
+     *
+     * <p>{@code detectForbiddenPostTerminal} keeps the first finding of its type for a run
+     * and drops every later one, so the pair written down is the first one that became
+     * provable — a property of how much of the run had arrived, not of the run. Measured:
+     * three distinct {@code (evidenceEventIds, measuredAt)} shapes across the 120 orders.
+     *
+     * <p>So F3 normalises <em>whether</em> the finding is raised, not <em>what it cites</em>.
+     * I9 covers both; only the first half is closed here. This test fails the day the second
+     * half is, which is when it should be rewritten as an equality — not deleted.
+     */
+    @Test
+    void butWhichPairItCitesStillDependsOnHowMuchOfTheRunHadArrived() {
+        assertThat(postTerminalShapesOverEveryOrderOf(severalQualifyingPairs()))
+                .as("distinct evidence shapes — 1 would mean the evidence is normalised too")
+                .hasSize(3);
+    }
+
+    private static final String NO_FINDING = "NONE";
+
+    private static List<String[]> severalQualifyingPairs() {
+        return List.of(
+                new String[]{"e1", "ORDER_CREATED", "0"},
+                new String[]{"e2", "PAYMENT_COMPLETED", "1"},
+                new String[]{"e3", "INVENTORY_RESERVED", "2"},
+                new String[]{"e4", "PAYMENT_FAILED", "3"},
+                new String[]{"e5", "INVENTORY_FAILED", "4"});
+    }
+
+    /** Every delivery order of {@code run}, against what its post-terminal finding cites. */
+    private Map<String, List<String>> postTerminalShapesOverEveryOrderOf(List<String[]> run) {
+        Map<String, List<String>> shapes = new LinkedHashMap<>();
+        for (List<String[]> order : permutations(run)) {
+            setUp();
+            order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+            String shape = anomalies.stream()
+                    .filter(a -> a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL)
+                    .findFirst()
+                    .map(a -> a.getEvidenceEventIds() + " @" + a.getMeasuredAt())
+                    .orElse(NO_FINDING);
+            shapes.computeIfAbsent(shape, key -> new ArrayList<>())
+                    .add(order.stream().map(e -> e[0]).toList().toString());
+        }
+        return shapes;
+    }
+
     // ── the specification saying nothing is still its own answer ──────────────
 
     /** A step the graph does not mention cannot be judged against it. */
