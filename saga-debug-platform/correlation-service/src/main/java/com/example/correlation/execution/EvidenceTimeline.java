@@ -88,6 +88,18 @@ public final class EvidenceTimeline {
     public record Regression(SagaEvent earlier, SagaStatus from, SagaEvent later, SagaStatus to) {
     }
 
+    /**
+     * An ending, together with an observation the evidence places after it.
+     *
+     * <p>Reported only for a provably ordered pair, for the reason on {@link Regression}:
+     * a pair the evidence does not order would put the observer's own tie-break into a
+     * finding against the observed system.
+     *
+     * @param endedAs the status {@code terminal} established; always terminal
+     */
+    public record PostTerminal(SagaEvent terminal, SagaStatus endedAs, SagaEvent late) {
+    }
+
     /** An observation together with what it says the run's status is. */
     private record Bearing(SagaEvent event, SagaStatus status) {
     }
@@ -373,27 +385,30 @@ public final class EvidenceTimeline {
     }
 
     /**
-     * The observation that ended the run before {@code event} happened, if one provably
-     * did.
+     * The ending, and the observation the evidence puts after it, if there provably is
+     * such a pair.
      *
      * <p>The question {@code FORBIDDEN_POST_TERMINAL} means to ask. Asking it of the
      * stored status instead answered "had the platform already concluded the run was over
      * by the time it got round to this event", which is true of every event read after a
      * completion — including the ones that happened before it.
+     *
+     * <p>Asked of the whole reconstruction, and not of whichever observation is in hand.
+     * The arriving event is half of the pair only when it happens to be the <em>later</em>
+     * half, so scoping the question to it left every run whose terminal event arrived last
+     * unexamined: the same three observations raised the finding on one delivery order and
+     * stayed silent on another. That is the shape of the FP-2 defect — a claim decided on a
+     * prefix and never revisited — reached through a different predicate, and it breaks I9
+     * for a finding I9 does not exempt.
      */
-    public Optional<SagaEvent> endedBefore(SagaEvent event) {
+    public Optional<PostTerminal> postTerminal() {
         return bearings.stream()
                 .filter(bearing -> bearing.status().isTerminal())
-                .filter(bearing -> relate(spec, bearing.event(), event) == Relation.BEFORE)
-                .map(Bearing::event)
-                .findFirst();
-    }
-
-    /** The status a given observation established, for reporting it. */
-    public Optional<SagaStatus> statusAt(SagaEvent event) {
-        return bearings.stream()
-                .filter(bearing -> bearing.event() == event)
-                .map(Bearing::status)
+                .flatMap(ended -> ordered.stream()
+                        .filter(late -> relate(spec, ended.event(), late) == Relation.BEFORE)
+                        .findFirst()
+                        .map(late -> new PostTerminal(ended.event(), ended.status(), late))
+                        .stream())
                 .findFirst();
     }
 }

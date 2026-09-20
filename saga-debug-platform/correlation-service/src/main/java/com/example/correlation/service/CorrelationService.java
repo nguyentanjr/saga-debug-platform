@@ -173,9 +173,9 @@ public class CorrelationService {
 
         // Claims about how this run behaved, each read off the reconstruction rather than
         // off whatever difference this one arrival happened to make to what was stored.
-        timeline.endedBefore(sagaEvent).ifPresent(terminal ->
+        timeline.postTerminal().ifPresent(pair ->
                 anomalyDetectionService.detectForbiddenPostTerminal(sagaId,
-                        timeline.statusAt(terminal).orElse(null), terminal, sagaEvent));
+                        pair.endedAs(), pair.terminal(), pair.late()));
         timeline.regression().ifPresent(regression ->
                 anomalyDetectionService.detectStateRegression(sagaId, regression));
         if (!timeline.contestedOutcome().isEmpty()) {
