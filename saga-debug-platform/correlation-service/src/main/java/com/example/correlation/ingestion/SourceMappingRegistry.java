@@ -149,10 +149,21 @@ public class SourceMappingRegistry {
         // deployment reading one cluster should not travel a different path here than the
         // one its tests exercise.
         if (origin == null || origin.isBlank()) return forTopic(topic);
+
+        // A mapping that named this cluster is preferred over one that named none, whatever
+        // order the files were read in. This is not the tie-break that ordering usually is:
+        // between "the mapping for order-created on retail-eu" and "the mapping for
+        // order-created anywhere", only one of them was written about the record in hand.
+        // Leaving it to filename would mean a correct, specific declaration could be
+        // shadowed by a general one that happens to sort earlier, and the symptom would be
+        // two estates' runs quietly filed under one system.
         return mappings.stream()
-                .filter(mapping -> mapping.matches(origin, topic))
+                .filter(mapping -> origin.equals(mapping.getCluster()) && mapping.matches(topic))
                 .findFirst()
-                .orElse(identity);
+                .orElseGet(() -> mappings.stream()
+                        .filter(mapping -> mapping.matches(origin, topic))
+                        .findFirst()
+                        .orElse(identity));
     }
 
     public List<String> sourceNames() {

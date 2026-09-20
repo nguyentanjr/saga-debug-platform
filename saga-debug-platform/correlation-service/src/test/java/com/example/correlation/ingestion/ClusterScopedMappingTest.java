@@ -86,14 +86,32 @@ class ClusterScopedMappingTest {
     }
 
     @Test
-    @DisplayName("between a scoped and an unscoped mapping, declaration order still decides")
-    void declarationOrderStillDecides() {
-        SourceMappingRegistry registry = registryOf(
+    @DisplayName("a mapping that named this cluster wins over one that named none")
+    void theSpecificDeclarationWins() {
+        // Both orderings, because the point is that filename does not decide this one.
+        SourceMappingRegistry unscopedFirst = registryOf(
+                mapping("any-orders", "order-.*", null),
+                mapping("eu-orders", "order-.*", "retail-eu"));
+        SourceMappingRegistry scopedFirst = registryOf(
                 mapping("eu-orders", "order-.*", "retail-eu"),
                 mapping("any-orders", "order-.*", null));
 
+        assertThat(unscopedFirst.forTopic("retail-eu", "order-created").getName()).isEqualTo("eu-orders");
+        assertThat(scopedFirst.forTopic("retail-eu", "order-created").getName()).isEqualTo("eu-orders");
+
+        // And a cluster nobody wrote a specific mapping for still gets the general one.
+        assertThat(unscopedFirst.forTopic("logistics-us", "order-created").getName()).isEqualTo("any-orders");
+        assertThat(scopedFirst.forTopic("logistics-us", "order-created").getName()).isEqualTo("any-orders");
+    }
+
+    @Test
+    @DisplayName("between two mappings scoped to the same cluster, declaration order decides")
+    void declarationOrderStillDecidesAmongEquals() {
+        SourceMappingRegistry registry = registryOf(
+                mapping("eu-orders", "order-.*", "retail-eu"),
+                mapping("eu-orders-too", "order-.*", "retail-eu"));
+
         assertThat(registry.forTopic("retail-eu", "order-created").getName()).isEqualTo("eu-orders");
-        assertThat(registry.forTopic("logistics-us", "order-created").getName()).isEqualTo("any-orders");
     }
 
     @Test
