@@ -765,6 +765,43 @@ public class WorkflowSpec {
     }
 
 
+    /**
+     * Whether the specification says this step ever reports that it finished.
+     *
+     * <p>Asked before any finding is raised about a completion that has not been seen.
+     * "No completion event observed" reads as a fault only against a specification that
+     * declares one; against a system whose step publishes a start and nothing else, the
+     * same silence is the system working exactly as declared. Without this question the
+     * platform was reading its own expectation as the system's obligation — and one real
+     * system does publish {@code started} and no {@code completed} for its rollback, so
+     * every compensating run there was reported as unacknowledged, permanently, with no
+     * evidence for the claim beyond the absence the declaration had already explained.
+     *
+     * <p>Reads the same declarations {@link #classifyEvent} does, so a step whose
+     * completion arrives as a named outcome counts as declaring one: what matters is
+     * whether any event the step can publish would be read as it finishing.
+     *
+     * @return false for an unknown step, which cannot have declared anything
+     */
+    public boolean declaresCompletionEvent(String stepId) {
+        if (stepId == null) return false;
+        for (StepSpec step : allSteps()) {
+            if (step.getId() == null || !step.getId().equals(stepId)) continue;
+
+            if (step.getEvents() != null && step.getEvents().keySet().stream()
+                    .map(WorkflowSpec::toRole)
+                    .anyMatch(role -> role == EventRole.Role.COMPLETED)) {
+                return true;
+            }
+            if (step.getOutcomes() != null && step.getOutcomes().keySet().stream()
+                    .anyMatch(outcome -> roleOfOutcome(stepId, outcome) == EventRole.Role.COMPLETED)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
     public boolean isCompensationStep(String stepId) {
         return compensationSteps != null && compensationSteps.stream()
                 .anyMatch(s -> s.getId() != null && s.getId().equals(stepId));
