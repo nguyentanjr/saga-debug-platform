@@ -63,6 +63,25 @@ correlation:
     # Which topics carry saga telemetry. Adding a workflow means extending this
     # pattern, not editing SagaEventConsumer. Kafka picks up newly created matching
     # topics within metadata.max.age.ms.
+    #
+    # This is the single-cluster form and stays the default. A deployment whose observed
+    # systems live on more than one cluster declares them instead, and then the count and
+    # the connection details are configuration rather than a release:
+    #
+    #   correlation:
+    #     kafka:
+    #       clusters:
+    #         - name: retail-eu
+    #           bootstrap-servers: kafka-eu:9092
+    #           topic-pattern: "order-.*|payment-.*"
+    #         - name: logistics-us
+    #           bootstrap-servers: kafka-us:9092
+    #           topic-pattern: "shipment-.*"
+    #
+    # A cluster's name is what a source mapping's `cluster:` field refers to. It matters
+    # because a topic name is unique inside one cluster and nowhere else: two clusters can
+    # both carry `order-created`, and a mapping that did not say which one it meant would
+    # file two systems' runs under one identity.
     topic-pattern: "order-.*|payment-.*|inventory-.*|refund-.*"
 
 management:

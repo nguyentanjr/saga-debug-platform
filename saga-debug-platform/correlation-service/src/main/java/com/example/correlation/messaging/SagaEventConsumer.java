@@ -9,7 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -39,20 +38,19 @@ public class SagaEventConsumer {
     }
 
     /**
-     * Subscribes by pattern, not by an enumerated list.
+     * One record from one cluster.
      *
-     * <p>The topic names used to be a Java array, so carrying a new system's telemetry
-     * meant editing and redeploying this class. The pattern lives in configuration and
-     * Kafka re-evaluates it as topics appear, within {@code metadata.max.age.ms}.
+     * <p>Which topics are subscribed to, and on how many clusters, is no longer decided
+     * here: {@link KafkaClusterListeners} builds a container per declared cluster and calls
+     * this with the cluster's name. The subscription is still by pattern rather than an
+     * enumerated list, and still not open-ended — the platform has to be told which topics
+     * carry execution telemetry, because nothing in a topic name says so.
      *
-     * <p>It is not open-ended on purpose: the platform has to be told which topics carry
-     * execution telemetry, because nothing in a topic name identifies it as such.
+     * @param origin the declared name of the cluster this arrived on, or null in a
+     *               deployment that reads only one. It travels with the observation
+     *               because a topic name is unique within a cluster and nowhere else.
      */
-    @KafkaListener(
-            topicPattern = "${correlation.kafka.topic-pattern:"
-                    + "order-.*|payment-.*|inventory-.*|refund-.*}",
-            groupId = "correlation-engine-group")
-    public void handleEvent(ConsumerRecord<String, String> record) {
+    public void handle(ConsumerRecord<String, String> record, String origin) {
         RawObservation raw = new RawObservation(
                 record.topic(),
                 record.value(),
@@ -60,17 +58,23 @@ public class SagaEventConsumer {
                 // Kafka can always identify a record even when the payload cannot.
                 record.topic() + "-" + record.partition() + "-" + record.offset(),
                 record.key(),
-                headersOf(record));
+                headersOf(record),
+                origin);
 
         // A thrown exception reaches the container's error handler, which retries with
         // backoff. A returned rejection does not: nothing about the record will change.
         IngestionResult result = ingestionService.ingest(raw);
 
         if (result.isPermanentlyRejected()) {
-            log.error("Dropping record topic={} partition={} offset={}: {} ({})",
-                    record.topic(), record.partition(), record.offset(),
-                    result.outcome(), result.reason());
+            log.error("Dropping record cluster={} topic={} partition={} offset={}: {} ({})",
+                    origin != null ? origin : "default", record.topic(), record.partition(),
+                    record.offset(), result.outcome(), result.reason());
         }
+    }
+
+    /** The single-cluster call, where there is nothing to say about where a record came from. */
+    public void handleEvent(ConsumerRecord<String, String> record) {
+        handle(record, null);
     }
 
     /**
