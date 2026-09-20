@@ -458,12 +458,19 @@ def expected_root_matches(expected, actual_root, actual_roots) -> bool:
 
 
 def expected_root_matches_strict(expected, actual_roots) -> bool:
-    """Exact-set match: every expected label present AND no extra candidate.
+    """Exact-set match: every expected label present AND nothing else promoted.
 
-    The lenient `expected_root_matches` only asks whether the expected label appears
-    somewhere in the candidate list, so an engine that emitted every label it knows
-    would score 100%. Wrong candidates reported alongside the right one are what a
-    reader of an RCA result actually has to sift through, so they are counted here.
+    The lenient `expected_root_matches` only asks whether the expected label is among
+    the ones promoted, so an engine that promoted every label it knows would score
+    100%. Wrong causes published alongside the right one are what a reader of an RCA
+    result actually has to sift through, so they are counted here.
+
+    Both readings are scored over what the platform PROMOTED -- `rootCause` and
+    `primaryRootCauses` -- not over its candidate list. The wording here used to say
+    "candidate list", left over from before `selected_root_cause` dropped its fallback,
+    and it has since misled a reader into thinking a SUPPORTING candidate could score as
+    a correct answer. It cannot: supporting candidates are recorded separately in
+    `rca_evidence_roots` and only consulted by `explicit_constraints_hold`.
     """
     actual = set(actual_roots or [])
     wanted = set(expected) if isinstance(expected, list) else ({expected} if expected else set())
