@@ -43,6 +43,21 @@ public class SourceMapping {
 
     private String name;
     private String topicPattern;
+
+    /**
+     * Which declared Kafka cluster this mapping speaks for, or null for any of them.
+     *
+     * <p>Only means something in a deployment reading more than one cluster. A topic name
+     * is unique inside a cluster and nowhere else, so once two are being read, "the
+     * mapping for topic {@code order-created}" is an ambiguous question: both clusters can
+     * have one, carrying different systems' runs. Naming the cluster is how a mapping
+     * answers it.
+     *
+     * <p>Left out, the mapping matches whatever cluster the record came from — which is
+     * what every single-cluster deployment means, and why no existing declaration has to
+     * change.
+     */
+    private String cluster;
     private Fields fields = new Fields();
 
     /**
@@ -164,8 +179,26 @@ public class SourceMapping {
         return aliasSource != null && !aliasSource.isBlank() ? aliasSource : systemName();
     }
 
+    public String getCluster() { return cluster; }
+    public void setCluster(String cluster) { this.cluster = cluster; }
+
     public boolean matches(String topic) {
         return compiledPattern != null && topic != null && compiledPattern.matcher(topic).matches();
+    }
+
+    /**
+     * Whether this mapping reads a topic that arrived on a particular cluster.
+     *
+     * <p>A mapping that names no cluster reads the topic wherever it came from; a mapping
+     * that names one reads it only from there. An observation with no origin -- an HTTP
+     * post, or a deployment reading a single cluster -- is only ever matched by the first
+     * kind, because a mapping that named a cluster said something the observation cannot
+     * confirm, and guessing is what invariant I8 forbids.
+     */
+    public boolean matches(String origin, String topic) {
+        if (!matches(topic)) return false;
+        if (cluster == null || cluster.isBlank()) return true;
+        return cluster.equals(origin);
     }
 
     /**

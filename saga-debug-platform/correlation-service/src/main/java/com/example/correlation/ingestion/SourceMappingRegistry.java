@@ -64,7 +64,8 @@ public class SourceMappingRegistry {
                 mappings.stream().map(SourceMapping::getName).toList());
     }
 
-    private void register(SourceMapping mapping, String filename) {
+    /** Package-private rather than private so a test can register a mapping without a file. */
+    void register(SourceMapping mapping, String filename) {
         if (mapping == null || mapping.getName() == null) {
             log.error("Source mapping {} has no name; ignored", filename);
             return;
@@ -122,7 +123,34 @@ public class SourceMappingRegistry {
      */
     public SourceMapping forTopic(String topic) {
         return mappings.stream()
-                .filter(mapping -> mapping.matches(topic))
+                .filter(mapping -> mapping.matches(null, topic))
+                .findFirst()
+                .orElse(identity);
+    }
+
+    /**
+     * The mapping for a topic that arrived on a named transport.
+     *
+     * <p>A mapping scoped to a different cluster is skipped even though its pattern matches
+     * the topic name, and that skip is the whole point: the same topic name on two clusters
+     * is two different systems' telemetry.
+     *
+     * <p>An observation with no origin -- an HTTP post, or a deployment reading a single
+     * cluster -- matches only mappings that named no cluster. It is tempting to let it fall
+     * through to the scoped one when that is the only mapping there is, and that is exactly
+     * the guess invariant I8 forbids: the record cannot confirm where it came from, so
+     * reading it as one cluster's telemetry is the platform deciding something the evidence
+     * does not say. It gets the identity mapping instead, and the deployment that meant it
+     * to be read says so by naming the cluster it arrives on.
+     */
+    public SourceMapping forTopic(String origin, String topic) {
+        // Without an origin this is the single-transport question, and it is asked through
+        // the one-argument method on purpose: that is the seam tests substitute, and a
+        // deployment reading one cluster should not travel a different path here than the
+        // one its tests exercise.
+        if (origin == null || origin.isBlank()) return forTopic(topic);
+        return mappings.stream()
+                .filter(mapping -> mapping.matches(origin, topic))
                 .findFirst()
                 .orElse(identity);
     }

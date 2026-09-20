@@ -86,7 +86,7 @@ public class EventIngestionService {
      *                          can present it again
      */
     public IngestionResult ingest(RawObservation raw) {
-        SourceMapping mapping = sourceMappings.forTopic(raw.sourceRef());
+        SourceMapping mapping = sourceMappings.forTopic(raw.origin(), raw.sourceRef());
 
         // The observed SYSTEM, which is not the same thing as the mapping that read this
         // observation. One system routinely needs several mappings -- a saga publishing on

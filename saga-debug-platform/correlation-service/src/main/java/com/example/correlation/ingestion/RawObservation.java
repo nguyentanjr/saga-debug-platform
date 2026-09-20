@@ -39,6 +39,13 @@ import java.util.Map;
  *                       the correlation key, which is why a mapping can name it directly
  * @param headers        the transport's headers, never null. Empty for a transport that
  *                       has none
+ * @param origin         which declared transport this arrived on -- a Kafka cluster name,
+ *                       say -- or null when the deployment reads only one. A topic name is
+ *                       unique within a cluster and nowhere else: two clusters routinely
+ *                       both carry {@code order-created}, and reading them both while
+ *                       matching on the topic alone would file two systems' runs under one
+ *                       identity, which is exactly what invariant I4 forbids. Carrying it
+ *                       lets a source mapping say which cluster it speaks for
  */
 public record RawObservation(
         String sourceRef,
@@ -46,14 +53,24 @@ public record RawObservation(
         Instant transportTime,
         String fallbackEventId,
         String key,
-        Map<String, String> headers) {
+        Map<String, String> headers,
+        String origin) {
 
     public RawObservation {
         headers = headers != null ? Map.copyOf(headers) : Map.of();
     }
 
+    /**
+     * An observation from a deployment that reads one transport, where nothing needs to be
+     * said about which. Every existing caller means this.
+     */
+    public RawObservation(String sourceRef, String payload, Instant transportTime,
+                          String fallbackEventId, String key, Map<String, String> headers) {
+        this(sourceRef, payload, transportTime, fallbackEventId, key, headers, null);
+    }
+
     public static RawObservation of(String sourceRef, String payload, Instant transportTime) {
-        return new RawObservation(sourceRef, payload, transportTime, null, null, Map.of());
+        return new RawObservation(sourceRef, payload, transportTime, null, null, Map.of(), null);
     }
 
     /**
