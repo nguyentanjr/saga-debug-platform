@@ -64,3 +64,13 @@ CREATE TABLE rca_results (
     missing_evidence    JSON         NOT NULL,
     created_at          TIMESTAMP WITH TIME ZONE NOT NULL
 );
+
+-- Mirrors V16. The scheduled sweeps take a lease before they run, so the context-load
+-- test needs the table to exist or every tick logs a SQL error.
+CREATE TABLE scheduler_lease (
+    sweep            VARCHAR(64)  PRIMARY KEY,
+    holder           VARCHAR(128) NOT NULL,
+    token            VARCHAR(36)  NOT NULL,
+    taken_at         TIMESTAMP WITH TIME ZONE NOT NULL,
+    lease_expires_at BIGINT       NOT NULL
+);
