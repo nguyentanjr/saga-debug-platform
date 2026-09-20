@@ -24,7 +24,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -348,7 +347,6 @@ public class RcaService {
      * single failing saga rolled back every result the pass had already produced, and
      * held one long-lived transaction open across the entire batch.
      */
-    @Scheduled(fixedRateString = "${rca.auto-analysis.fixed-rate-ms:30000}")
     public void autoAnalyzeNewlyDetectedAnomalies() {
         Instant cutoff = Instant.now().minus(2, ChronoUnit.MINUTES);
         List<String> sagaIds = anomalyRepository.findSagaIdsWithAnomaliesSince(cutoff);

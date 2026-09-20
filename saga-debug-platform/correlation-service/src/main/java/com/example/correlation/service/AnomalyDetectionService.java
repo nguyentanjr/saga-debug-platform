@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -585,7 +584,6 @@ public class AnomalyDetectionService {
     }
 
 
-    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStuckSagas() {
         List<SagaInstance> runningSagas = sagaInstanceRepository.findByStatusIn(
                 RUNNING_STATUSES, detectionBatch());
@@ -632,7 +630,6 @@ public class AnomalyDetectionService {
     }
 
 
-    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectStepTimeouts() {
 
         
@@ -806,7 +803,6 @@ public class AnomalyDetectionService {
         }
     }
 
-    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectMissingTerminalEvents() {
         // One cutoff bounds the query for every workflow, so it has to be the most
         // permissive step timeout in the registry; a per-saga check would need a
@@ -841,7 +837,6 @@ public class AnomalyDetectionService {
         }
     }
 
-    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectCompensationMissing() {
         Instant cutoff = Instant.now().minus(detectionProperties.getCompensationMissingCutoff());
 
@@ -879,7 +874,6 @@ public class AnomalyDetectionService {
         }
     }
 
-    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectMissingCompensationAck() {
         Instant cutoff = Instant.now().minus(detectionProperties.getCompensationAckCutoff());
 
@@ -915,7 +909,6 @@ public class AnomalyDetectionService {
         }
     }
 
-    @Scheduled(fixedRateString = "${anomaly.detection.schedule-rate-ms:15000}")
     public void detectDelayedCompensation() {
         
         

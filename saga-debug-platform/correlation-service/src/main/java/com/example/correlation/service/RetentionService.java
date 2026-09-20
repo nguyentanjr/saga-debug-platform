@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +61,6 @@ public class RetentionService {
     // Transactional here rather than on purgeOlderThan: a self-invoked method does not
     // go through the proxy, so annotating the inner one would leave the four deletes
     // running outside any transaction and able to half-complete.
-    @Scheduled(cron = "${retention.schedule-cron:0 30 3 * * *}")
     @Transactional
     public void purgeExpiredSagas() {
         Instant cutoff = Instant.now().minus(properties.getMaxAge());
