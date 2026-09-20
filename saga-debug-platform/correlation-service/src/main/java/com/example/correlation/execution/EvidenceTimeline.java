@@ -73,11 +73,17 @@ public final class EvidenceTimeline {
     private final Regression regression;
 
     /**
-     * A move down the progress ordering between two observations the timeline can order.
+     * An observation that provably followed an ending and reported something lower.
      *
-     * <p>Reported only for a provably ordered pair. A pair whose order is contested cannot
-     * evidence a regression: it would be the observer's tie-break showing up as a fault in
-     * the observed system, which is the class of bug this file exists to remove.
+     * <p>Reported only for a provably ordered pair whose earlier half is <em>terminal</em>.
+     * A pair whose order is contested cannot evidence a regression: it would be the
+     * observer's tie-break showing up as a fault in the observed system, which is the class
+     * of bug this file exists to remove. Nor can a pair of non-terminal statuses, for the
+     * reasons on {@link #firstRegression}: a running saga moves down the lifecycle ranking
+     * legitimately, and whether two such observations even sat next to each other depended
+     * on how much of the run had arrived.
+     *
+     * @param from the ending that was contradicted; always terminal
      */
     public record Regression(SagaEvent earlier, SagaStatus from, SagaEvent later, SagaStatus to) {
     }
@@ -184,13 +190,55 @@ public final class EvidenceTimeline {
     }
 
     /**
-     * The first move down the progress ordering between consecutive, provably ordered
-     * status-bearing observations.
+     * The first observation that provably followed an ending, and contradicted it.
+     *
+     * <h2>Why a drop in rank is not on its own enough</h2>
+     * Two things had to be true for this to be a claim about the observed system, and only
+     * one of them was checked. The pair has to be provably ordered — it was. But the pair
+     * also has to be one the ranking can say something about, and between two
+     * <em>non-terminal</em> statuses it cannot.
+     *
+     * <p>{@link SagaStatus#progressRank} orders the lifecycle, and a run legitimately moves
+     * down it while still running. The case that exposed this has a workflow whose stock and
+     * payment steps are declared concurrent: payment failed, moving the run to COMPENSATING,
+     * and the stock arm — which had been in flight the whole time and owed nothing to the
+     * payment arm — then reported success, which reads as IN_PROGRESS. Nothing went
+     * backwards. Two independent pieces of work were compared on a scale that does not
+     * order them.
+     *
+     * <p>Worse, whether that comparison happened at all depended on what had arrived. The
+     * finding was raised on a three-event prefix and, being an
+     * {@link com.example.correlation.domain.AnomalyType.Claim#OCCURRENCE} claim, was never
+     * revisited when the fourth event turned up and separated the pair. The same run read
+     * live reported {@code TERMINAL_STATE_OVERWRITE}; read as a backlog it reported the
+     * compensation failure that was actually there.
+     *
+     * <h2>What is established, and why it survives more evidence</h2>
+     * A terminal status is absolute: the specification says the run is over. An observation
+     * provably after one, reporting something lower, is the run contradicting its own
+     * ending — which is precisely what {@code TERMINAL_STATE_OVERWRITE} (R04), the rule this
+     * finding feeds, is named for. A drop between two non-terminal statuses was never that.
+     *
+     * <p>Requiring the earlier status to be terminal is also what makes the claim safe to
+     * make on partial evidence, which is the only kind this platform ever has. The
+     * predicate is monotone: no later observation can make a terminal status non-terminal,
+     * nor un-order a pair {@link #relate} has ordered. Inserting a further observation
+     * between the two leaves it standing either way — every status ranked at or above a
+     * terminal one is itself terminal, so the inserted bearing either drops from the
+     * ending itself or becomes a new ending that the later observation still contradicts.
+     * So the answer is the same whether the events arrive together or one at a time, which
+     * is the invariant this whole class exists to hold.
+     *
+     * <p>What is given up is a non-terminal backwards move along a dependency edge. Nothing
+     * observed on any of the systems validated so far produced one, and establishing it
+     * would need evidence that the steps in between were not merely unobserved — evidence
+     * an observer of a partial stream does not have.
      */
     private static Regression firstRegression(WorkflowSpec spec, List<Bearing> bearings) {
         for (int i = 1; i < bearings.size(); i++) {
             Bearing earlier = bearings.get(i - 1);
             Bearing later = bearings.get(i);
+            if (!earlier.status().isTerminal()) continue;
             if (relate(spec, earlier.event(), later.event()) != Relation.BEFORE) continue;
             if (later.status().progressRank() < earlier.status().progressRank()) {
                 return new Regression(earlier.event(), earlier.status(),
