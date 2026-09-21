@@ -7,7 +7,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC28_PAYMENT_SIGSTOP_RECOVERY.json
-evidence_fixture_sha256: 3c2f5193888047141696d7b71bdbb9391aaf0e0a2de75d0523d19c08c28364b0
+evidence_fixture_sha256: c6ee19a7467decabb981169fad430d4f8475e2da682aea45bd4d6a7e7a61de0f
 claims_from: ../claims.yaml
 
 labelling: blind_with_caveat
@@ -37,8 +37,9 @@ cases:
       declared_timeout_for_that_step_s: 10
       failure_reason: null
       discriminating_field: >-
-        KHÔNG CÓ. Không phân biệt được với SC27 (docker pause) hay SC29 (mất mạng) —
-        cùng ba event, cùng bậc độ trễ, cùng trạng thái kết thúc.
+        Không có dấu hiệu nào của loại sự cố. Cùng ba event, cùng bậc độ trễ, cùng trạng
+        thái kết thúc như SC27 và SC29 — các tập observation khác nhau ở eventId/timestamp
+        nhưng không ở bất kỳ trường nào phân biệt được pause với SIGSTOP với mất mạng.
 
     admissible_claims:
       - STEP_EXCEEDED_DECLARED_TIMEOUT
@@ -47,8 +48,9 @@ cases:
 
     inadmissible_claims:
       SOURCE_SERVICE_UNAVAILABLE: >-
-        Sự thật ở đây là tiến trình bị dừng bằng tín hiệu, ở SC27 là đóng băng, ở SC29 là
-        mất mạng — ba thế giới, một tập observation.
+        VƯỢT BẰNG CHỨNG. Ở ca này tiến trình bị dừng bằng tín hiệu nên claim tình cờ đúng,
+        nhưng tập observation không định vị được độ trễ nằm ở service, ở broker hay ở
+        đường mạng. Ba thế giới, một hình dạng quan sát.
       SOURCE_SERVICE_SELF_RECOVERED: SIGCONT do harness gửi; bằng chứng không thấy điều đó.
       OBSERVER_MISSED_EVENTS: Tương thích, không được xác lập.
 

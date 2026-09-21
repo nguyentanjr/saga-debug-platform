@@ -9,7 +9,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC01_HEALTHY.json
-evidence_fixture_sha256: 6842b516038a0e959a72ac2ace08c4de963d35557a8ed7abbd8dae7360ffb4e4
+evidence_fixture_sha256: 3670dbf4275e48a135b6a755b0bf4fca7a072b63f1210c961a2e6d8fd8732235
 claims_from: ../claims.yaml
 
 labelling: blind_with_caveat

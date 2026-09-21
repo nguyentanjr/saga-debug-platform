@@ -23,6 +23,13 @@ picking a number, so both are printed:
   doc theo ten nhan    (strict)  -- a label listed in some claim's `name_asserts` is
                                     scored against THAT deeper claim instead
 
+Reading B is a DECLARED INTERPRETATION, not a measurement: nothing measures what a name
+asserts. Its premise -- that "DOWNSTREAM_TIMEOUT" says more than the interval its rule
+cites -- is argued in oracle/claims.yaml, and rejecting that premise means reading only A.
+What does NOT depend on the choice of target claim: once a name is taken to assert
+anything at cause level, every cause-level claim is outside these cases' admissible sets,
+so the count is the same whichever one it maps to (ROADMAP F10).
+
 Usage:
     python oracle/score.py results/evaluation_report_settled_20260921.json
     python oracle/score.py <artifact> --labels oracle/labels
@@ -100,10 +107,27 @@ def claim_for_label(claims, label, strict=False):
     return None
 
 
+# docs/ORACLE.md muc 2: a case is spec + observation set + scoring moment. All three are
+# part of its identity, so all three are compared. An earlier version compared only the
+# observations, which let a label file keep applying to a run scored at a different moment
+# or under a different workflow -- a DIFFERENT case wearing the same run number
+# (ROADMAP L10). The spec is the weak one of the three and says so in CASE_COMPONENTS.
+CASE_COMPONENTS = {
+    "raw_events": "tap observation",
+    "scored_at": "moc cham",
+    "workflow_type_at_scoring": "spec dang co hieu luc (chi ten, xem ROADMAP L10)",
+}
+
+
 def validate_evidence(labels, labels_path, runs):
-    """Frozen labels apply to the captured observations, not reusable run numbers."""
+    """Frozen labels apply to one case, not to a reusable run number.
+
+    Raises as soon as any component of the case identity differs, naming the component:
+    a mismatch means the labels were written for a different case and must not be reused.
+    """
+    warnings = []
     if not labels.get("evidence_fixture"):
-        return
+        return warnings
     path = (Path(labels_path).resolve().parent / labels["evidence_fixture"]).resolve()
     content = path.read_bytes()
     if hashlib.sha256(content).hexdigest() != labels["evidence_fixture_sha256"]:
@@ -112,8 +136,27 @@ def validate_evidence(labels, labels_path, runs):
     for original in fixture["raw_runs"]:
         key = (original["scenario_id"], original["run_index"])
         run = runs.get(key)
-        if run is not None and run.get("raw_events") != original["raw_events"]:
-            raise ValueError(f"raw evidence differs or is missing for {key}; relabelling required")
+        if run is None:
+            continue
+        for field, description in CASE_COMPONENTS.items():
+            # A component the fixture never captured cannot be checked. Do not let that
+            # read as "unchanged": older fixtures predate the scoring moment being frozen.
+            if field not in original:
+                raise ValueError(
+                    f"fixture for {key} khong giu '{field}' ({description}); "
+                    "dong bang lai bang evidence_view.py --freeze truoc khi cham")
+            if original[field] is None:
+                # The artifact never recorded this component, so freezing it locked
+                # nothing. Say so instead of letting None == None read as "verified".
+                warnings.append(f"{key}: '{field}' ({description}) khong co trong artefact goc"
+                                " -- thanh phan nay KHONG duoc khoa")
+                continue
+            if run.get(field) != original[field]:
+                raise ValueError(
+                    f"{description} khac voi luc dan nhan, o {key}: "
+                    f"'{field}' {original[field]!r} -> {run.get(field)!r}; "
+                    "day la mot ca khac, phai dan nhan lai")
+    return warnings
 
 
 def score_case(case, run, claims, strict=False):
@@ -221,11 +264,11 @@ def main():
     totals = {"lenient": {}, "strict": {}}
     scored = nominated = informative = old_oracle_correct = 0
     total_cases = sum(len(labels.get("cases") or []) for _, labels in label_files)
-    unscored, missing, defects = [], [], []
+    unscored, missing, defects, lock_warnings = [], [], [], []
 
     for path, labels in label_files:
         claims = claims_for(labels, path)
-        validate_evidence(labels, path, runs)
+        lock_warnings.extend(validate_evidence(labels, path, runs) or [])
         rows = []
         for case in labels.get("cases") or []:
             key = (case["id"], case["run_index"])
@@ -287,7 +330,7 @@ def main():
     rates(totals["lenient"], scored, nominated, informative,
           "A. DOC THEO BANG CHUNG LUAT VIEN DAN")
     rates(totals["strict"], scored, nominated, informative,
-          "B. DOC THEO CHINH TEN NHAN")
+          "B. DOC THEO CHINH TEN NHAN (dien giai da khai bao, khong phai phep do)")
 
     print("\n" + "-" * 78)
     print("DOI CHIEU VOI ORACLE CU -- hai bo so, khong gop\n")

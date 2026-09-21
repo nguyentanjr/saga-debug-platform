@@ -7,7 +7,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC29_PAYMENT_NETWORK_PARTITION.json
-evidence_fixture_sha256: 71e595d0ae88de4f4555b9f157bfd25fdf83c05a3d2eea8e62e92a5f59fa308e
+evidence_fixture_sha256: 12a709f30cc3fa7c2d754a96becee708a6410ac0f84b26da42e2f1db454e3253
 claims_from: ../claims.yaml
 
 labelling: blind_with_caveat
@@ -39,7 +39,9 @@ cases:
       gap_before_payment_completed_s: 48.225
       declared_timeout_for_that_step_s: 10
       failure_reason: null
-      discriminating_field: KHÔNG CÓ. Không phân biệt được với SC27 và SC28.
+      discriminating_field: >-
+        Không có dấu hiệu nào của loại sự cố; không phân biệt được với SC27 và SC28 ngoài
+        các giá trị ngẫu nhiên (eventId, timestamp, transportRef).
 
     admissible_claims:
       - STEP_EXCEEDED_DECLARED_TIMEOUT
@@ -48,8 +50,12 @@ cases:
 
     inadmissible_claims:
       SOURCE_SERVICE_UNAVAILABLE: >-
-        Ở ca này service vẫn chạy; nó bị cô lập mạng. Một nhãn nói service không sẵn sàng
-        vừa vượt bằng chứng vừa sai sự thật.
+        VƯỢT BẰNG CHỨNG. ĐÃ SỬA 2026-09-21 sau review (ROADMAP L11/F10): bản trước viết
+        claim này "sai sự thật" ở đây, nhưng chính định nghĩa của nó trong claims.yaml bao
+        gồm cả "bị cô lập mạng", nên mất mạng KHÔNG tự bác bỏ nó. Lý do bất khả thụ là lý
+        do bằng chứng: không có PAYMENT_STARTED, không có tín hiệu health, nên tập này
+        không định vị được độ trễ nằm ở service hay ở đường mạng — và một claim về tình
+        trạng của service đòi đúng thứ nó không có.
       SOURCE_SERVICE_SELF_RECOVERED: Mạng được nối lại bởi harness.
       OBSERVER_MISSED_EVENTS: Tương thích, không được xác lập.
 

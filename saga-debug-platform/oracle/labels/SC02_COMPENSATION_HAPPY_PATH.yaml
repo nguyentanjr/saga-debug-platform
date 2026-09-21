@@ -7,13 +7,17 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC02_COMPENSATION_HAPPY_PATH.json
-evidence_fixture_sha256: 29f5ea488db22b94ff407305ad5824659f0d8f99e0d3d9ca25fd69bf3f1e0f32
+evidence_fixture_sha256: 6589459008f53a7c644b0998fa41b457a3d20214c758256ff25918766e8bf798
 claims_from: ../claims.yaml
 
-labelling: blind_with_caveat
+# ⚠️ KHÔNG còn là nhãn mù. Xem `amendments`: tập claim của cả 5 lượt bị sửa SAU khi đã đọc
+# output của platform. Phần viết mù là bản gốc ở commit 16382e2, không phải file này.
+labelling: blind_then_amended_after_output
 labelling_note: >-
-  Viết trước khi đọc rca_* hay anomalies_actual của SC02. Caveat như SC01: người dán nhãn
-  biết số tổng của cả bộ và biết SC02 không nằm trong 5 lượt đổi kết quả.
+  Bản gốc (16382e2) viết trước khi đọc rca_* hay anomalies_actual của SC02, với caveat như
+  SC01: người dán nhãn biết số tổng của cả bộ. Nhưng bản gốc ĐÃ BỊ SỬA sau khi đọc output
+  — xem amendments — nên file hiện tại phải được báo cáo là hồi cứu, và câu "toàn bộ
+  admissible_claims được khóa trước output" KHÔNG áp cho 5 lượt này.
 reviewed_by: null
 
 amendments:
@@ -24,14 +28,26 @@ amendments:
     why: >-
       Bản gốc chỉ có STEP_REJECTED_WITH_SOURCE_REASON và COMPENSATION_COMPLETED_AS_DECLARED.
       Platform ra FORWARD_STEP_FAILURE (R11), mà R11 kết luận từ trạng thái COMPENSATED
-      cộng chuỗi bù trừ đã hoàn tất — nó KHÔNG đọc trường lý do. Không có claim nào ứng
-      với đúng mức đó, nên 5 lượt sẽ rơi vào UNSCORED: lỗ hổng của oracle, không phải lỗi
-      của platform.
-    why_this_is_not_bending_the_standard: >-
-      Claim thêm vào YẾU HƠN claim đã có trong tập (nó không đòi lý do do hệ nguồn nêu),
-      không mục nào bị gỡ khỏi inadmissible_claims, và tập inadmissible giữ nguyên. Nếu
-      muốn kiểm: bỏ FORWARD_STEP_FAILED đi thì 5 lượt thành UNSCORED, không lượt nào
-      thành "kết luận đúng" hay "không được bảo đảm" khác đi.
+      cộng chuỗi bù trừ đã hoàn tất — nó KHÔNG đọc trường lý do. Bản mù thiếu một claim mà
+      bằng chứng có đỡ được; chỗ thiếu ấy lộ ra vì đã đọc output.
+    effect_on_score: >-
+      ĐÃ SỬA LẠI 2026-09-21 sau review (ROADMAP L11). Ghi chú cũ nói "bỏ claim này đi thì
+      5 lượt thành UNSCORED" là SAI. Đã chạy thử: bỏ FORWARD_STEP_FAILED khỏi
+      admissible_claims mà vẫn giữ nó trong từ vựng thì 5 lượt thành **kết luận không được
+      bảo đảm**, không phải UNSCORED. UNSCORED chỉ xảy ra khi bỏ luôn cả claim lẫn phép map
+      khỏi claims.yaml. Nghĩa là sửa đổi này chuyển 5 lượt từ "không được bảo đảm" sang
+      "kết luận đúng" — nó ĐỔI ĐIỂM, và phải được đọc như vậy.
+      Pin trong test: oracle/test_score.py
+      test_dropping_a_claim_from_a_case_is_unwarranted_not_unscored.
+    why_it_was_kept_anyway: >-
+      Claim này đứng được trên chính bằng chứng, độc lập với việc platform nói gì: có
+      INVENTORY_FAILED, có REFUND_PAYMENT và PAYMENT_REFUNDED, saga ở COMPENSATED. Nó cũng
+      YẾU HƠN claim đã có sẵn trong tập, và không mục nào bị gỡ khỏi inadmissible_claims.
+      Nhưng "claim đúng" không làm cho việc sửa sau khi xem output thành trung lập — nên
+      cả hai bộ số phải được báo cáo, xem docs/ORACLE.md mục 5.5.
+    how_to_report: >-
+      Có sửa đổi: 18 kết luận đúng / 0 không được bảo đảm. Không có sửa đổi: 13 kết luận
+      đúng / 5 không được bảo đảm. Trích cả hai, đừng trích một.
 
 cases:
 

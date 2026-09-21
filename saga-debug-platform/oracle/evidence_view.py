@@ -52,6 +52,11 @@ EVIDENCE_FIELDS = [
 # Derived by the observer from the events; the decision point, not evidence.
 DECISION_POINT_FIELDS = ["saga_status", "timestamp"]
 
+# The workflow declaration the demo saga runs under. Frozen alongside the observations
+# so that a fixture names the spec it belongs to; see spec_identity() for what that does
+# and does not establish.
+DEFAULT_SPEC = "correlation-service/src/main/resources/workflows/order-saga-workflow.yaml"
+
 NOISY_PAYLOAD_KEYS = {"traceId", "spanId", "parentSpanId", "eventId", "sagaId",
                       "orderId", "timestamp", "eventType", "stepName", "serviceName"}
 
@@ -78,8 +83,37 @@ def by_scenario(artifact):
     return runs
 
 
-def freeze(artifact, artifact_path, out_dir):
-    """Write one evidence fixture per scenario, in the shape score.py already validates."""
+def spec_identity(spec_path):
+    """The workflow declaration as it stands at freeze time, hashed.
+
+    Honest limit, and it is the reason this is a separate block rather than a field
+    beside the observations: the artifact records only `workflow_type_at_scoring`, a NAME.
+    Nothing in it says which bytes of the declaration were loaded when the run was scored.
+    Hashing the file here fixes the spec for FUTURE comparisons -- it does not prove what
+    the engine read at run time. Closing that needs the engine to stamp a spec version or
+    hash into the artifact; until then this is a lock going forward, not a verification
+    looking back.
+    """
+    path = Path(spec_path)
+    if not path.is_file():
+        return {"path": str(spec_path).replace("\\", "/"), "unavailable": "file not found"}
+    return {
+        "path": str(spec_path).replace("\\", "/"),
+        "sha256_at_freeze": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "caveat": ("Hash of the declaration file at freeze time. The artifact carries only "
+                   "workflow_type_at_scoring (a name), so this does NOT establish which "
+                   "spec bytes were in effect during the run. See ROADMAP L10."),
+    }
+
+
+def freeze(artifact, artifact_path, out_dir, spec_path=DEFAULT_SPEC):
+    """Write one evidence fixture per scenario, in the shape score.py already validates.
+
+    docs/ORACLE.md muc 2: a case is spec + observation set + scoring moment, all three
+    fixed. An earlier version of this file froze only the observations, so a fixture kept
+    applying after the scoring moment or the workflow name changed -- the labels would have
+    been reused for a different case (ROADMAP L10). All three now go into the fixture.
+    """
     digest = hashlib.sha256(Path(artifact_path).read_bytes()).hexdigest()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -90,6 +124,7 @@ def freeze(artifact, artifact_path, out_dir):
             "source_sha256": digest,
             "scope": (f"{scenario_id} stored observations. source_state is oracle-only and "
                       "MUST NOT be passed to the observer. No stored diagnosis is an input."),
+            "spec": spec_identity(spec_path),
             "raw_runs": [],
         }
         for run in runs:
@@ -101,8 +136,10 @@ def freeze(artifact, artifact_path, out_dir):
                 "scenario_id": run["scenario_id"],
                 "run_index": run["run_index"],
                 "execution_id": run.get("execution_id"),
-                # score.py compares this field against the artifact under test.
+                # The three components score.py compares against the artifact under test.
                 "raw_events": run.get("raw_events"),
+                "scored_at": run.get("scored_at"),
+                "workflow_type_at_scoring": run.get("workflow_type_at_scoring"),
                 "source_state": source_state,
             })
         path = out_dir / f"{scenario_id}.json"
@@ -227,6 +264,8 @@ def main():
                         help="scenario id or prefix (repeatable); default prints all")
     parser.add_argument("--list", action="store_true", help="just list scenarios and run counts")
     parser.add_argument("--freeze", metavar="DIR", help="write one evidence fixture per scenario")
+    parser.add_argument("--spec", default=DEFAULT_SPEC,
+                        help="workflow declaration to hash into the fixture")
     parser.add_argument("--compact", action="store_true",
                         help="one line per event; capture gaps printed once")
     parser.add_argument("--source-state", action="store_true",
@@ -248,7 +287,7 @@ def main():
         return
 
     if args.freeze:
-        digest, written = freeze(artifact, args.artifact, args.freeze)
+        digest, written = freeze(artifact, args.artifact, args.freeze, args.spec)
         print(f"artefact sha256: {digest}")
         for path, file_digest in written:
             print(f"  {path}  sha256={file_digest}")

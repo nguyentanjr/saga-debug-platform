@@ -2,6 +2,11 @@
  "source_artifact": "results/evaluation_report_settled_20260921.json",
  "source_sha256": "64eb56527dbdffce97a0e2198ac9f5dc0442894bd065124b92aa690c980b4368",
  "scope": "SC02_COMPENSATION_HAPPY_PATH stored observations. source_state is oracle-only and MUST NOT be passed to the observer. No stored diagnosis is an input.",
+ "spec": {
+  "path": "correlation-service/src/main/resources/workflows/order-saga-workflow.yaml",
+  "sha256_at_freeze": "f91ff200f866ee6631db9b5b39434f68f661472f42bfb8eedd7998693e87ffa3",
+  "caveat": "Hash of the declaration file at freeze time. The artifact carries only workflow_type_at_scoring (a name), so this does NOT establish which spec bytes were in effect during the run. See ROADMAP L10."
+ },
  "raw_runs": [
   {
    "scenario_id": "SC02_COMPENSATION_HAPPY_PATH",
@@ -89,6 +94,8 @@
      "transportRef": "payment-refunded-0-3"
     }
    ],
+   "scored_at": "2026-09-21T11:35:09.769815+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:35:09.769825+00:00",
     "breaker_snapshot": {
@@ -212,6 +219,8 @@
      "transportRef": "payment-refunded-2-1"
     }
    ],
+   "scored_at": "2026-09-21T11:35:48.984941+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:35:48.984954+00:00",
     "breaker_snapshot": {
@@ -335,6 +344,8 @@
      "transportRef": "payment-refunded-1-1"
     }
    ],
+   "scored_at": "2026-09-21T11:36:28.178621+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:36:28.178632+00:00",
     "breaker_snapshot": {
@@ -458,6 +469,8 @@
      "transportRef": "payment-refunded-1-2"
     }
    ],
+   "scored_at": "2026-09-21T11:37:07.406461+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:37:07.406476+00:00",
     "breaker_snapshot": {
@@ -581,6 +594,8 @@
      "transportRef": "payment-refunded-2-2"
     }
    ],
+   "scored_at": "2026-09-21T11:37:46.632847+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:37:46.632870+00:00",
     "breaker_snapshot": {

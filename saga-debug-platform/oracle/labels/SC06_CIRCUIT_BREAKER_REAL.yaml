@@ -11,7 +11,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC06_CIRCUIT_BREAKER_REAL.json
-evidence_fixture_sha256: 539f9d7c047fee5e0869d49df21a072440f9db7e49fa2ed7e9c2f561fbfde037
+evidence_fixture_sha256: dae5e0fcf7bb681114dfba24efae54efa2a20dbdbed6bbce4067b7169a819ffb
 claims_from: ../claims.yaml
 supersedes: null
 related: oracle/sc06.yaml
@@ -49,8 +49,22 @@ reviewed_by: null
 # artefact: danh sách của lượt 3 KHÔNG còn CLOSED_TO_OPEN lúc 11:47:26 mà danh sách của
 # lượt 2 có. Nên một danh sách transition rỗng hay ngắn KHÔNG chứng minh là không có
 # transition nào — nó chỉ chứng minh không có transition nào còn lại trong vòng đệm.
-# Ở lượt 1 kết luận "breaker đóng" đứng được vì có nguồn thứ hai độc lập với vòng đệm:
-# snapshot lúc lấy mẫu là CLOSED với notPermittedCalls = 0.
+# ⚠️ ĐÃ THU HẸP 2026-09-21 sau review (ROADMAP L11). Bản trước nói snapshot CLOSED +
+# notPermittedCalls = 0 đủ để kết luận "breaker đóng suốt lượt 1". Không đủ, và lý do nằm
+# ngay trong đoạn trên: snapshot là MỘT thời điểm (35 s sau quan sát cuối), còn danh sách
+# transition thì mất mát. notPermittedCalls cũng không cứu được, vì bộ đếm bị reset mỗi
+# lần breaker đổi trạng thái — một lần mở rồi đóng lại đọc ra y hệt một lần chưa bao giờ mở.
+#
+# Tách hai thứ, và đừng trộn lại:
+#   ĐÃ ĐO   -- không lời gọi nào trong lượt 1 bị breaker từ chối. Cả bốn lần thử đều có
+#              kết quả nằm trong tập observation (retry 1-3 mang lastException của lần thử
+#              1-3, reason của PAYMENT_FAILED mang kết quả lần thử 4), và cả bốn đều báo
+#              lỗi gateway. Đây là bằng chứng phía observer, không phải kênh oracle.
+#   SUY RA  -- breaker ở trạng thái CLOSED suốt lượt. Dựa thêm vào giả thiết rằng vòng đệm
+#              chưa đẩy mất một transition thuộc khoảng đó, điều KHÔNG kiểm được từ artefact.
+#
+# Phần làm cho CALL_REJECTED_BY_BREAKER bất khả thụ ở lượt 1 là phần ĐÃ ĐO; phần suy ra
+# không cần thiết cho nhãn, và được ghi ở đây đúng như một suy luận có giả thiết.
 source_state_caveat: lossy_ring_buffer
 
 cases:
@@ -62,11 +76,16 @@ cases:
     true_cause:
       injected: payment-service failMode — mọi lời gọi ném lỗi
       breaker_state_during_run: CLOSED
+      breaker_state_during_run_status: suy_ra_co_gia_thiet
       evidence_for_true_cause: >-
-        source_state lúc lấy mẫu: state CLOSED, bufferedCalls 10, failedCalls 4,
-        failureRate 40 % (dưới ngưỡng 50 %), notPermittedCalls 0, transitions rỗng.
-        Transition đầu tiên của cả chuỗi là CLOSED_TO_OPEN lúc 11:47:26, tức 41 s SAU khi
-        lượt này kết thúc. Breaker đóng suốt lượt.
+        ĐÃ ĐO: tại mốc chấm, state CLOSED, bufferedCalls 10, failedCalls 4, failureRate
+        40 % (dưới ngưỡng 50 %), notPermittedCalls 0, transitions rỗng; và transition đầu
+        tiên còn thấy được của cả chuỗi là CLOSED_TO_OPEN lúc 11:47:26, tức 41 s SAU khi
+        lượt này kết thúc.
+        SUY RA, có giả thiết: breaker đóng suốt lượt. Giả thiết là vòng đệm 10 event chưa
+        đẩy mất transition nào thuộc khoảng 11:46:37-11:46:45, và notPermittedCalls = 0
+        không độc lập kiểm được điều đó vì bộ đếm reset theo mỗi lần đổi trạng thái.
+        Không cần giả thiết này để dán nhãn: xem khối thu hẹp ở đầu file.
 
     available_evidence:
       events: [ORDER_CREATED, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_FAILED]
@@ -85,8 +104,9 @@ cases:
     abstention_required: false
     inadmissible_claims:
       CALL_REJECTED_BY_BREAKER: >-
-        Không quan sát nào báo breaker từ chối, và trên thực tế breaker đang đóng. Khẳng
-        định điều đó vừa vượt bằng chứng vừa trái sự thật.
+        Cả bốn lần thử của lượt này đều có kết quả nằm trong tập observation và cả bốn đều
+        báo lỗi gateway, nên không lời gọi nào bị từ chối — điều này ĐÃ ĐO, không phải suy
+        ra từ trạng thái breaker.
       TIMEOUT_DRIVEN_RETRY_BURST: Các quan sát retry báo lỗi gateway, không báo timeout.
 
     assumptions:

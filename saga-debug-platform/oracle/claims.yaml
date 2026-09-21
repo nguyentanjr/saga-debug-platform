@@ -28,6 +28,32 @@
 # Người dán nhãn KHÔNG tự chọn một trong hai cách đọc, vì chọn cách nào cũng là tự quyết
 # một con số có lợi hay bất lợi cho hệ mình đang chấm. score.py in CẢ HAI, cạnh nhau,
 # không gộp — cùng nguyên tắc với hai oracle.
+#
+# ── CÁCH ĐỌC B LÀ MỘT DIỄN GIẢI ĐÃ KHAI BÁO, KHÔNG PHẢI MỘT PHÉP ĐO ──────────
+#
+# Thêm 2026-09-21 sau review (ROADMAP F10). Con số 10 của cách đọc B phụ thuộc vào phép
+# map dưới đây, nên phép map phải được biện minh, và phần nào của nó là phán đoán phải
+# được nói ra:
+#
+# 1. Phần LÀ phán đoán: rằng cái tên DOWNSTREAM_TIMEOUT khẳng định thêm điều gì ngoài
+#    khoảng thời gian đã đo. Không có phép đo nào chốt được nghĩa của một cái tên. Căn cứ
+#    đưa ra: chữ "downstream" quy vị trí cho độ trễ, và suggestion mà chính R07 kèm theo
+#    là "Check downstream service performance" — tức luật tự hướng người đọc về phía hệ
+#    nguồn. Ai không chấp nhận căn cứ này thì bác bỏ toàn bộ cách đọc B, và khi đó chỉ
+#    còn cách đọc A. Đó là lý do cả hai được in.
+#
+# 2. Phần KHÔNG phụ thuộc phán đoán: một khi đã nhận rằng cái tên khẳng định thêm điều gì
+#    đó về vị trí hay tình trạng của hệ nguồn, thì map nó vào claim mức `cause` NÀO cũng
+#    cho cùng kết quả. Không ca nào trong SC04/16/27/28/29 có một claim mức `cause` nằm
+#    trong admissible_claims, vì không tập observation nào định vị được độ trễ (không có
+#    event `started`, không có tín hiệu health). Nên 10 lượt "không được bảo đảm" vững
+#    trước việc đổi claim đích; nó chỉ lung lay theo điểm 1.
+#
+# 3. SC29 KHÔNG tự bác bỏ claim đã map. `SOURCE_SERVICE_UNAVAILABLE` bao gồm cả "bị cô
+#    lập mạng", nên ở SC29 claim ấy tình cờ ĐÚNG. Lý do nó bất khả thụ là lý do bằng
+#    chứng, không phải lý do sự thật — các file nhãn đã được sửa lại cho đúng điều này.
+#    Một claim đúng mà bằng chứng không đỡ vẫn là kết luận không được bảo đảm (mục 4:
+#    "trùng tên không phải bằng chứng").
 
 version: 1
 locked_at: "2026-09-21"
@@ -217,6 +243,16 @@ claims:
       trong khoảng đó. Im lặng không phải quan sát về hệ nguồn.
     platform_labels: [SERVICE_CRASH]         # R05 — tên khẳng định hệ nguồn chết
     name_asserts: [DOWNSTREAM_TIMEOUT]       # R07 — tên quy độ trễ cho downstream
+    name_asserts_justification: >-
+      Xem khối "CÁCH ĐỌC B" ở đầu file. Tóm tắt: timeout KHÔNG đồng nghĩa unavailable, và
+      claim này rộng hơn cái tên R07 gợi ra — nó bao cả chết, treo lẫn cô lập mạng. Chọn
+      nó làm đích của phép map là chọn claim mức `cause` GẦN NHẤT mà từ vựng hiện có, chứ
+      không phải khẳng định rằng "downstream timeout" nghĩa đúng là "service unavailable".
+      Kết quả chấm không đổi nếu thay bằng một claim mức `cause` khác, vì không ca nào
+      trong năm kịch bản đó có claim mức `cause` nào được bằng chứng đỡ.
+    statement_scope_note: >-
+      Phát biểu của claim này cố ý rộng. Hệ quả phải nhớ khi đọc: ở SC27/28/29 nó tình cờ
+      ĐÚNG theo nguyên nhân đã tiêm. Bất khả thụ ở đó là vì bằng chứng, không vì sai.
 
   SOURCE_SERVICE_SELF_RECOVERED:
     level: cause

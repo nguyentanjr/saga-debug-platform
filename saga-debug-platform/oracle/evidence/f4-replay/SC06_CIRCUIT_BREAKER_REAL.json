@@ -1,0 +1,438 @@
+{
+ "source_artifact": "results/evaluation_report_sc06_evidence_20260921.json",
+ "source_sha256": "ec47cff076dc7a717156986b9e0668f19e0569e339f83ab331aed59786de000b",
+ "scope": "SC06_CIRCUIT_BREAKER_REAL stored observations. source_state is oracle-only and MUST NOT be passed to the observer. No stored diagnosis is an input.",
+ "spec": {
+  "path": "correlation-service/src/main/resources/workflows/order-saga-workflow.yaml",
+  "sha256_at_freeze": "f91ff200f866ee6631db9b5b39434f68f661472f42bfb8eedd7998693e87ffa3",
+  "caveat": "Hash of the declaration file at freeze time. The artifact carries only workflow_type_at_scoring (a name), so this does NOT establish which spec bytes were in effect during the run. See ROADMAP L10."
+ },
+ "raw_runs": [
+  {
+   "scenario_id": "SC06_CIRCUIT_BREAKER_REAL",
+   "run_index": 1,
+   "execution_id": "default::6f626aae-1d9a-41a6-87ef-3ba647c75782",
+   "raw_events": [
+    {
+     "eventId": "6de1fe82-7f71-4542-a199-2277e5dfa7e7",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 75.0, \"sagaId\": \"6f626aae-1d9a-41a6-87ef-3ba647c75782\", \"spanId\": \"5e0964d091fb7954\", \"eventId\": \"6de1fe82-7f71-4542-a199-2277e5dfa7e7\", \"orderId\": \"34bac750-ee54-4c73-ba97-8ba67ff417c8\", \"traceId\": \"12ecb0def6a92cfec9ce2da7f9df7749\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789973590.046048868, \"customerId\": \"eval-06\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T06:53:10.046Z",
+     "receivedAt": "2026-09-21T06:53:10.061353Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "12ecb0def6a92cfec9ce2da7f9df7749",
+     "spanId": "5e0964d091fb7954",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-2-4"
+    },
+    {
+     "eventId": "50d3f624-e1fc-4d13-9c6c-4a1406ae6d3a",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"6f626aae-1d9a-41a6-87ef-3ba647c75782\", \"spanId\": \"7d28e5c9b2279706\", \"eventId\": \"50d3f624-e1fc-4d13-9c6c-4a1406ae6d3a\", \"orderId\": \"34bac750-ee54-4c73-ba97-8ba67ff417c8\", \"traceId\": \"12ecb0def6a92cfec9ce2da7f9df7749\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973590.074916430, \"serviceName\": \"payment-service\", \"attemptNumber\": 1, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:10.075Z",
+     "receivedAt": "2026-09-21T06:53:10.117222Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "12ecb0def6a92cfec9ce2da7f9df7749",
+     "spanId": "7d28e5c9b2279706",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-2-6"
+    },
+    {
+     "eventId": "e1d895fe-7a5f-41a7-bd87-e08041e5ed23",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"6f626aae-1d9a-41a6-87ef-3ba647c75782\", \"spanId\": \"7d28e5c9b2279706\", \"eventId\": \"e1d895fe-7a5f-41a7-bd87-e08041e5ed23\", \"orderId\": \"34bac750-ee54-4c73-ba97-8ba67ff417c8\", \"traceId\": \"12ecb0def6a92cfec9ce2da7f9df7749\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973591.080495739, \"serviceName\": \"payment-service\", \"attemptNumber\": 2, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:11.080Z",
+     "receivedAt": "2026-09-21T06:53:11.086134Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "12ecb0def6a92cfec9ce2da7f9df7749",
+     "spanId": "7d28e5c9b2279706",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-2-7"
+    },
+    {
+     "eventId": "c5a6dbb2-abe4-4ddd-b0ad-ba35456737a1",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"6f626aae-1d9a-41a6-87ef-3ba647c75782\", \"spanId\": \"7d28e5c9b2279706\", \"eventId\": \"c5a6dbb2-abe4-4ddd-b0ad-ba35456737a1\", \"orderId\": \"34bac750-ee54-4c73-ba97-8ba67ff417c8\", \"traceId\": \"12ecb0def6a92cfec9ce2da7f9df7749\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973593.085944060, \"serviceName\": \"payment-service\", \"attemptNumber\": 3, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:13.086Z",
+     "receivedAt": "2026-09-21T06:53:13.091189Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "12ecb0def6a92cfec9ce2da7f9df7749",
+     "spanId": "7d28e5c9b2279706",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-2-8"
+    },
+    {
+     "eventId": "f965dd05-d89d-409a-9261-9e2675fdf8b8",
+     "eventType": "PAYMENT_FAILED",
+     "payload": "{\"reason\": \"Circuit breaker / retry exhausted: Payment gateway unavailable (simulated failure)\", \"sagaId\": \"6f626aae-1d9a-41a6-87ef-3ba647c75782\", \"spanId\": \"7d28e5c9b2279706\", \"eventId\": \"f965dd05-d89d-409a-9261-9e2675fdf8b8\", \"orderId\": \"34bac750-ee54-4c73-ba97-8ba67ff417c8\", \"traceId\": \"12ecb0def6a92cfec9ce2da7f9df7749\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_FAILED\", \"timestamp\": 1789973597.092152006, \"causationId\": \"6de1fe82-7f71-4542-a199-2277e5dfa7e7\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"5e0964d091fb7954\"}",
+     "timestamp": "2026-09-21T06:53:17.092Z",
+     "receivedAt": "2026-09-21T06:53:17.102366Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "12ecb0def6a92cfec9ce2da7f9df7749",
+     "spanId": "7d28e5c9b2279706",
+     "parentSpanId": "5e0964d091fb7954",
+     "causationId": "6de1fe82-7f71-4542-a199-2277e5dfa7e7",
+     "transportRef": "payment-failed-2-2"
+    }
+   ],
+   "scored_at": "2026-09-21T06:53:17.718666+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
+   "source_state": {
+    "sampled_at": "2026-09-21T06:53:17.718684+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "-1.0%",
+      "slowCallRate": "-1.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 3,
+      "failedCalls": 3,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "-1.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "-1.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 3,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 3,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:51:13.337274303Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:51:24.234362376Z[Etc/UTC]",
+      "stateTransition": "OPEN_TO_HALF_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:53:10.074161083Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_CLOSED"
+     }
+    ],
+    "unavailable": {}
+   }
+  },
+  {
+   "scenario_id": "SC06_CIRCUIT_BREAKER_REAL",
+   "run_index": 2,
+   "execution_id": "default::30943ac4-c4d2-4232-a41d-264f5c40e4b9",
+   "raw_events": [
+    {
+     "eventId": "cdc3eaac-365b-4f96-9ae5-22a049d897d5",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 75.0, \"sagaId\": \"30943ac4-c4d2-4232-a41d-264f5c40e4b9\", \"spanId\": \"536c1e1f7f217dba\", \"eventId\": \"cdc3eaac-365b-4f96-9ae5-22a049d897d5\", \"orderId\": \"72dafbb0-00a7-4ed8-ba20-64004f7c66de\", \"traceId\": \"556b08b92d45b1d13d2538cf75832a62\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789973604.312449773, \"customerId\": \"eval-06\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T06:53:24.312Z",
+     "receivedAt": "2026-09-21T06:53:24.320412Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "556b08b92d45b1d13d2538cf75832a62",
+     "spanId": "536c1e1f7f217dba",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-0-2"
+    },
+    {
+     "eventId": "94bb2d48-e40e-432a-98ef-0d1b650e0a6b",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"30943ac4-c4d2-4232-a41d-264f5c40e4b9\", \"spanId\": \"9a9b33ff8b0ed7a7\", \"eventId\": \"94bb2d48-e40e-432a-98ef-0d1b650e0a6b\", \"orderId\": \"72dafbb0-00a7-4ed8-ba20-64004f7c66de\", \"traceId\": \"556b08b92d45b1d13d2538cf75832a62\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973604.320998268, \"serviceName\": \"payment-service\", \"attemptNumber\": 1, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:24.321Z",
+     "receivedAt": "2026-09-21T06:53:24.338234Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "556b08b92d45b1d13d2538cf75832a62",
+     "spanId": "9a9b33ff8b0ed7a7",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-0-0"
+    },
+    {
+     "eventId": "1ce4c492-5a98-4fa6-9548-a91e13f52a74",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"30943ac4-c4d2-4232-a41d-264f5c40e4b9\", \"spanId\": \"9a9b33ff8b0ed7a7\", \"eventId\": \"1ce4c492-5a98-4fa6-9548-a91e13f52a74\", \"orderId\": \"72dafbb0-00a7-4ed8-ba20-64004f7c66de\", \"traceId\": \"556b08b92d45b1d13d2538cf75832a62\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973605.324793953, \"serviceName\": \"payment-service\", \"attemptNumber\": 2, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:25.325Z",
+     "receivedAt": "2026-09-21T06:53:25.330053Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "556b08b92d45b1d13d2538cf75832a62",
+     "spanId": "9a9b33ff8b0ed7a7",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-0-1"
+    },
+    {
+     "eventId": "48879291-060e-4aec-b95f-4594f0106815",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"30943ac4-c4d2-4232-a41d-264f5c40e4b9\", \"spanId\": \"9a9b33ff8b0ed7a7\", \"eventId\": \"48879291-060e-4aec-b95f-4594f0106815\", \"orderId\": \"72dafbb0-00a7-4ed8-ba20-64004f7c66de\", \"traceId\": \"556b08b92d45b1d13d2538cf75832a62\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973607.326346666, \"serviceName\": \"payment-service\", \"attemptNumber\": 3, \"lastException\": \"CallNotPermittedException: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls\"}",
+     "timestamp": "2026-09-21T06:53:27.326Z",
+     "receivedAt": "2026-09-21T06:53:27.332298Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "556b08b92d45b1d13d2538cf75832a62",
+     "spanId": "9a9b33ff8b0ed7a7",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-0-2"
+    },
+    {
+     "eventId": "60b0f050-03b4-43a3-914c-fddb3f1353c2",
+     "eventType": "PAYMENT_FAILED",
+     "payload": "{\"reason\": \"Circuit breaker / retry exhausted: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls\", \"sagaId\": \"30943ac4-c4d2-4232-a41d-264f5c40e4b9\", \"spanId\": \"9a9b33ff8b0ed7a7\", \"eventId\": \"60b0f050-03b4-43a3-914c-fddb3f1353c2\", \"orderId\": \"72dafbb0-00a7-4ed8-ba20-64004f7c66de\", \"traceId\": \"556b08b92d45b1d13d2538cf75832a62\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_FAILED\", \"timestamp\": 1789973611.328427001, \"causationId\": \"cdc3eaac-365b-4f96-9ae5-22a049d897d5\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"536c1e1f7f217dba\"}",
+     "timestamp": "2026-09-21T06:53:31.328Z",
+     "receivedAt": "2026-09-21T06:53:31.333734Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "556b08b92d45b1d13d2538cf75832a62",
+     "spanId": "9a9b33ff8b0ed7a7",
+     "parentSpanId": "536c1e1f7f217dba",
+     "causationId": "cdc3eaac-365b-4f96-9ae5-22a049d897d5",
+     "transportRef": "payment-failed-0-0"
+    }
+   ],
+   "scored_at": "2026-09-21T06:53:31.305385+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
+   "source_state": {
+    "sampled_at": "2026-09-21T06:53:31.305395+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "100.0%",
+      "slowCallRate": "0.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 5,
+      "failedCalls": 5,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 2,
+      "state": "OPEN"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "CIRCUIT_OPEN",
+      "details": {
+       "failureRate": "100.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "0.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 5,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 5,
+       "notPermittedCalls": 2,
+       "state": "OPEN"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:53:10.074161083Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_CLOSED"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:53:25.324636153Z[Etc/UTC]",
+      "stateTransition": "CLOSED_TO_OPEN"
+     }
+    ],
+    "unavailable": {}
+   }
+  },
+  {
+   "scenario_id": "SC06_CIRCUIT_BREAKER_REAL",
+   "run_index": 3,
+   "execution_id": "default::0d5d175c-18ea-4110-acec-c8e0ed3324c9",
+   "raw_events": [
+    {
+     "eventId": "0d731353-4cf2-4504-9e61-656a3657f60a",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 75.0, \"sagaId\": \"0d5d175c-18ea-4110-acec-c8e0ed3324c9\", \"spanId\": \"7c145e09ab54e8db\", \"eventId\": \"0d731353-4cf2-4504-9e61-656a3657f60a\", \"orderId\": \"05f22c2c-ab35-4992-902b-466466002f90\", \"traceId\": \"5e5d098b7be92282e53fe918eceba0c5\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789973617.470032486, \"customerId\": \"eval-06\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T06:53:37.470Z",
+     "receivedAt": "2026-09-21T06:53:37.479712Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "5e5d098b7be92282e53fe918eceba0c5",
+     "spanId": "7c145e09ab54e8db",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-2-5"
+    },
+    {
+     "eventId": "3b7988d1-24b3-400a-bc8e-7aad33d9da0b",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"0d5d175c-18ea-4110-acec-c8e0ed3324c9\", \"spanId\": \"9e17246637cf3073\", \"eventId\": \"3b7988d1-24b3-400a-bc8e-7aad33d9da0b\", \"orderId\": \"05f22c2c-ab35-4992-902b-466466002f90\", \"traceId\": \"5e5d098b7be92282e53fe918eceba0c5\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973617.482730063, \"serviceName\": \"payment-service\", \"attemptNumber\": 1, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:37.483Z",
+     "receivedAt": "2026-09-21T06:53:37.505887Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "5e5d098b7be92282e53fe918eceba0c5",
+     "spanId": "9e17246637cf3073",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-2-9"
+    },
+    {
+     "eventId": "40423497-7c46-4f0a-bd7b-372833e99b93",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"0d5d175c-18ea-4110-acec-c8e0ed3324c9\", \"spanId\": \"9e17246637cf3073\", \"eventId\": \"40423497-7c46-4f0a-bd7b-372833e99b93\", \"orderId\": \"05f22c2c-ab35-4992-902b-466466002f90\", \"traceId\": \"5e5d098b7be92282e53fe918eceba0c5\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973618.491174975, \"serviceName\": \"payment-service\", \"attemptNumber\": 2, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:38.491Z",
+     "receivedAt": "2026-09-21T06:53:38.496139Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "5e5d098b7be92282e53fe918eceba0c5",
+     "spanId": "9e17246637cf3073",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-2-10"
+    },
+    {
+     "eventId": "4c11438d-aa1b-4fbc-a3b9-be59bff8e555",
+     "eventType": "PAYMENT_RETRY",
+     "payload": "{\"sagaId\": \"0d5d175c-18ea-4110-acec-c8e0ed3324c9\", \"spanId\": \"9e17246637cf3073\", \"eventId\": \"4c11438d-aa1b-4fbc-a3b9-be59bff8e555\", \"orderId\": \"05f22c2c-ab35-4992-902b-466466002f90\", \"traceId\": \"5e5d098b7be92282e53fe918eceba0c5\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_RETRY\", \"timestamp\": 1789973620.495187218, \"serviceName\": \"payment-service\", \"attemptNumber\": 3, \"lastException\": \"RuntimeException: Payment gateway unavailable (simulated failure)\"}",
+     "timestamp": "2026-09-21T06:53:40.495Z",
+     "receivedAt": "2026-09-21T06:53:40.501245Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "5e5d098b7be92282e53fe918eceba0c5",
+     "spanId": "9e17246637cf3073",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "payment-retry-2-11"
+    },
+    {
+     "eventId": "fd5ae3e1-9977-47b8-8e09-73dfd2cd63fe",
+     "eventType": "PAYMENT_FAILED",
+     "payload": "{\"reason\": \"Circuit breaker / retry exhausted: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls\", \"sagaId\": \"0d5d175c-18ea-4110-acec-c8e0ed3324c9\", \"spanId\": \"9e17246637cf3073\", \"eventId\": \"fd5ae3e1-9977-47b8-8e09-73dfd2cd63fe\", \"orderId\": \"05f22c2c-ab35-4992-902b-466466002f90\", \"traceId\": \"5e5d098b7be92282e53fe918eceba0c5\", \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_FAILED\", \"timestamp\": 1789973624.497279726, \"causationId\": \"0d731353-4cf2-4504-9e61-656a3657f60a\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"7c145e09ab54e8db\"}",
+     "timestamp": "2026-09-21T06:53:44.497Z",
+     "receivedAt": "2026-09-21T06:53:44.502431Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "5e5d098b7be92282e53fe918eceba0c5",
+     "spanId": "9e17246637cf3073",
+     "parentSpanId": "7c145e09ab54e8db",
+     "causationId": "0d731353-4cf2-4504-9e61-656a3657f60a",
+     "transportRef": "payment-failed-2-3"
+    }
+   ],
+   "scored_at": "2026-09-21T06:53:44.769705+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
+   "source_state": {
+    "sampled_at": "2026-09-21T06:53:44.769717+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "100.0%",
+      "slowCallRate": "0.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 3,
+      "failedCalls": 3,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 1,
+      "state": "OPEN"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "CIRCUIT_OPEN",
+      "details": {
+       "failureRate": "100.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "0.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 3,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 3,
+       "notPermittedCalls": 1,
+       "state": "OPEN"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:53:25.324636153Z[Etc/UTC]",
+      "stateTransition": "CLOSED_TO_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:53:35.324977414Z[Etc/UTC]",
+      "stateTransition": "OPEN_TO_HALF_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T06:53:40.494996611Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_OPEN"
+     }
+    ],
+    "unavailable": {}
+   }
+  }
+ ]
+}

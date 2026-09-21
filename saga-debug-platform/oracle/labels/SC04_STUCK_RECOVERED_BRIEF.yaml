@@ -6,7 +6,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC04_STUCK_RECOVERED_BRIEF.json
-evidence_fixture_sha256: 8da54e6c6f763e1acaf2b4e0aca12e57a783cda16cd2b52790c5f8edf48e751a
+evidence_fixture_sha256: 78e592fea8b773e8f526b723368aa336d1dc6798e842f97db68cdd74a6b774f4
 claims_from: ../claims.yaml
 
 labelling: retrospective

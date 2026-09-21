@@ -7,7 +7,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC27_PAYMENT_PAUSE_RECOVERY.json
-evidence_fixture_sha256: d3724ea1525ef0269ad6ad2097519b0e4600bc807df478f3e4314e7482be4cb7
+evidence_fixture_sha256: dac889f7376c88f9be1b88c21684127e4a61228909341c759294b245991a9714
 claims_from: ../claims.yaml
 
 labelling: blind_with_caveat
@@ -23,13 +23,28 @@ reviewed_by: null
 #   SC28  SIGSTOP vào PID 1     -- tiến trình bị dừng bởi tín hiệu, container nguyên vẹn
 #   SC29  disconnect network    -- tiến trình chạy bình thường, mất đường mạng
 #
-# Và sinh ra CÙNG MỘT hình dạng quan sát, không sai một chi tiết nào:
+# Và sinh ra CÙNG MỘT HÌNH DẠNG quan sát:
 #   ORDER_CREATED -> (im lặng 46–49 s) -> PAYMENT_COMPLETED -> INVENTORY_RESERVED, COMPLETED
 #
-# Đây là đối chứng "cùng evidence, khác true_cause" mà mục 7 đòi, và nó không phải thiết
-# kế thêm — nó đã nằm sẵn trong bộ 27 lượt. Hệ quả: bất kỳ nhãn nào NÊU TÊN loại sự cố
-# đều là kết luận không được bảo đảm ở cả ba kịch bản, vì cùng một bằng chứng phải cho
-# cùng một kết luận, mà ba sự thật thì khác nhau.
+# ⚠️ ĐÃ THU HẸP 2026-09-21 sau review (ROADMAP L11). Bản trước viết "không một trường nào
+# phân biệt được ba ca", và như thế là nói quá: sáu tập observation KHÁC NHAU — khác
+# eventId, khác timestamp, khác transportRef, khác độ dài khoảng im lặng. Chúng không phải
+# một tập observation theo nghĩa mục 2, nên đây KHÔNG phải đối chứng "hai input đồng nhất".
+#
+# Phát biểu đo được, và là phát biểu đủ cho lập luận:
+#
+#   1. Tập tên trường trong payload giống nhau ở cả ba kịch bản, và không trường nào mang
+#      giá trị đặc trưng cho loại sự cố. Không event nào báo lỗi, không event nào nói về
+#      tiến trình, tín hiệu hay mạng.
+#   2. Thứ duy nhất khác nhau về lượng là độ dài khoảng im lặng — mà nó KHÔNG phân biệt
+#      được ba kịch bản: độ tản TRONG một kịch bản lên tới 2.586 s (SC27: 46.257 / 48.843),
+#      lớn hơn chênh lệch trung bình lớn nhất GIỮA hai kịch bản bất kỳ (1.502 s).
+#      Một đại lượng mà biến thiên nội bộ lấn át biến thiên giữa các nhóm thì không phải
+#      dấu hiệu phân biệt.
+#
+# Hệ quả: bất kỳ nhãn nào NÊU TÊN loại sự cố đều vượt bằng chứng ở cả ba kịch bản. Không
+# phải vì ba tập observation giống hệt nhau, mà vì không tập nào chứa dấu hiệu nào của
+# loại sự cố đã gây ra nó.
 control_group: [SC27_PAYMENT_PAUSE_RECOVERY, SC28_PAYMENT_SIGSTOP_RECOVERY, SC29_PAYMENT_NETWORK_PARTITION]
 
 cases:
@@ -54,8 +69,10 @@ cases:
       declared_timeout_for_that_step_s: 10     # PROCESS_PAYMENT
       failure_reason: null
       discriminating_field: >-
-        KHÔNG CÓ trường nào phân biệt ca này với SC28 và SC29. Hai mốc thời gian và ngưỡng
-        khai báo thì có thật và trích dẫn được; loại sự cố thì không có mặt trong evidence.
+        Không trường nào mang dấu hiệu của loại sự cố. Tập observation này khác SC28/SC29 ở
+        eventId, timestamp và transportRef, nhưng không khác ở bất kỳ thứ gì nói được đây
+        là đóng băng, bị dừng bằng tín hiệu hay mất mạng. Hai mốc thời gian và ngưỡng khai
+        báo thì có thật và trích dẫn được.
 
     admissible_claims:
       - STEP_EXCEEDED_DECLARED_TIMEOUT
@@ -67,9 +84,11 @@ cases:
 
     inadmissible_claims:
       SOURCE_SERVICE_UNAVAILABLE: >-
-        Ba kịch bản cùng hình dạng bằng chứng nhưng ba sự thật khác nhau — đóng băng, bị
-        dừng bằng tín hiệu, mất mạng. Nêu tên loại nào cũng là chọn một trong ba mà không
-        có gì để chọn.
+        VƯỢT BẰNG CHỨNG, không phải trái sự thật: ở ca này tiến trình thật sự bị đóng băng,
+        nên claim tình cờ đúng. Nhưng không quan sát nào định vị được độ trễ — không có
+        PAYMENT_STARTED, không có tín hiệu health — nên tập này không xác lập được nó.
+        Ba kịch bản cùng hình dạng, ba sự thật khác nhau: nêu tên loại nào cũng là chọn một
+        trong ba mà không có gì để chọn.
       SOURCE_SERVICE_SELF_RECOVERED: >-
         Phục hồi do harness gọi unpause. Và bằng chứng không tách tự hồi phục khỏi can
         thiệp thủ công hay event tới muộn.

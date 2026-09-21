@@ -2,6 +2,11 @@
  "source_artifact": "results/evaluation_report_settled_20260921.json",
  "source_sha256": "64eb56527dbdffce97a0e2198ac9f5dc0442894bd065124b92aa690c980b4368",
  "scope": "SC16_STUCK_RECOVERED_LONG stored observations. source_state is oracle-only and MUST NOT be passed to the observer. No stored diagnosis is an input.",
+ "spec": {
+  "path": "correlation-service/src/main/resources/workflows/order-saga-workflow.yaml",
+  "sha256_at_freeze": "f91ff200f866ee6631db9b5b39434f68f661472f42bfb8eedd7998693e87ffa3",
+  "caveat": "Hash of the declaration file at freeze time. The artifact carries only workflow_type_at_scoring (a name), so this does NOT establish which spec bytes were in effect during the run. See ROADMAP L10."
+ },
  "raw_runs": [
   {
    "scenario_id": "SC16_STUCK_RECOVERED_LONG",
@@ -57,6 +62,8 @@
      "transportRef": "inventory-reserved-0-17"
     }
    ],
+   "scored_at": "2026-09-21T11:52:17.401623+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:52:17.401637+00:00",
     "breaker_snapshot": {
@@ -167,6 +174,8 @@
      "transportRef": "inventory-reserved-0-18"
     }
    ],
+   "scored_at": "2026-09-21T11:55:32.544621+00:00",
+   "workflow_type_at_scoring": "ORDER_SAGA",
    "source_state": {
     "sampled_at": "2026-09-21T11:55:32.544633+00:00",
     "breaker_snapshot": {

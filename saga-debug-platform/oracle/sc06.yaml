@@ -1,0 +1,191 @@
+# Oracle labels — SC06_CIRCUIT_BREAKER_REAL
+#
+# What this file is: what the evidence of each run PERMITS an observer to conclude.
+# It is not the expected answer. `evaluate.py`'s `expected_rca` is the other oracle --
+# the cause the experimenter injected -- and both are scored, separately, never merged.
+# The specification these fields obey is docs/ORACLE.md.
+#
+# Locked from a recorded artifact, not from the scenario description: every value under
+# `available_evidence` was read out of the run's `raw_events`, and every value under
+# `true_cause` out of its `source_state`, which reads payment-service's own actuator.
+#
+# HONESTY NOTE, required by docs/ORACLE.md §5.1: these labels were NOT written blind.
+# The labeller had already seen the platform's output for all three runs. This is
+# retrospective labelling and must be reported as such. The independent check comes from
+# cases the platform has never been run against, not from relabelling these.
+
+version: 2
+supersedes_version: 1
+amendment: >-
+  R02 was inspected before F4: TIMEOUT_RETRY_STORM asserts timeout-backed retry burst,
+  not mere exhaustion. Removed that incorrect bridge; the admissible claims are unchanged.
+  This retrospective amendment is not an independent review or a new blind label.
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_sc06_evidence_20260921.json
+# Amended 2026-09-21 (ROADMAP L10). The oracle fixture now locks all three components of a
+# case -- observations, scoring moment, workflow in effect -- not observations alone. The
+# old sc06-observations.json stays exactly as it is: Sc06ReplayTest reads it and
+# replay_sc06.py hashes it, and changing its shape would change the F4 replay input. So the
+# oracle points at a fixture frozen from the same artefact instead. Same run, same events;
+# what is new is that the scoring moment and workflow name are now part of the lock.
+evidence_fixture: evidence/f4-replay/SC06_CIRCUIT_BREAKER_REAL.json
+evidence_fixture_sha256: 3d2651c0bedb62bf5ce835b6989cf0549565b1279b35cd83cbf31533867c1b1d
+labelling: retrospective        # NOT blind -- see the note above
+reviewed_by: null               # docs/ORACLE.md §6 step 4 -- still outstanding
+
+# ── Claim vocabulary ──────────────────────────────────────────────────────────
+#
+# Claims are not root-cause labels. A claim carries the LEVEL at which it is asserted,
+# because "a breaker rejected this call" and "a breaker is why this execution failed"
+# are different statements resting on different evidence.
+#
+# `platform_labels` is the bridge: which of the platform's own root-cause names count as
+# asserting this claim. Without it, scoring would compare a claim to a label and call the
+# mismatch an error of the platform's, when it is an error of the comparison.
+claims:
+
+  STEP_FAILED_AFTER_RETRY_EXHAUSTION:
+    level: mechanism
+    statement: >-
+      The PROCESS_PAYMENT step failed, and the source system exhausted the retry policy
+      it declares before giving up.
+    rests_on: >-
+      A FAILED-role event for that step, preceded by PAYMENT_RETRY observations, whose
+      count is compared against the declared policy rather than assumed abnormal.
+    platform_labels: []  # No existing label was verified to express exhaustion alone.
+
+  TIMEOUT_DRIVEN_RETRY_BURST:
+    level: mechanism
+    statement: Retry burst accompanied by timeout evidence in retry observations.
+    rests_on: >-
+      RcaService.ruleTimeoutRetryStorm requires RETRY_BURST plus timeout evidence in
+      workflow-declared retry events for STRONG. Exhaustion alone is insufficient.
+    platform_labels: [TIMEOUT_RETRY_STORM]
+
+  CALL_REJECTED_BY_OPEN_BREAKER:
+    level: mechanism
+    statement: >-
+      The call that failed was refused by a circuit breaker that was open at that moment.
+    rests_on: >-
+      The failure payload carrying the source system's own report of breaker state -- not
+      a fixed string the source writes on every failure.
+    # Deliberately NOT a root cause. It says the breaker blocked THIS call. It does not
+    # say why the breaker opened, and in SC06 the breaker opened *because* the gateway had
+    # been rejecting calls, so the cause sits one layer below this claim.
+    does_not_establish:
+      - why the breaker opened
+      - that the breaker is the deepest cause of the execution's failure
+    platform_labels: [CIRCUIT_BREAKER_OPEN]
+
+# ── Cases ─────────────────────────────────────────────────────────────────────
+#
+# Three runs, deliberately NOT one case with n=3. The breaker's sliding window carries
+# state across the warm-up and across runs, so the runs are a sequence, not samples.
+# Run 1 is a materially different case from runs 2 and 3 and is labelled as one.
+cases:
+
+  - id: SC06_CIRCUIT_BREAKER_REAL
+    run_index: 1
+    scored_at_status: FAILED
+
+    true_cause:
+      injected: payment-service failMode -- every call throws
+      breaker_state_during_run: CLOSED
+      # Narrowed 2026-09-21 after review (ROADMAP L11): "verified" was too strong for the
+      # state ACROSS the run. The transition list comes from a shared 10-event ring buffer
+      # (see oracle/labels/SC06_CIRCUIT_BREAKER_REAL.yaml), so an absent transition is not
+      # proof that none occurred, and notPermittedCalls resets on every state change. What
+      # is measured here is a reading at one instant plus a transition recorded just before
+      # the run; "closed throughout" is an inference resting on the buffer having kept
+      # everything. The label does not need it: no observation in this run reports a
+      # rejection, and that is what makes the breaker claim inadmissible.
+      # Reading, not a measurement across the run: source_state showed state=CLOSED, bufferedCalls=3, and the
+      # transition is HALF_OPEN_TO_CLOSED at 06:53:10.074161083Z; the first stored
+      # PAYMENT_RETRY timestamp is 06:53:10.075Z. These are not a 28ms interval, and
+      # a retry event timestamp is not an exact measurement of the first call's start.
+      evidence_for_true_cause: source_state.breaker_transitions
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_FAILED]
+      failure_reason: "Circuit breaker / retry exhausted: Payment gateway unavailable (simulated failure)"
+      # The prefix is a constant the fallback writes on EVERY exhaustion. Only the suffix
+      # varies, and here the suffix is the simulated gateway error. Nothing in this run's
+      # evidence reports breaker state.
+      discriminating_field: reason suffix -- reports the gateway error, not the breaker
+
+    admissible_claims: [STEP_FAILED_AFTER_RETRY_EXHAUSTION]
+    abstention_required: false
+    inadmissible_claims:
+      TIMEOUT_DRIVEN_RETRY_BURST: Retry observations report gateway failure, not timeout.
+      CALL_REJECTED_BY_OPEN_BREAKER: >-
+        No observation in this run reports a rejection: every attempt's outcome is present
+        (the retry observations carry attempts 1-3, the failure reason carries the last)
+        and all of them report the gateway error. Asserting a rejection is beyond the
+        evidence. Narrowed 2026-09-21: the earlier wording also called it contrary to fact,
+        which rested on reading breaker state across the run from a lossy buffer.
+
+    assumptions:
+      - The payload reaches the observer with the source's reason string intact.
+      - >-
+        PAYMENT_RETRY count is compared against the declared retry policy. Note that the
+        policy value and the detector threshold were tuned to match each other -- see the
+        CAUTION block in payment-service application.yml -- so a firing RETRY_BURST is not
+        independent evidence that retry behaviour was abnormal.
+
+  - &open_breaker_case
+    id: SC06_CIRCUIT_BREAKER_REAL
+    run_index: 2
+    scored_at_status: FAILED
+
+    true_cause:
+      injected: payment-service failMode -- every call throws
+      breaker_state_during_run: OPEN
+      # CLOSED_TO_OPEN at 06:53:25.324Z, inside this run (06:53:24.312 -> 06:53:31.328).
+      evidence_for_true_cause: source_state.breaker_transitions
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_FAILED]
+      failure_reason: "Circuit breaker / retry exhausted: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls"
+      # Here the suffix is Resilience4j's own CallNotPermittedException message: the source
+      # system reporting its breaker state. That is an observation, not a label.
+      discriminating_field: reason suffix -- reports breaker OPEN and the refusal
+
+    admissible_claims:
+      - STEP_FAILED_AFTER_RETRY_EXHAUSTION
+      - CALL_REJECTED_BY_OPEN_BREAKER
+    abstention_required: false
+    inadmissible_claims:
+      TIMEOUT_DRIVEN_RETRY_BURST: Retry observations report gateway failure or breaker rejection, not timeout.
+
+    assumptions:
+      - The payload reaches the observer with the source's reason string intact.
+      - >-
+        Recognising this message is a per-source declaration, not core semantics. The
+        wording belongs to one Java library; a Go or .NET system would phrase it
+        differently, so the core must not know it in advance (I7).
+
+  - <<: *open_breaker_case
+    run_index: 3
+    true_cause:
+      injected: payment-service failMode -- every call throws
+      breaker_state_during_run: OPEN
+      # OPEN_TO_HALF_OPEN 06:53:35.324Z then HALF_OPEN_TO_OPEN 06:53:40.494Z, inside this
+      # run (06:53:37.470 -> 06:53:44.497).
+      evidence_for_true_cause: source_state.breaker_transitions
+
+# ── Reasoning quality, scored separately from the conclusion ──────────────────
+#
+# A conclusion can be right while the argument for it is not, and a scoring scheme that
+# cannot see the difference rewards being right by accident. All three runs share one
+# defect, including the two whose conclusion is correct.
+reasoning_defects:
+  - applies_to_runs: [1, 2, 3]
+    rule: R01
+    defect: ambiguous-signature
+    detail: >-
+      R01 matches payload.contains("circuit breaker") || contains("retry exhausted"). Both
+      substrings occur in the constant prefix the fallback writes on every exhaustion, so
+      the predicate cannot separate a run whose payload reports breaker state from one
+      whose payload does not. It assigns STRONG_EVIDENCE to both, with identical cited
+      evidence, and the cited evidence is therefore not what decided the verdict.
+    tracked_as: ROADMAP F4

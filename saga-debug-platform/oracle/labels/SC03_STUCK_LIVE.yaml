@@ -7,7 +7,7 @@ version: 1
 locked_at: "2026-09-21"
 locked_from: results/evaluation_report_settled_20260921.json
 evidence_fixture: ../evidence/SC03_STUCK_LIVE.json
-evidence_fixture_sha256: 323af6db6cc0c96b32bdef267ee2df480623535c90a953bd385841a15118be25
+evidence_fixture_sha256: a35c59899151dc81a5fc222fde481cee596d50491ef5ee5a1215c09c884c22e9
 claims_from: ../claims.yaml
 
 labelling: blind_with_caveat
