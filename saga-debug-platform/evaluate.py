@@ -714,16 +714,19 @@ def capture_source_state() -> dict:
       transitions -- did the breaker EVER open during this run. The strongest of the
                      three: a point sample of a breaker that opened and closed again
                      looks identical to one that never opened.
-      health      -- state, failure rate and buffered call count at sampling time.
-      names       -- which breakers exist at all; always available, proves the service
-                     answered rather than the request having failed.
+      snapshot    -- state, failureRate and bufferedCalls now. bufferedCalls is the one
+                     that matters for SC06: the breaker is OUTER of the retry, so it
+                     counts one call per saga, and minimumNumberOfCalls is 5. Verified
+                     against a fresh container: state CLOSED, bufferedCalls 0.
+      health      -- the same figures via the health indicator, kept as a second source
+                     in case the endpoint above is not exposed in some deployment.
 
     Whatever is unavailable is recorded as unavailable. A missing reading must not read
     as "no breaker activity".
     """
     state = {
         "sampled_at": datetime.now(timezone.utc).isoformat(),
-        "breaker_names": None,
+        "breaker_snapshot": None,
         "breaker_health": None,
         "breaker_transitions": None,
         "unavailable": {},
@@ -739,7 +742,9 @@ def capture_source_state() -> dict:
         except Exception as exc:
             state["unavailable"][key] = str(exc)
 
-    read("breaker_names",
+    # Returns the full per-breaker object in this Resilience4j version (state,
+    # failureRate, bufferedCalls), not merely the list of names the docs describe.
+    read("breaker_snapshot",
          f"{PAYMENT_URL}/actuator/circuitbreakers",
          lambda body: body.get("circuitBreakers"))
 
