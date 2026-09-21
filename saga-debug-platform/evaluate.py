@@ -590,6 +590,15 @@ def make_result(scenario: dict, run_index: int) -> dict:
         "baseline_picks":     {},
         "anomalies_expected": scenario.get("expected_anomalies", []),
         "anomalies_actual":   [],
+        # Evidence, as distinct from verdicts. Everything above this line is what the
+        # platform concluded; everything below is what it had to conclude from.
+        "raw_events":         [],
+        "anomaly_records":    [],
+        "identities":         [],
+        "workflow_type_at_scoring": None,
+        "scored_at":          None,
+        "source_state":       {},
+        "evidence_capture_gaps": {},
         "error":              None,
     }
 
@@ -645,6 +654,141 @@ def evidence_root_causes(rca: dict | None):
     return roots
 
 
+# ── Raw evidence capture ─────────────────────────────────────────────────────
+#
+# Why this exists: `anomalies_actual` is a detector verdict, not an observation. An
+# oracle built on it would be grading the implementation against its own output. To
+# label what a run's evidence permits, the harness has to record what the observer
+# actually received -- payloads, clocks, correlation basis -- and leave the judging to
+# a separate pass. See docs/ORACLE.md §5.0.
+
+# Fields of a SagaEvent that are evidence rather than bookkeeping. `timestamp` is the
+# business instant the platform reasons with; `receivedAt` is when it read the record,
+# and the gap between them is the only proxy currently available for delivery lag.
+EVIDENCE_EVENT_FIELDS = (
+    "eventId", "eventType", "payload", "timestamp", "receivedAt",
+    "correlationBasis", "sourceName", "serviceName", "stepName",
+    "traceId", "spanId", "parentSpanId", "causationId", "transportRef",
+)
+
+# What a finding asserts, and off which observations. `evidenceEventIds` and `measuredAt`
+# are here because F9 turns on whether they are stable under delivery order.
+EVIDENCE_ANOMALY_FIELDS = (
+    "anomalyType", "description", "observedValue", "expectedValue",
+    "thresholdSource", "evidenceEventIds", "measuredAt", "detectedAt",
+    "retractedAt", "retractionReason", "severity",
+)
+
+
+def capture_raw_evidence(detail: dict) -> list:
+    """Every observation the platform holds for this run, as it holds it."""
+    return [
+        {field: event.get(field) for field in EVIDENCE_EVENT_FIELDS}
+        for event in (detail.get("events") or [])
+    ]
+
+
+def capture_anomaly_records(detail: dict) -> list:
+    """Full findings, not just their type names."""
+    return [
+        {field: anomaly.get(field) for field in EVIDENCE_ANOMALY_FIELDS}
+        for anomaly in (detail.get("anomalies") or [])
+    ]
+
+
+def capture_source_state() -> dict:
+    """The observed system's own state, read from the observed system.
+
+    This is not evidence the observer had -- it is deliberately outside the observer --
+    and it is recorded to settle `true_cause`, which is a claim about the source system
+    and must not be inferred from the observer's conclusions.
+
+    Circuit breaker state is the case that forced this. R01 concludes
+    CIRCUIT_BREAKER_OPEN from a substring of a failure payload, while that string is a
+    literal `handleOrderCreatedFallback` writes on every retry exhaustion, whether or not
+    a breaker ever opened. Only the source's own actuator can say which happened.
+
+    Three readings, because each answers a different question and any of them can be
+    switched off by configuration:
+
+      transitions -- did the breaker EVER open during this run. The strongest of the
+                     three: a point sample of a breaker that opened and closed again
+                     looks identical to one that never opened.
+      health      -- state, failure rate and buffered call count at sampling time.
+      names       -- which breakers exist at all; always available, proves the service
+                     answered rather than the request having failed.
+
+    Whatever is unavailable is recorded as unavailable. A missing reading must not read
+    as "no breaker activity".
+    """
+    state = {
+        "sampled_at": datetime.now(timezone.utc).isoformat(),
+        "breaker_names": None,
+        "breaker_health": None,
+        "breaker_transitions": None,
+        "unavailable": {},
+    }
+
+    def read(key, url, extract):
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                state[key] = extract(r.json())
+            else:
+                state["unavailable"][key] = f"HTTP {r.status_code}"
+        except Exception as exc:
+            state["unavailable"][key] = str(exc)
+
+    read("breaker_names",
+         f"{PAYMENT_URL}/actuator/circuitbreakers",
+         lambda body: body.get("circuitBreakers"))
+
+    # Only STATE_TRANSITION events; the retry/success traffic would swamp the artifact.
+    read("breaker_transitions",
+         f"{PAYMENT_URL}/actuator/circuitbreakerevents",
+         lambda body: [
+             {k: event.get(k) for k in
+              ("circuitBreakerName", "type", "creationTime", "stateTransition")}
+             for event in (body.get("circuitBreakerEvents") or [])
+             if event.get("type") == "STATE_TRANSITION"
+         ])
+
+    # Needs management.endpoint.health.show-details; without it this is just {"status":"UP"}.
+    read("breaker_health",
+         f"{PAYMENT_URL}/actuator/health",
+         lambda body: (body.get("components", {})
+                           .get("circuitBreakers", {})
+                           .get("details"))
+         or {"note": "health details not exposed (show-details)"})
+
+    return state
+
+
+# Known gaps in the capture, carried in the artifact so a reader does not mistake
+# "not recorded" for "not applicable". Each entry names the roadmap item that closes it.
+EVIDENCE_CAPTURE_GAPS = {
+    "event_time_source": (
+        "PAYLOAD vs TRANSPORT is resolved by EventTimeResolver and then discarded -- no "
+        "column holds it, so a labeller cannot tell which clock an event's timestamp came "
+        "from. See ROADMAP F6. Partial proxy: timestamp vs receivedAt."
+    ),
+    "breaker_state_at_failure": (
+        "breaker_health is sampled when RCA is triggered, not at the instant the failure "
+        "event was published -- a breaker that opened and closed again reads the same as "
+        "one that never opened. breaker_transitions is the reading that survives this; "
+        "prefer it, and treat an empty transition list as evidence only when "
+        "unavailable['breaker_transitions'] is absent."
+    ),
+    "source_state_requires_config": (
+        "breaker_transitions and breaker_health are only populated when payment-service "
+        "exposes circuitbreakerevents and health show-details. This is a change to the "
+        "OBSERVED system, made for ground-truth verification and deliberately outside the "
+        "observer -- the platform reads none of it. Record it as part of the experimental "
+        "setup, not as an observer capability."
+    ),
+}
+
+
 def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
     result["rca_latency_ms"] = rca_ms
     result["time_to_insight_s"] = round(time.time() - t_start, 3)
@@ -658,6 +802,21 @@ def finalize_result(result: dict, saga_id: str, rca, rca_ms, t_start, scenario):
         result["anomalies_actual"] = [
             a["anomalyType"] for a in detail.get("anomalies", [])
         ]
+        # The observations themselves, kept separate from the verdicts drawn off them.
+        # An oracle reads these; the scoring above reads the verdicts.
+        result["raw_events"] = capture_raw_evidence(detail)
+        result["anomaly_records"] = capture_anomaly_records(detail)
+        result["identities"] = detail.get("identities") or []
+        # The spec in force for this run, and when the run was judged. Both are part of
+        # the case being labelled: the same observations judged at another instant are a
+        # different case (docs/ORACLE.md §2).
+        result["workflow_type_at_scoring"] = detail.get("workflowType")
+        result["scored_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Read from the observed system, to settle true_cause without inferring it from
+    # the observer's own conclusions.
+    result["source_state"] = capture_source_state()
+    result["evidence_capture_gaps"] = EVIDENCE_CAPTURE_GAPS
 
     if rca:
         result["rca_status"] = rca.get("rcaStatus")
