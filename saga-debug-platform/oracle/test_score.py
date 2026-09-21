@@ -80,6 +80,24 @@ class ScoreTest(unittest.TestCase):
         with self.frozen_case() as (labels, labels_path, original, _):
             score.validate_evidence(labels, labels_path, {("SC", 1): original})
 
+    def test_cli_prints_warning_for_each_uncaptured_component(self):
+        for field in score.CASE_COMPONENTS:
+            with self.subTest(field=field), self.frozen_case(**{field: None}) as (
+                    labels, labels_path, original, _):
+                labels.update(claims=self.claims, cases=[
+                    {"id": "SC", "run_index": 1, "admissible_claims": []}])
+                labels_path.write_text(score.yaml.safe_dump(labels), encoding="utf-8")
+                data = labels_path.with_name("runs.json")
+                data.write_text(json.dumps({"raw_runs": [
+                    {**original, "saga_status": "IN_PROGRESS", "rca_root_cause": None}
+                ]}), encoding="utf-8")
+                out = io.StringIO()
+                with patch.object(sys, "argv", ["score.py", str(data), "--labels",
+                                                str(labels_path)]), contextlib.redirect_stdout(out):
+                    score.main()
+                self.assertIn(f"'{field}'", out.getvalue())
+                self.assertIn("KHONG duoc khoa", out.getvalue())
+
     def test_changed_observations_are_rejected(self):
         with self.frozen_case() as (labels, labels_path, original, _):
             changed = {**original, "raw_events": [{"payload": "changed"}]}

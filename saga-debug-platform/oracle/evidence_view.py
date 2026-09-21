@@ -89,10 +89,9 @@ def spec_identity(spec_path):
     Honest limit, and it is the reason this is a separate block rather than a field
     beside the observations: the artifact records only `workflow_type_at_scoring`, a NAME.
     Nothing in it says which bytes of the declaration were loaded when the run was scored.
-    Hashing the file here fixes the spec for FUTURE comparisons -- it does not prove what
-    the engine read at run time. Closing that needs the engine to stamp a spec version or
-    hash into the artifact; until then this is a lock going forward, not a verification
-    looking back.
+    Hashing the file here records a reference for manual FUTURE comparisons; score.py
+    does not compare these bytes. It does not prove what the engine read at run time.
+    Closing that needs the engine to stamp a spec version or hash into the artifact.
     """
     path = Path(spec_path)
     if not path.is_file():

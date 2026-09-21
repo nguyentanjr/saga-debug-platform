@@ -321,6 +321,8 @@ def main():
             print(f"  CHUA CHAM {key}: {detail}")
     print(f"\n  coverage oracle: {scored}/{total_cases}; unknown labels: {len(unscored)};"
           f" missing runs: {len(missing)}")
+    for warning in lock_warnings:
+        print(f"  WARNING {warning}")
     if not scored:
         sys.exit("khong co luot du dieu kien cham; khong tinh ty le")
 
