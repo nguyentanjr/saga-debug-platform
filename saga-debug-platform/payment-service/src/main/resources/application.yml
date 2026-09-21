@@ -45,11 +45,22 @@ spring:
           paymentRefundedEvent:com.example.saga.events.PaymentRefundedEvent,
           retryAttemptedEvent:com.example.saga.events.RetryAttemptedEvent
 
+# Exposed so the EVALUATION HARNESS can read this service's own breaker state when it
+# records ground truth. The correlation-service reads none of this: it observes events,
+# and R01's conclusion about a breaker is drawn from a failure payload, not from here.
+# That is exactly why the harness needs an independent reading -- see docs/ORACLE.md §5.2.
+#
+# circuitbreakerevents is the one that matters: it records STATE_TRANSITIONs, so a breaker
+# that opened and closed again inside a run can still be told apart from one that never
+# opened. A point sample of health cannot do that.
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,circuitbreakers,retries
+        include: health,info,circuitbreakers,circuitbreakerevents,retries
+  endpoint:
+    health:
+      show-details: always
   health:
     circuitbreakers:
       enabled: true
