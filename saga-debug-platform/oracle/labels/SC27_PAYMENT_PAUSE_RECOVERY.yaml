@@ -1,0 +1,95 @@
+# Nhãn oracle bằng chứng — SC27_PAYMENT_PAUSE_RECOVERY
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+# Viết từ `raw_events` qua oracle/evidence_view.py, không nhìn output của platform.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC27_PAYMENT_PAUSE_RECOVERY.json
+evidence_fixture_sha256: d3724ea1525ef0269ad6ad2097519b0e4600bc807df478f3e4314e7482be4cb7
+claims_from: ../claims.yaml
+
+labelling: blind_with_caveat
+labelling_note: >-
+  Viết trước khi đọc rca_* hay anomalies_actual của SC27. Caveat: người dán nhãn biết số
+  tổng của cả bộ và biết SC27 không nằm trong 5 lượt đổi kết quả sau khi settle.
+reviewed_by: null
+
+# ── ĐỐI CHỨNG 1 CỦA docs/ORACLE.md MỤC 7, CÓ SẴN TRONG DỮ LIỆU ────────────────
+#
+# SC27, SC28, SC29 tiêm BA nguyên nhân thật khác hẳn nhau:
+#   SC27  docker pause          -- tiến trình bị đóng băng, container còn trong mạng
+#   SC28  SIGSTOP vào PID 1     -- tiến trình bị dừng bởi tín hiệu, container nguyên vẹn
+#   SC29  disconnect network    -- tiến trình chạy bình thường, mất đường mạng
+#
+# Và sinh ra CÙNG MỘT hình dạng quan sát, không sai một chi tiết nào:
+#   ORDER_CREATED -> (im lặng 46–49 s) -> PAYMENT_COMPLETED -> INVENTORY_RESERVED, COMPLETED
+#
+# Đây là đối chứng "cùng evidence, khác true_cause" mà mục 7 đòi, và nó không phải thiết
+# kế thêm — nó đã nằm sẵn trong bộ 27 lượt. Hệ quả: bất kỳ nhãn nào NÊU TÊN loại sự cố
+# đều là kết luận không được bảo đảm ở cả ba kịch bản, vì cùng một bằng chứng phải cho
+# cùng một kết luận, mà ba sự thật thì khác nhau.
+control_group: [SC27_PAYMENT_PAUSE_RECOVERY, SC28_PAYMENT_SIGSTOP_RECOVERY, SC29_PAYMENT_NETWORK_PARTITION]
+
+cases:
+
+  - &pause
+    id: SC27_PAYMENT_PAUSE_RECOVERY
+    run_index: 1
+    scored_at_status: COMPLETED
+    case_kind: silence_then_completion
+
+    true_cause:
+      injected: >-
+        docker pause payment-service, tạo order, chờ 45 s, docker unpause, chờ hệ ổn định
+        20 s rồi chấm. Tiến trình bị đóng băng chứ không chết.
+      note: >-
+        Can thiệp phục hồi là thủ công (unpause do harness gọi), giống SC04/SC16: không
+        quan sát nào mang dấu vết của nó.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_payment_completed_s: 48.843   # ORDER_CREATED -> PAYMENT_COMPLETED
+      declared_timeout_for_that_step_s: 10     # PROCESS_PAYMENT
+      failure_reason: null
+      discriminating_field: >-
+        KHÔNG CÓ trường nào phân biệt ca này với SC28 và SC29. Hai mốc thời gian và ngưỡng
+        khai báo thì có thật và trích dẫn được; loại sự cố thì không có mặt trong evidence.
+
+    admissible_claims:
+      - STEP_EXCEEDED_DECLARED_TIMEOUT
+      - EXECUTION_COMPLETED_AFTER_SILENCE
+    abstention_required: false
+    admissible_note: >-
+      Mức cụ thể tối đa: "khoảng từ CREATE_ORDER tới khi PROCESS_PAYMENT hoàn tất là
+      48.8 s, vượt timeout khai báo 10 s, rồi execution hoàn tất". Dừng ở đó.
+
+    inadmissible_claims:
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        Ba kịch bản cùng hình dạng bằng chứng nhưng ba sự thật khác nhau — đóng băng, bị
+        dừng bằng tín hiệu, mất mạng. Nêu tên loại nào cũng là chọn một trong ba mà không
+        có gì để chọn.
+      SOURCE_SERVICE_SELF_RECOVERED: >-
+        Phục hồi do harness gọi unpause. Và bằng chứng không tách tự hồi phục khỏi can
+        thiệp thủ công hay event tới muộn.
+      OBSERVER_MISSED_EVENTS: >-
+        Tương thích với bằng chứng (event có thể đã nằm chờ trong broker), không được xác
+        lập bởi nó.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực; timeout 10 s của PROCESS_PAYMENT đọc từ declaration.
+      - >-
+        Không có event PAYMENT_STARTED, nên khoảng 48.8 s tính từ ORDER_CREATED — nó bao
+        gồm cả thời gian message nằm trong Kafka chờ consumer. Claim không được phát biểu
+        như thể đó là thời gian payment-service xử lý.
+      - Đồng hồ hai service so sánh được; nguồn timestamp không được lưu (ROADMAP F6).
+
+  - <<: *pause
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_payment_completed_s: 46.257
+      declared_timeout_for_that_step_s: 10
+      failure_reason: null
+      discriminating_field: KHÔNG CÓ — như lượt 1; 46.257 s > 10 s.

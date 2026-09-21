@@ -1,0 +1,113 @@
+# Nhãn oracle bằng chứng — SC01_HEALTHY (lớp âm)
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+# Mọi giá trị dưới `available_evidence` đọc từ `raw_events` của chính lượt chạy, qua
+# oracle/evidence_view.py — công cụ đó cắt bỏ mọi trường output của platform, nên bản
+# nhãn này được viết mà không nhìn thấy platform trả lời gì.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC01_HEALTHY.json
+evidence_fixture_sha256: 6842b516038a0e959a72ac2ace08c4de963d35557a8ed7abbd8dae7360ffb4e4
+claims_from: ../claims.yaml
+
+labelling: blind_with_caveat
+labelling_note: >-
+  Viết trước khi đọc bất kỳ trường rca_* hay anomalies_actual nào của SC01. Caveat, ghi
+  ra để không bị gọi là mù hoàn toàn: người dán nhãn đã biết các con số tổng của cả bộ 27
+  lượt và biết 5 lượt nào đổi kết quả sau khi settle (không lượt nào thuộc SC01). Đó là
+  mù ở mức từng lượt, không phải mù ở mức bộ dữ liệu.
+reviewed_by: null               # docs/ORACLE.md mục 6 bước 4 — vẫn còn nợ
+
+scored_at_note: >-
+  Thời điểm chấm của cả 5 lượt nằm ~36 s sau quan sát cuối. Một mốc khác là một ca khác
+  (mục 2), nhưng ở đây execution đã kết thúc trước mốc chấm nên mốc không đổi kết luận.
+
+cases:
+
+  - &healthy
+    id: SC01_HEALTHY
+    run_index: 1
+    scored_at_status: COMPLETED
+    case_kind: negative        # không có lỗi nào được tiêm; đây là ca đối chứng âm
+
+    true_cause:
+      injected: null
+      note: >-
+        Không tiêm gì. Order bình thường, quantity 1, amount 100. Đây là lớp âm của bộ
+        thực nghiệm: thứ phải kiểm là platform có bịa ra nguyên nhân khi không có lỗi hay
+        không.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      # Ba event completed của ba bước tiến, đúng thứ tự transitions đã khai, trong 54–100 ms.
+      span_ms: 63
+      correlation_basis: DECLARED_KEY   # cả ba, không lượt nào phải đoán quan hệ
+      failure_reason: null
+      discriminating_field: >-
+        Không có event vai trò failed nào, và không khoảng nào giữa hai quan sát chạm tới
+        timeout khai báo (nhỏ nhất là 5 s cho CREATE_ORDER và RESERVE_INVENTORY).
+
+    admissible_claims: []
+    # Rỗng, và đây KHÔNG phải "thiếu dữ liệu". Không có thất bại nào để giải thích, nên
+    # không claim nguyên nhân nào có chỗ đứng. docs/ORACLE.md mục 3: rỗng ⇔ phải từ chối.
+    abstention_required: true
+    abstention_reason: >-
+      Execution hoàn tất đúng khai báo. Mọi đề cử nguyên nhân gốc ở đây đều là kết luận
+      không được bảo đảm, kể cả một nhãn nghe vô hại.
+
+    observations_supported: [EXECUTION_COMPLETED_AS_DECLARED]
+    # Ghi riêng, KHÔNG tính điểm: đây là phát biểu về trạng thái execution, không phải
+    # một đề cử nguyên nhân. Để ở đây cho đủ hồ sơ, không để lấy điểm.
+
+    inadmissible_claims:
+      STEP_EXCEEDED_DECLARED_TIMEOUT: >-
+        Khoảng dài nhất giữa hai quan sát là 100 ms, dưới mọi timeout đã khai.
+      SOURCE_SERVICE_UNAVAILABLE: Cả ba service đều phát event trong lượt.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 đang có hiệu lực tại thời điểm chấm (đọc từ artefact).
+      - >-
+        Ba event quan sát được là đúng ba event `completed` mà declaration đặt cho ba bước.
+        Các service demo không phát event `started`, nên thời gian chạy của từng bước
+        không quan sát được — chỉ khoảng giữa các quan sát.
+      - >-
+        Đồng hồ của ba service so sánh được với nhau. Chúng chạy trên cùng một Docker
+        host, nhưng nguồn timestamp (PAYLOAD hay TRANSPORT) không được lưu — ROADMAP F6.
+
+  - <<: *healthy
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      span_ms: 100
+      correlation_basis: DECLARED_KEY
+      failure_reason: null
+      discriminating_field: Không có event failed; không khoảng nào chạm timeout khai báo.
+
+  - <<: *healthy
+    run_index: 3
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      span_ms: 63
+      correlation_basis: DECLARED_KEY
+      failure_reason: null
+      discriminating_field: Không có event failed; không khoảng nào chạm timeout khai báo.
+
+  - <<: *healthy
+    run_index: 4
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      span_ms: 54
+      correlation_basis: DECLARED_KEY
+      failure_reason: null
+      discriminating_field: Không có event failed; không khoảng nào chạm timeout khai báo.
+
+  - <<: *healthy
+    run_index: 5
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      span_ms: 55
+      correlation_basis: DECLARED_KEY
+      failure_reason: null
+      discriminating_field: Không có event failed; không khoảng nào chạm timeout khai báo.

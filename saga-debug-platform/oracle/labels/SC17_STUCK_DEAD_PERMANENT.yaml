@@ -1,0 +1,85 @@
+# Nhãn oracle bằng chứng — SC17_STUCK_DEAD_PERMANENT
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC17_STUCK_DEAD_PERMANENT.json
+evidence_fixture_sha256: f0d9212bce42f07e6a9b3b1e831da7421c05fca92f0eef45049be6ff7d7558fa
+claims_from: ../claims.yaml
+
+labelling: retrospective
+labelling_note: >-
+  KHÔNG mù. Người dán nhãn đã đọc output của SC17 cho cả hai lượt trước khi viết nhãn
+  này. docs/ORACLE.md mục 5.1: phải báo cáo đúng như vậy trong luận văn. Phần kiểm tra
+  độc lập cho ca im lặng phải đến từ một ca mới chưa từng chạy qua platform.
+reviewed_by: null
+
+paired_with: SC03_STUCK_LIVE
+
+cases:
+
+  - &stuck_dead
+    id: SC17_STUCK_DEAD_PERMANENT
+    run_index: 1
+    scored_at_status: IN_PROGRESS
+    case_kind: silence
+
+    true_cause:
+      injected: >-
+        docker stop inventory-service TRƯỚC khi tạo order, harness chờ 150 s rồi chấm.
+        inventory-service chưa từng phát event nào trong lượt. Cùng một thao tác với SC03;
+        chỉ thời gian chờ là khác.
+      note: >-
+        Tên kịch bản nói "DEAD_PERMANENT", nhưng cái vĩnh viễn nằm ở ý định của người thử
+        nghiệm, không nằm trong bằng chứng. Harness khởi động lại inventory ngay sau khi
+        chấm, nên ngay cả "chết vĩnh viễn" cũng không phải sự thật của hệ — nó là mô tả
+        của một khoảng thời gian.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED]
+      silence_at_scoring_s: 186.076
+      declared_timeout_for_pending_step_s: 5
+      failure_reason: null
+      discriminating_field: >-
+        KHÔNG CÓ. Giống hệt SC03 về hình dạng; khác duy nhất ở độ dài im lặng tại mốc chấm
+        (186 s so với 101 s).
+
+    admissible_claims: []
+    abstention_required: true
+    abstention_reason: >-
+      Cùng năm thế giới như SC03 — service chết, bị cô lập, chạy chậm, observer mất event,
+      mapping sai — và im lặng dài hơn không tách được chúng. Thời gian chờ lâu hơn chỉ
+      làm "chậm tạm thời" bớt hợp lý, nó không biến bốn khả năng còn lại thành một.
+
+    observations_supported: [STEP_NOT_OBSERVED_TO_COMPLETE]
+
+    inadmissible_claims:
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        Im lặng không phải quan sát về hệ nguồn, dù dài bao nhiêu.
+      OBSERVER_MISSED_EVENTS: >-
+        Tương thích với bằng chứng, không được xác lập bởi nó.
+      EXECUTION_WILL_NOT_COMPLETE: >-
+        Ở mốc 186 s, bộ này KHÔNG có phản ví dụ trực tiếp — im lặng dài nhất từng hồi phục
+        là 154.5 s (SC16 lượt 1). Nhưng "chưa quan sát thấy khoảng im lặng nào dài hơn mà
+        vẫn hồi phục" không phải bằng chứng rằng không thể hồi phục. Thiếu phản ví dụ là
+        thiếu dữ liệu, không phải bằng chứng phủ định.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực.
+      - Thời điểm chấm đọc từ scored_at; mốc khác là ca khác (mục 2).
+      - >-
+        MISSING_TERMINAL_EVENT không fire ở mốc này (cutoff 1200 s, xem docs/ORACLE.md
+        mục 5.3). Nếu platform từ chối đúng ở đây thì cơ chế dẫn tới việc từ chối vẫn
+        phải kiểm riêng: một luật không bao giờ thành ứng viên thì không phải là luật đã
+        cân nhắc rồi loại. Verdict đúng không chứng minh cơ chế đúng.
+
+  - <<: *stuck_dead
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED]
+      silence_at_scoring_s: 185.962
+      declared_timeout_for_pending_step_s: 5
+      failure_reason: null
+      discriminating_field: KHÔNG CÓ — như lượt 1.

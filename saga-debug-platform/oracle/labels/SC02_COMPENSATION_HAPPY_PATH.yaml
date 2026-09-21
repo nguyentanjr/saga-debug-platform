@@ -1,0 +1,106 @@
+# Nhãn oracle bằng chứng — SC02_COMPENSATION_HAPPY_PATH
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+# Viết từ `raw_events` qua oracle/evidence_view.py, không nhìn output của platform.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC02_COMPENSATION_HAPPY_PATH.json
+evidence_fixture_sha256: 29f5ea488db22b94ff407305ad5824659f0d8f99e0d3d9ca25fd69bf3f1e0f32
+claims_from: ../claims.yaml
+
+labelling: blind_with_caveat
+labelling_note: >-
+  Viết trước khi đọc rca_* hay anomalies_actual của SC02. Caveat như SC01: người dán nhãn
+  biết số tổng của cả bộ và biết SC02 không nằm trong 5 lượt đổi kết quả.
+reviewed_by: null
+
+cases:
+
+  - &compensated
+    id: SC02_COMPENSATION_HAPPY_PATH
+    run_index: 1
+    scored_at_status: COMPENSATED
+    case_kind: business_failure
+
+    true_cause:
+      injected: >-
+        Đặt quantity 9999 vượt tồn kho. inventory-service từ chối theo luật nghiệp vụ của
+        chính nó; không service nào bị dừng, không lỗi hạ tầng nào được tiêm.
+      note: >-
+        Đây là ca duy nhất trong bộ mà thất bại là KẾT QUẢ NGHIỆP VỤ ĐÚNG, không phải sự
+        cố. Nó kiểm một thứ khác hẳn các ca còn lại: platform có phân biệt được "hệ chạy
+        đúng và từ chối" với "hệ hỏng" hay không.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_FAILED, REFUND_PAYMENT, PAYMENT_REFUNDED]
+      span_ms: 148
+      failure_reason: "Not enough inventory"       # trong payload của INVENTORY_FAILED
+      compensation_reason: "Inventory reservation failed"   # trong payload của REFUND_PAYMENT
+      discriminating_field: >-
+        Hai trường lý do khác nhau, mỗi trường do một service khác nhau viết, và cả hai
+        mang nội dung riêng của tình huống chứ không phải một chuỗi hằng ghi ở mọi thất
+        bại. RESERVE_INVENTORY thất bại sau 48 ms — không có khoảng im lặng nào.
+
+    admissible_claims:
+      - STEP_REJECTED_WITH_SOURCE_REASON
+      - COMPENSATION_COMPLETED_AS_DECLARED
+    abstention_required: false
+    admissible_note: >-
+      Bằng chứng đỡ được tới mức: "RESERVE_INVENTORY thất bại với lý do hệ nguồn tự nêu,
+      và chuỗi bù trừ đã khai báo chạy xong". Nó KHÔNG đỡ được tới mức "hết hàng" như một
+      sự thật về kho — observer chỉ biết inventory-service nói vậy.
+
+    inadmissible_claims:
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        inventory-service trả lời trong 48 ms. Không có gì cho thấy nó không sẵn sàng.
+      STEP_EXCEEDED_DECLARED_TIMEOUT: >-
+        Khoảng dài nhất là 148 ms cho cả execution, dưới mọi timeout đã khai.
+      TIMEOUT_DRIVEN_RETRY_BURST: Không có quan sát retry nào trong lượt.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực; REFUND_PAYMENT là compensation đã khai của PROCESS_PAYMENT.
+      - >-
+        Phân loại "Not enough inventory" là lỗi nghiệp vụ chứ không phải lỗi hạ tầng là
+        một khai báo phụ thuộc hệ nguồn (I7), giống hệt khai báo failure-signal của SC06.
+        Core không được biết trước cách diễn đạt này. Nếu chưa có khai báo cho nguồn đó
+        thì claim phải dừng ở "hệ nguồn nêu lý do X", không được tự phân loại.
+      - >-
+        Đồng hồ các service so sánh được; nguồn timestamp không được lưu (ROADMAP F6).
+
+  - <<: *compensated
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_FAILED, REFUND_PAYMENT, PAYMENT_REFUNDED]
+      span_ms: 221
+      failure_reason: "Not enough inventory"
+      compensation_reason: "Inventory reservation failed"
+      discriminating_field: Như lượt 1; RESERVE_INVENTORY thất bại sau 160 ms.
+
+  - <<: *compensated
+    run_index: 3
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_FAILED, REFUND_PAYMENT, PAYMENT_REFUNDED]
+      span_ms: 74
+      failure_reason: "Not enough inventory"
+      compensation_reason: "Inventory reservation failed"
+      discriminating_field: Như lượt 1; RESERVE_INVENTORY thất bại sau 47 ms.
+
+  - <<: *compensated
+    run_index: 4
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_FAILED, REFUND_PAYMENT, PAYMENT_REFUNDED]
+      span_ms: 57
+      failure_reason: "Not enough inventory"
+      compensation_reason: "Inventory reservation failed"
+      discriminating_field: Như lượt 1; RESERVE_INVENTORY thất bại sau 38 ms.
+
+  - <<: *compensated
+    run_index: 5
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_FAILED, REFUND_PAYMENT, PAYMENT_REFUNDED]
+      span_ms: 64
+      failure_reason: "Not enough inventory"
+      compensation_reason: "Inventory reservation failed"
+      discriminating_field: Như lượt 1; RESERVE_INVENTORY thất bại sau 45 ms.

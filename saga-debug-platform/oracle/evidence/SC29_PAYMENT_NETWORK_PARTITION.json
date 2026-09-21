@@ -1,0 +1,203 @@
+{
+ "source_artifact": "results/evaluation_report_settled_20260921.json",
+ "source_sha256": "64eb56527dbdffce97a0e2198ac9f5dc0442894bd065124b92aa690c980b4368",
+ "scope": "SC29_PAYMENT_NETWORK_PARTITION stored observations. source_state is oracle-only and MUST NOT be passed to the observer. No stored diagnosis is an input.",
+ "raw_runs": [
+  {
+   "scenario_id": "SC29_PAYMENT_NETWORK_PARTITION",
+   "run_index": 1,
+   "execution_id": "default::927f2960-5c0b-4c62-8e28-9a0c6bdf174f",
+   "raw_events": [
+    {
+     "eventId": "e7c4a74f-42c9-4ee8-a6c6-182f688d5116",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"927f2960-5c0b-4c62-8e28-9a0c6bdf174f\", \"spanId\": \"9d426ff9e3a6c7be\", \"eventId\": \"e7c4a74f-42c9-4ee8-a6c6-182f688d5116\", \"orderId\": \"9ab8f93d-f442-479f-952c-cb5394416a26\", \"traceId\": \"da6f7551aafb12e9742e6b6f2922aa30\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789992632.153744553, \"customerId\": \"eval-29\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T12:10:32.154Z",
+     "receivedAt": "2026-09-21T12:10:32.159053Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "da6f7551aafb12e9742e6b6f2922aa30",
+     "spanId": "9d426ff9e3a6c7be",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-2-28"
+    },
+    {
+     "eventId": "9f990954-fd6b-4412-a830-e5b3b6278c23",
+     "eventType": "PAYMENT_COMPLETED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"927f2960-5c0b-4c62-8e28-9a0c6bdf174f\", \"spanId\": \"bc37a3d8d4607350\", \"eventId\": \"9f990954-fd6b-4412-a830-e5b3b6278c23\", \"orderId\": \"9ab8f93d-f442-479f-952c-cb5394416a26\", \"traceId\": \"da6f7551aafb12e9742e6b6f2922aa30\", \"quantity\": 1, \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_COMPLETED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789992680.378925595, \"causationId\": \"e7c4a74f-42c9-4ee8-a6c6-182f688d5116\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"9d426ff9e3a6c7be\"}",
+     "timestamp": "2026-09-21T12:11:20.379Z",
+     "receivedAt": "2026-09-21T12:11:20.384340Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "da6f7551aafb12e9742e6b6f2922aa30",
+     "spanId": "bc37a3d8d4607350",
+     "parentSpanId": "9d426ff9e3a6c7be",
+     "causationId": "e7c4a74f-42c9-4ee8-a6c6-182f688d5116",
+     "transportRef": "payment-completed-2-17"
+    },
+    {
+     "eventId": "aeefdff0-1585-46a8-8883-0b02300244f1",
+     "eventType": "INVENTORY_RESERVED",
+     "payload": "{\"sagaId\": \"927f2960-5c0b-4c62-8e28-9a0c6bdf174f\", \"spanId\": \"c262d1840a0695dd\", \"eventId\": \"aeefdff0-1585-46a8-8883-0b02300244f1\", \"orderId\": \"9ab8f93d-f442-479f-952c-cb5394416a26\", \"traceId\": \"da6f7551aafb12e9742e6b6f2922aa30\", \"quantity\": 1, \"stepName\": \"RESERVE_INVENTORY\", \"eventType\": \"INVENTORY_RESERVED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789992680.398995137, \"causationId\": \"9f990954-fd6b-4412-a830-e5b3b6278c23\", \"serviceName\": \"inventory-service\", \"parentSpanId\": \"bc37a3d8d4607350\"}",
+     "timestamp": "2026-09-21T12:11:20.399Z",
+     "receivedAt": "2026-09-21T12:11:20.403775Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "inventory-service",
+     "stepName": "RESERVE_INVENTORY",
+     "traceId": "da6f7551aafb12e9742e6b6f2922aa30",
+     "spanId": "c262d1840a0695dd",
+     "parentSpanId": "bc37a3d8d4607350",
+     "causationId": "9f990954-fd6b-4412-a830-e5b3b6278c23",
+     "transportRef": "inventory-reserved-2-14"
+    }
+   ],
+   "source_state": {
+    "sampled_at": "2026-09-21T12:12:15.618478+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "0.0%",
+      "slowCallRate": "0.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 7,
+      "failedCalls": 0,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "0.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "0.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 7,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 0,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:55:43.681407335Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_CLOSED"
+     }
+    ],
+    "unavailable": {}
+   }
+  },
+  {
+   "scenario_id": "SC29_PAYMENT_NETWORK_PARTITION",
+   "run_index": 2,
+   "execution_id": "default::a6e640ad-f099-463e-86b1-e9132368bf88",
+   "raw_events": [
+    {
+     "eventId": "057b2bc9-7333-4065-bf5c-cc321729d2e3",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"a6e640ad-f099-463e-86b1-e9132368bf88\", \"spanId\": \"ad75e29e86f37af5\", \"eventId\": \"057b2bc9-7333-4065-bf5c-cc321729d2e3\", \"orderId\": \"eba5466b-6c53-4e4b-b6d9-7cb2efe59932\", \"traceId\": \"c66315e2ffd0e15fc257d2a699af0474\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789992742.124036408, \"customerId\": \"eval-29\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T12:12:22.124Z",
+     "receivedAt": "2026-09-21T12:12:22.130740Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "c66315e2ffd0e15fc257d2a699af0474",
+     "spanId": "ad75e29e86f37af5",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-2-29"
+    },
+    {
+     "eventId": "6431d31b-1b9a-4fad-8801-a21adc6621bd",
+     "eventType": "PAYMENT_COMPLETED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"a6e640ad-f099-463e-86b1-e9132368bf88\", \"spanId\": \"fdec49b084f7e811\", \"eventId\": \"6431d31b-1b9a-4fad-8801-a21adc6621bd\", \"orderId\": \"eba5466b-6c53-4e4b-b6d9-7cb2efe59932\", \"traceId\": \"c66315e2ffd0e15fc257d2a699af0474\", \"quantity\": 1, \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_COMPLETED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789992791.295586542, \"causationId\": \"057b2bc9-7333-4065-bf5c-cc321729d2e3\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"ad75e29e86f37af5\"}",
+     "timestamp": "2026-09-21T12:13:11.296Z",
+     "receivedAt": "2026-09-21T12:13:11.302602Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "c66315e2ffd0e15fc257d2a699af0474",
+     "spanId": "fdec49b084f7e811",
+     "parentSpanId": "ad75e29e86f37af5",
+     "causationId": "057b2bc9-7333-4065-bf5c-cc321729d2e3",
+     "transportRef": "payment-completed-2-18"
+    },
+    {
+     "eventId": "2961e193-1f9f-49d2-a52e-f410a211b5bd",
+     "eventType": "INVENTORY_RESERVED",
+     "payload": "{\"sagaId\": \"a6e640ad-f099-463e-86b1-e9132368bf88\", \"spanId\": \"4364f4c4ede309a1\", \"eventId\": \"2961e193-1f9f-49d2-a52e-f410a211b5bd\", \"orderId\": \"eba5466b-6c53-4e4b-b6d9-7cb2efe59932\", \"traceId\": \"c66315e2ffd0e15fc257d2a699af0474\", \"quantity\": 1, \"stepName\": \"RESERVE_INVENTORY\", \"eventType\": \"INVENTORY_RESERVED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789992791.327465755, \"causationId\": \"6431d31b-1b9a-4fad-8801-a21adc6621bd\", \"serviceName\": \"inventory-service\", \"parentSpanId\": \"fdec49b084f7e811\"}",
+     "timestamp": "2026-09-21T12:13:11.327Z",
+     "receivedAt": "2026-09-21T12:13:11.333820Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "inventory-service",
+     "stepName": "RESERVE_INVENTORY",
+     "traceId": "c66315e2ffd0e15fc257d2a699af0474",
+     "spanId": "4364f4c4ede309a1",
+     "parentSpanId": "fdec49b084f7e811",
+     "causationId": "6431d31b-1b9a-4fad-8801-a21adc6621bd",
+     "transportRef": "inventory-reserved-2-15"
+    }
+   ],
+   "source_state": {
+    "sampled_at": "2026-09-21T12:14:06.535099+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "0.0%",
+      "slowCallRate": "0.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 8,
+      "failedCalls": 0,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "0.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "0.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 8,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 0,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:55:43.681407335Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_CLOSED"
+     }
+    ],
+    "unavailable": {}
+   }
+  }
+ ]
+}

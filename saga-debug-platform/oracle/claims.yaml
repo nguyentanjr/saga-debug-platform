@@ -1,0 +1,193 @@
+# Từ vựng claim dùng chung cho mọi nhãn trong oracle/labels/.
+#
+# Một claim KHÔNG phải một nhãn nguyên nhân. Nó mang theo MỨC mà nó được khẳng định,
+# vì "bước này chưa được quan sát thấy hoàn tất" và "service này chết" là hai phát biểu
+# khác nhau, dựa trên hai loại bằng chứng khác nhau. docs/ORACLE.md mục 3.
+#
+# `platform_labels` là cầu nối: tên root-cause nào của platform được coi là đang khẳng
+# định claim này. Thiếu nó thì việc chấm đang so một claim với một nhãn, rồi gọi chỗ lệch
+# là lỗi của platform, trong khi đó là lỗi của phép so.
+#
+# ⚠️ TRẠNG THÁI: `platform_labels` đang rỗng ở mọi claim. Đó là CỐ Ý và có ghi ngày:
+# toàn bộ `admissible_claims` trong oracle/labels/ được viết TRƯỚC khi đọc tên nhãn của
+# platform, để lập luận không bị uốn theo tập nhãn sẵn có (docs/ORACLE.md mục 5.1 bước 1).
+# Lịch sử git là bằng chứng cho thứ tự đó. Nhãn nào chưa map sẽ bị chấm UNSCORED —
+# thiếu sót của oracle, không tính cho platform.
+
+version: 1
+locked_at: "2026-09-21"
+spec: docs/ORACLE.md
+workflow_spec: correlation-service/src/main/resources/workflows/order-saga-workflow.yaml  # ORDER_SAGA 1.0
+
+# Các mức, từ nông tới sâu. Mức càng sâu càng đòi nhiều bằng chứng hơn.
+#   observation      -- phát biểu về chính tập quan sát (có/không có event, khoảng cách
+#                       giữa hai quan sát so với ngưỡng đã khai báo).
+#   execution-state  -- phát biểu về trạng thái execution suy ra từ spec + quan sát.
+#   mechanism        -- phát biểu về cơ chế thất bại trực tiếp, dựa trên chính báo cáo
+#                       của hệ nguồn nằm trong payload.
+#   cause            -- phát biểu về nguyên nhân nằm dưới cơ chế.
+#   prediction       -- phát biểu về điều CHƯA xảy ra.
+levels: [observation, execution-state, mechanism, cause, prediction]
+
+claims:
+
+  # ── Mức quan sát ────────────────────────────────────────────────────────────
+
+  STEP_NOT_OBSERVED_TO_COMPLETE:
+    level: observation
+    statement: >-
+      Tại thời điểm chấm, bước S không có event completed lẫn failed theo khai báo, và
+      khoảng im lặng kể từ quan sát cuối cùng đã vượt timeout khai báo của S.
+    rests_on: >-
+      Tập observation (thiếu vắng là thiếu vắng trong chính tập đó), timeout trong
+      workflow declaration, và thời điểm chấm — cả ba đều nằm trong ca.
+    does_not_establish:
+      - vì sao im lặng
+      - rằng hệ nguồn không phát event (khác với observer không nhận được)
+      - rằng execution sẽ không hoàn tất
+    platform_labels: []
+
+  STEP_EXCEEDED_DECLARED_TIMEOUT:
+    level: observation
+    statement: >-
+      Khoảng từ quan sát cuối của bước trước tới event completed của bước S vượt
+      timeout mà workflow declaration đặt cho S.
+    rests_on: >-
+      Hai mốc thời gian đều nằm trong evidence, và ngưỡng lấy từ khai báo chứ không phải
+      hằng số trong code. Ngưỡng và phép so đều trích dẫn được.
+    # Đây là lý do claim dừng ở mức observation: demo services KHÔNG phát event `started`,
+    # nên khoảng đo được là khoảng giữa hai quan sát, bao gồm cả thời gian nằm trong
+    # broker và thời gian consumer chưa đọc tới. Nó không phải thời gian chạy của bước.
+    does_not_establish:
+      - rằng service của bước S chạy chậm
+      - phần nào của khoảng đó nằm ở broker, ở consumer, hay ở service
+      - vì sao khoảng đó dài
+    platform_labels: []
+
+  # ── Mức trạng thái execution ────────────────────────────────────────────────
+
+  EXECUTION_COMPLETED_AS_DECLARED:
+    level: execution-state
+    statement: >-
+      Mọi bước tiến đã khai báo đều có event completed, đúng thứ tự transition đã khai,
+      và execution đạt trạng thái kết thúc thành công.
+    rests_on: Tập observation đối chiếu với steps và transitions của workflow declaration.
+    platform_labels: []
+
+  COMPENSATION_COMPLETED_AS_DECLARED:
+    level: execution-state
+    statement: >-
+      Một bước tiến thất bại, chuỗi bù trừ đã khai báo chạy và hoàn tất, execution đạt
+      trạng thái bù trừ xong.
+    rests_on: >-
+      Event failed của bước tiến, rồi event started/completed của compensation step đúng
+      như compensationSteps khai báo.
+    platform_labels: []
+
+  EXECUTION_COMPLETED_AFTER_SILENCE:
+    level: execution-state
+    statement: >-
+      Sau một khoảng im lặng vượt ngưỡng khai báo, các bước còn lại hoàn tất và execution
+      đạt trạng thái kết thúc thành công.
+    rests_on: Tập observation trước và sau khoảng im lặng.
+    # Ba thế giới sinh ra đúng một hình dạng quan sát này: hệ nguồn tự hồi phục, có người
+    # khởi động lại bằng tay, và event tới muộn. Tập observation không tách được chúng.
+    does_not_establish:
+      - rằng hệ nguồn tự hồi phục
+      - rằng có can thiệp từ bên ngoài
+      - rằng khoảng im lặng là do hệ nguồn chứ không do đường truyền
+    platform_labels: []
+
+  # ── Mức cơ chế ──────────────────────────────────────────────────────────────
+
+  STEP_REJECTED_WITH_SOURCE_REASON:
+    level: mechanism
+    statement: >-
+      Bước S thất bại, và hệ nguồn tự nêu lý do trong payload của event failed.
+    rests_on: >-
+      Event failed đúng vai trò khai báo, mang một trường lý do có nội dung riêng của lượt
+      đó — không phải một chuỗi hằng mà hệ nguồn ghi ở mọi thất bại.
+    # Lý do do hệ nguồn nói là bằng chứng về NỘI DUNG lý do, không phải bằng chứng rằng
+    # lý do ấy đúng. Phân loại nó là lỗi nghiệp vụ hay lỗi hạ tầng là việc của khai báo
+    # per-source (I7), không phải của core.
+    does_not_establish:
+      - rằng lý do hệ nguồn nêu là đúng
+      - phân loại lỗi nghiệp vụ hay lỗi hạ tầng, nếu không có khai báo cho nguồn đó
+    platform_labels: []
+
+  STEP_FAILED_AFTER_RETRY_EXHAUSTION:
+    level: mechanism
+    statement: >-
+      Bước S thất bại, và hệ nguồn đã dùng hết retry policy mà chính nó khai báo trước
+      khi bỏ cuộc.
+    rests_on: >-
+      Event vai trò failed của bước đó, đứng sau các quan sát retry, mà số lượng được đối
+      chiếu với policy đã khai chứ không mặc định là bất thường.
+    # CẢNH BÁO độc lập: retry-burst-threshold của detector và maxAttempts của
+    # payment-service được chỉnh cho khớp nhau (xem khối CAUTION trong application.yml),
+    # nên RETRY_BURST fire KHÔNG phải bằng chứng độc lập rằng hành vi retry bất thường.
+    platform_labels: []
+
+  CALL_REJECTED_BY_BREAKER:
+    level: mechanism
+    statement: >-
+      Lời gọi thất bại bị một circuit breaker từ chối, theo chính báo cáo của hệ nguồn.
+    rests_on: >-
+      Payload mang thông điệp ngoại lệ của hệ nguồn báo trạng thái breaker, nhận diện qua
+      khai báo failure-signal của nguồn đó — không phải chuỗi hằng mà nguồn ghi ở mọi
+      thất bại, và không phải dò chuỗi trên toàn bản ghi.
+    # Cố ý KHÔNG phải nguyên nhân gốc. Nó nói breaker đã chặn LỜI GỌI NÀY. Nó không nói
+    # vì sao breaker mở, và ở SC06 breaker mở *vì* gateway đã từ chối từ trước, nên
+    # nguyên nhân nằm dưới claim này một tầng.
+    does_not_establish:
+      - vì sao breaker mở
+      - rằng breaker là nguyên nhân sâu nhất của thất bại
+      - trạng thái chính xác của breaker (OPEN hay HALF_OPEN) tại từng lời gọi
+    platform_labels: []
+
+  TIMEOUT_DRIVEN_RETRY_BURST:
+    level: mechanism
+    statement: Chuỗi retry đi kèm bằng chứng timeout trong chính các quan sát retry.
+    rests_on: >-
+      RcaService.ruleTimeoutRetryStorm đòi RETRY_BURST cộng với bằng chứng timeout trong
+      các event retry đã khai báo mới cho STRONG. Cạn retry một mình là không đủ.
+    platform_labels: []
+
+  # ── Mức nguyên nhân: định nghĩa để PHÁT BIỂU ĐƯỢC tính bất khả thụ ──────────
+  #
+  # Ba claim dưới đây không nằm trong `admissible_claims` của bất kỳ ca nào trong bộ này.
+  # Chúng tồn tại để chỗ "không được phép kết luận" được viết ra tên, và để nhãn nào của
+  # platform khẳng định chúng thì chấm được là vượt bằng chứng — thay vì rơi vào UNSCORED.
+
+  SOURCE_SERVICE_UNAVAILABLE:
+    level: cause
+    statement: Service của bước đó không sẵn sàng (chết, treo, hoặc bị cô lập mạng).
+    rests_on: >-
+      Cần một quan sát về chính hệ nguồn — health, heartbeat, hoặc event do nó phát ra
+      trong khoảng đó. Im lặng không phải quan sát về hệ nguồn.
+    platform_labels: []
+
+  SOURCE_SERVICE_SELF_RECOVERED:
+    level: cause
+    statement: Hệ nguồn tự hồi phục, không có can thiệp bên ngoài.
+    rests_on: >-
+      Cần phân biệt được với khởi động lại bằng tay và với event tới muộn. Tập observation
+      trong bộ này không phân biệt được — xem EXECUTION_COMPLETED_AFTER_SILENCE.
+    platform_labels: []
+
+  OBSERVER_MISSED_EVENTS:
+    level: cause
+    statement: Hệ nguồn có phát event nhưng observer không nhận được.
+    rests_on: >-
+      Cần đối chiếu với chính hệ nguồn (outbox, offset, log của producer). Im lặng đồng
+      thời tương thích với thế giới này VÀ với thế giới hệ nguồn không phát gì cả.
+    platform_labels: []
+
+  EXECUTION_WILL_NOT_COMPLETE:
+    level: prediction
+    statement: Execution này sẽ không bao giờ đạt trạng thái kết thúc.
+    rests_on: >-
+      Không có bằng chứng nào trong bộ này đỡ được một phát biểu về tương lai. Phản ví dụ
+      nằm ngay trong bộ: SC16 lượt 1 hoàn tất sau 154.5 s im lặng, dài hơn thời điểm chấm
+      101 s của SC03 — cùng một hình dạng quan sát, một bên hoàn tất.
+    platform_labels: []

@@ -1,0 +1,71 @@
+# Nhãn oracle bằng chứng — SC16_STUCK_RECOVERED_LONG
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC16_STUCK_RECOVERED_LONG.json
+evidence_fixture_sha256: fe9d0ffe8a1770811dd0aad514bf9edb4284aec6dcc142f1970bad40e10057ef
+claims_from: ../claims.yaml
+
+labelling: retrospective
+labelling_note: >-
+  KHÔNG mù, như SC04: người dán nhãn đã đọc kết quả mới của hai lượt này trước khi viết.
+reviewed_by: null
+
+paired_with: SC04_STUCK_RECOVERED_BRIEF
+
+# Lượt 1 của kịch bản này là phản ví dụ được dùng trong SC03: 154.527 s im lặng rồi vẫn
+# hoàn tất. Nó không phải một lập luận giả định — nó là một lượt đã đo trong cùng artefact.
+
+cases:
+
+  - &recovered_long
+    id: SC16_STUCK_RECOVERED_LONG
+    run_index: 1
+    scored_at_status: COMPLETED
+    case_kind: silence_then_completion
+
+    true_cause:
+      injected: >-
+        docker stop inventory-service trước khi tạo order; harness chờ 125 s; NGƯỜI THỬ
+        NGHIỆM docker start bằng tay; consumer đọc lại message tồn đọng và saga hoàn tất.
+      note: Cùng thao tác với SC04, chỉ khác thời gian chờ.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_last_event_s: 154.527
+      declared_timeout_for_that_step_s: 5
+      failure_reason: null
+      discriminating_field: >-
+        Như SC04: hai mốc thời gian và một ngưỡng khai báo, tất cả trích dẫn được. Không
+        có gì trong evidence nói về 154 s ở giữa.
+
+    admissible_claims:
+      - STEP_EXCEEDED_DECLARED_TIMEOUT
+      - EXECUTION_COMPLETED_AFTER_SILENCE
+    abstention_required: false
+
+    inadmissible_claims:
+      SOURCE_SERVICE_SELF_RECOVERED: >-
+        Trái sự thật (khởi động lại thủ công), và không phân biệt được với hai thế giới
+        còn lại kể cả khi đúng.
+      SOURCE_SERVICE_UNAVAILABLE: Im lặng không phải quan sát về hệ nguồn.
+      EXECUTION_WILL_NOT_COMPLETE: Execution đã hoàn tất.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực.
+      - >-
+        Khoảng đo là khoảng giữa hai quan sát, không phải thời gian chạy của bước — không
+        có event `started` để tách phần broker khỏi phần service.
+      - Đồng hồ hai service so sánh được; nguồn timestamp không được lưu (ROADMAP F6).
+
+  - <<: *recovered_long
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_last_event_s: 149.300
+      declared_timeout_for_that_step_s: 5
+      failure_reason: null
+      discriminating_field: Như lượt 1; 149.300 s > 5 s.

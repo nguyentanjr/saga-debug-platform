@@ -1,0 +1,69 @@
+# Nhãn oracle bằng chứng — SC28_PAYMENT_SIGSTOP_RECOVERY
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+# Lập luận đối chứng ba kịch bản viết đầy đủ trong oracle/labels/SC27_PAYMENT_PAUSE_RECOVERY.yaml.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC28_PAYMENT_SIGSTOP_RECOVERY.json
+evidence_fixture_sha256: 3c2f5193888047141696d7b71bdbb9391aaf0e0a2de75d0523d19c08c28364b0
+claims_from: ../claims.yaml
+
+labelling: blind_with_caveat
+labelling_note: >-
+  Viết trước khi đọc rca_* hay anomalies_actual của SC28. Caveat như SC27.
+reviewed_by: null
+
+control_group: [SC27_PAYMENT_PAUSE_RECOVERY, SC28_PAYMENT_SIGSTOP_RECOVERY, SC29_PAYMENT_NETWORK_PARTITION]
+
+cases:
+
+  - &sigstop
+    id: SC28_PAYMENT_SIGSTOP_RECOVERY
+    run_index: 1
+    scored_at_status: COMPLETED
+    case_kind: silence_then_completion
+
+    true_cause:
+      injected: >-
+        Gửi SIGSTOP cho PID 1 trong container payment-service, tạo order, chờ 45 s, gửi
+        SIGCONT, chờ ổn định 20 s rồi chấm. Tiến trình bị dừng bởi tín hiệu; container,
+        mạng và Docker runtime đều nguyên vẹn.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_payment_completed_s: 46.153
+      declared_timeout_for_that_step_s: 10
+      failure_reason: null
+      discriminating_field: >-
+        KHÔNG CÓ. Không phân biệt được với SC27 (docker pause) hay SC29 (mất mạng) —
+        cùng ba event, cùng bậc độ trễ, cùng trạng thái kết thúc.
+
+    admissible_claims:
+      - STEP_EXCEEDED_DECLARED_TIMEOUT
+      - EXECUTION_COMPLETED_AFTER_SILENCE
+    abstention_required: false
+
+    inadmissible_claims:
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        Sự thật ở đây là tiến trình bị dừng bằng tín hiệu, ở SC27 là đóng băng, ở SC29 là
+        mất mạng — ba thế giới, một tập observation.
+      SOURCE_SERVICE_SELF_RECOVERED: SIGCONT do harness gửi; bằng chứng không thấy điều đó.
+      OBSERVER_MISSED_EVENTS: Tương thích, không được xác lập.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực; timeout 10 s của PROCESS_PAYMENT từ declaration.
+      - >-
+        Không có PAYMENT_STARTED: khoảng tính từ ORDER_CREATED, gồm cả thời gian nằm chờ
+        trong broker. Không phát biểu như thời gian xử lý của payment-service.
+      - Đồng hồ hai service so sánh được; nguồn timestamp không được lưu (ROADMAP F6).
+
+  - <<: *sigstop
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_payment_completed_s: 48.239
+      declared_timeout_for_that_step_s: 10
+      failure_reason: null
+      discriminating_field: KHÔNG CÓ — như lượt 1; 48.239 s > 10 s.

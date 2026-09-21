@@ -1,0 +1,82 @@
+# Nhãn oracle bằng chứng — SC04_STUCK_RECOVERED_BRIEF
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC04_STUCK_RECOVERED_BRIEF.json
+evidence_fixture_sha256: 8da54e6c6f763e1acaf2b4e0aca12e57a783cda16cd2b52790c5f8edf48e751a
+claims_from: ../claims.yaml
+
+labelling: retrospective
+labelling_note: >-
+  KHÔNG mù. Người dán nhãn đã biết SC04 đổi kết quả sau khi cho detector đủ một chu kỳ,
+  và đã đọc phần giải thích mới của platform cho hai lượt này. Ghi đúng như vậy.
+reviewed_by: null
+
+paired_with: SC16_STUCK_RECOVERED_LONG
+
+cases:
+
+  - &recovered_brief
+    id: SC04_STUCK_RECOVERED_BRIEF
+    run_index: 1
+    scored_at_status: COMPLETED
+    case_kind: silence_then_completion
+
+    true_cause:
+      injected: >-
+        docker stop inventory-service trước khi tạo order; harness chờ 45 s; NGƯỜI THỬ
+        NGHIỆM docker start nó bằng tay; consumer đọc lại message tồn đọng trong Kafka và
+        saga hoàn tất.
+      note: >-
+        Nguyên nhân thật gồm một can thiệp thủ công. Không quan sát nào của observer chứa
+        dấu vết của can thiệp đó — đây là lý do claim "service tự hồi phục" không đứng
+        được, kể cả khi nó nghe rất hợp với hình dạng dữ liệu.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_last_event_s: 72.206      # PAYMENT_COMPLETED -> INVENTORY_RESERVED
+      declared_timeout_for_that_step_s: 5  # RESERVE_INVENTORY
+      failure_reason: null
+      discriminating_field: >-
+        Hai mốc thời gian có thật trong evidence, và ngưỡng 5 s lấy từ workflow
+        declaration. Phép so 72.206 s > 5 s trích dẫn được toàn bộ. Cái KHÔNG có trong
+        evidence là bất kỳ dấu hiệu nào về chuyện gì đã xảy ra trong 72 s đó.
+
+    admissible_claims:
+      - STEP_EXCEEDED_DECLARED_TIMEOUT
+      - EXECUTION_COMPLETED_AFTER_SILENCE
+    abstention_required: false
+    admissible_note: >-
+      Bằng chứng đỡ được tới mức "khoảng tới RESERVE_INVENTORY vượt ngưỡng đã khai 72.2 s,
+      rồi execution hoàn tất". Nó KHÔNG đỡ được tới bất kỳ phát biểu nào về việc vì sao
+      khoảng đó dài, hay ai/cái gì làm nó kết thúc.
+
+    inadmissible_claims:
+      SOURCE_SERVICE_SELF_RECOVERED: >-
+        Trái sự thật ở ca này: có người docker start bằng tay. Và kể cả nếu đúng, bằng
+        chứng cũng không phân biệt được tự hồi phục với khởi động lại thủ công hay với
+        event tới muộn.
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        Im lặng không phải quan sát về hệ nguồn. Khoảng 72 s cũng tương thích với consumer
+        lag hay message nằm chờ trong broker.
+      EXECUTION_WILL_NOT_COMPLETE: Execution đã hoàn tất trước mốc chấm.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực; timeout 5 s của RESERVE_INVENTORY đọc từ declaration.
+      - >-
+        Khoảng đo được là khoảng GIỮA HAI QUAN SÁT, không phải thời gian chạy của bước:
+        các service demo không phát event `started`, nên phần nằm trong broker và phần
+        nằm trong service không tách được. Claim phải phát biểu ở mức khoảng quan sát.
+      - Đồng hồ hai service so sánh được; nguồn timestamp không được lưu (ROADMAP F6).
+
+  - <<: *recovered_brief
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_last_event_s: 74.324
+      declared_timeout_for_that_step_s: 5
+      failure_reason: null
+      discriminating_field: Như lượt 1; 74.324 s > 5 s.

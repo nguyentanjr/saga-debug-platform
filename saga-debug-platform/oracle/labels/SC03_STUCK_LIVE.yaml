@@ -1,0 +1,97 @@
+# Nhãn oracle bằng chứng — SC03_STUCK_LIVE
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+# Viết từ `raw_events` qua oracle/evidence_view.py, không nhìn output của platform.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC03_STUCK_LIVE.json
+evidence_fixture_sha256: 323af6db6cc0c96b32bdef267ee2df480623535c90a953bd385841a15118be25
+claims_from: ../claims.yaml
+
+labelling: blind_with_caveat
+labelling_note: >-
+  Viết trước khi đọc rca_* hay anomalies_actual của SC03. Caveat: người dán nhãn đã đọc
+  output của SC17 — một kịch bản CÙNG HÌNH DẠNG BẰNG CHỨNG, khác mốc chấm. Đây là chỗ
+  mù bị rò rõ nhất trong cả bộ nhãn và phải ghi ra đúng như vậy.
+reviewed_by: null
+
+# ── Cặp đối chứng về MỐC CHẤM ─────────────────────────────────────────────────
+#
+# SC03 và SC17 có hình dạng quan sát giống hệt nhau: đúng 2 event rồi im lặng. Chúng khác
+# nhau duy nhất ở mốc chấm — 101 s so với 186 s im lặng. docs/ORACLE.md mục 2 nói cùng một
+# run chấm ở hai mốc là hai ca khác nhau; ở đây là hai kịch bản khác nhau nhưng cùng chứng
+# minh điều đó, và cặp này là đối chứng sẵn có cho luận điểm "kết luận được gì phụ thuộc
+# mốc chấm".
+paired_with: SC17_STUCK_DEAD_PERMANENT
+
+cases:
+
+  - &stuck_live
+    id: SC03_STUCK_LIVE
+    run_index: 1
+    scored_at_status: IN_PROGRESS
+    case_kind: silence
+
+    true_cause:
+      injected: >-
+        docker stop inventory-service TRƯỚC khi tạo order, rồi harness chờ 65 s và chấm.
+        inventory-service chưa từng phát một event nào trong lượt.
+      note: >-
+        Nguyên nhân thật xác lập bằng thao tác của người thử nghiệm, không bằng quan sát
+        nào của observer. Đó chính là điểm của ca này.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED]
+      silence_at_scoring_s: 101.098   # từ quan sát cuối tới mốc chấm
+      declared_timeout_for_pending_step_s: 5    # RESERVE_INVENTORY
+      failure_reason: null
+      discriminating_field: >-
+        KHÔNG CÓ. Đây là toàn bộ nội dung của ca: tập observation không chứa trường nào,
+        event nào, hay metadata nào phân biệt được các thế giới liệt kê dưới đây.
+
+    admissible_claims: []
+    abstention_required: true
+    abstention_reason: >-
+      Im lặng tương thích với ít nhất năm thế giới, và bằng chứng không tách được chúng:
+      (1) inventory-service chết; (2) nó sống nhưng bị cô lập mạng; (3) nó sống và đang
+      chạy chậm hoặc consumer lag; (4) nó có phát event nhưng observer không nhận được;
+      (5) mapping/topic sai nên event không bao giờ tới đúng chỗ. Nêu tên bất kỳ thế giới
+      nào trong số đó là kết luận quá bằng chứng.
+
+    observations_supported: [STEP_NOT_OBSERVED_TO_COMPLETE]
+    # Ghi riêng, KHÔNG tính điểm. Phát biểu đỡ được là: "RESERVE_INVENTORY chưa được quan
+    # sát thấy hoàn tất hay thất bại, và im lặng đã 101 s so với timeout khai báo 5 s".
+    # Đây là phát biểu về TẬP QUAN SÁT, không phải một đề cử nguyên nhân, nên nó không
+    # biến ca này thành ca phải đề cử.
+
+    inadmissible_claims:
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        Im lặng không phải một quan sát về hệ nguồn. Không event nào, không health nào từ
+        inventory-service nằm trong tập.
+      OBSERVER_MISSED_EVENTS: >-
+        Cũng tương thích với bằng chứng, và cũng không được xác lập bởi nó. Đề cử thế giới
+        này là chọn một trong năm khả năng mà không có gì để chọn.
+      EXECUTION_WILL_NOT_COMPLETE: >-
+        Phản ví dụ nằm ngay trong bộ: SC16 lượt 1 hoàn tất sau 154.5 s im lặng, dài hơn
+        mốc chấm 101 s của ca này. Tại mốc 101 s, "sẽ không hoàn tất" chưa được bằng chứng
+        đỡ — và đó không phải suy đoán, mà là một lượt đã đo trong cùng bộ.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực; RESERVE_INVENTORY là bước tiến còn lại.
+      - >-
+        Thời điểm chấm là lúc harness gọi RCA, đọc từ trường scored_at. Một mốc khác là
+        một ca khác (mục 2) — và với ca này, mốc là biến quan trọng nhất.
+      - >-
+        Không có event nào bị mất giữa DB và artefact: raw_events là toàn bộ những gì
+        observer đã lưu, không phải một lát cắt.
+
+  - <<: *stuck_live
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED]
+      silence_at_scoring_s: 101.052
+      declared_timeout_for_pending_step_s: 5
+      failure_reason: null
+      discriminating_field: KHÔNG CÓ — như lượt 1.

@@ -1,0 +1,72 @@
+# Nhãn oracle bằng chứng — SC29_PAYMENT_NETWORK_PARTITION
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+# Lập luận đối chứng ba kịch bản viết đầy đủ trong oracle/labels/SC27_PAYMENT_PAUSE_RECOVERY.yaml.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC29_PAYMENT_NETWORK_PARTITION.json
+evidence_fixture_sha256: 71e595d0ae88de4f4555b9f157bfd25fdf83c05a3d2eea8e62e92a5f59fa308e
+claims_from: ../claims.yaml
+
+labelling: blind_with_caveat
+labelling_note: >-
+  Viết trước khi đọc rca_* hay anomalies_actual của SC29. Caveat như SC27.
+reviewed_by: null
+
+control_group: [SC27_PAYMENT_PAUSE_RECOVERY, SC28_PAYMENT_SIGSTOP_RECOVERY, SC29_PAYMENT_NETWORK_PARTITION]
+
+cases:
+
+  - &partition
+    id: SC29_PAYMENT_NETWORK_PARTITION
+    run_index: 1
+    scored_at_status: COMPLETED
+    case_kind: silence_then_completion
+
+    true_cause:
+      injected: >-
+        Ngắt payment-service khỏi mọi Docker network của nó, tạo order, chờ 45 s, nối lại,
+        chờ ổn định 20 s rồi chấm. Tiến trình chạy bình thường suốt thời gian đó; chỉ
+        đường mạng mất.
+      note: >-
+        Đây là ca mà "service chết" sai rõ nhất — service không hề chết, nó chỉ không nói
+        chuyện được. Nhưng tập observation của nó giống hệt hai ca kia.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_payment_completed_s: 48.225
+      declared_timeout_for_that_step_s: 10
+      failure_reason: null
+      discriminating_field: KHÔNG CÓ. Không phân biệt được với SC27 và SC28.
+
+    admissible_claims:
+      - STEP_EXCEEDED_DECLARED_TIMEOUT
+      - EXECUTION_COMPLETED_AFTER_SILENCE
+    abstention_required: false
+
+    inadmissible_claims:
+      SOURCE_SERVICE_UNAVAILABLE: >-
+        Ở ca này service vẫn chạy; nó bị cô lập mạng. Một nhãn nói service không sẵn sàng
+        vừa vượt bằng chứng vừa sai sự thật.
+      SOURCE_SERVICE_SELF_RECOVERED: Mạng được nối lại bởi harness.
+      OBSERVER_MISSED_EVENTS: Tương thích, không được xác lập.
+
+    assumptions:
+      - Workflow ORDER_SAGA 1.0 có hiệu lực; timeout 10 s của PROCESS_PAYMENT từ declaration.
+      - >-
+        Không có PAYMENT_STARTED: khoảng tính từ ORDER_CREATED, gồm thời gian nằm chờ
+        trong broker — đặc biệt đáng chú ý ở ca này, vì mất mạng nghĩa là consumer không
+        đọc được, nên phần lớn 48 s gần như chắc chắn nằm ở broker. "Gần như chắc chắn"
+        không phải bằng chứng, nên claim vẫn dừng ở mức khoảng quan sát.
+      - Đồng hồ hai service so sánh được; nguồn timestamp không được lưu (ROADMAP F6).
+
+  - <<: *partition
+    run_index: 2
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_COMPLETED, INVENTORY_RESERVED]
+      gap_before_payment_completed_s: 49.172
+      declared_timeout_for_that_step_s: 10
+      failure_reason: null
+      discriminating_field: KHÔNG CÓ — như lượt 1; 49.172 s > 10 s.

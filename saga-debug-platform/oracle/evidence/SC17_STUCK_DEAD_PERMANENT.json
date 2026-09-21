@@ -1,0 +1,195 @@
+{
+ "source_artifact": "results/evaluation_report_settled_20260921.json",
+ "source_sha256": "64eb56527dbdffce97a0e2198ac9f5dc0442894bd065124b92aa690c980b4368",
+ "scope": "SC17_STUCK_DEAD_PERMANENT stored observations. source_state is oracle-only and MUST NOT be passed to the observer. No stored diagnosis is an input.",
+ "raw_runs": [
+  {
+   "scenario_id": "SC17_STUCK_DEAD_PERMANENT",
+   "run_index": 1,
+   "execution_id": "default::2676d4e1-677a-483d-a983-73cf1c6ec173",
+   "raw_events": [
+    {
+     "eventId": "890dec24-af28-4e66-b0fa-cb15d006b9d8",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 70.0, \"sagaId\": \"2676d4e1-677a-483d-a983-73cf1c6ec173\", \"spanId\": \"2deb154f4c186437\", \"eventId\": \"890dec24-af28-4e66-b0fa-cb15d006b9d8\", \"orderId\": \"1239b571-ea72-489e-89ec-77791119a0d0\", \"traceId\": \"eedec0b836645df54c19ab5153709896\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789991743.650483540, \"customerId\": \"eval-17\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T11:55:43.650Z",
+     "receivedAt": "2026-09-21T11:55:43.655083Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "eedec0b836645df54c19ab5153709896",
+     "spanId": "2deb154f4c186437",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-2-25"
+    },
+    {
+     "eventId": "99a6bdd5-7f0a-424c-b7f7-4981f7742105",
+     "eventType": "PAYMENT_COMPLETED",
+     "payload": "{\"amount\": 70.0, \"sagaId\": \"2676d4e1-677a-483d-a983-73cf1c6ec173\", \"spanId\": \"a9b53254e2821b69\", \"eventId\": \"99a6bdd5-7f0a-424c-b7f7-4981f7742105\", \"orderId\": \"1239b571-ea72-489e-89ec-77791119a0d0\", \"traceId\": \"eedec0b836645df54c19ab5153709896\", \"quantity\": 1, \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_COMPLETED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789991743.670485344, \"causationId\": \"890dec24-af28-4e66-b0fa-cb15d006b9d8\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"2deb154f4c186437\"}",
+     "timestamp": "2026-09-21T11:55:43.670Z",
+     "receivedAt": "2026-09-21T11:55:43.676246Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "eedec0b836645df54c19ab5153709896",
+     "spanId": "a9b53254e2821b69",
+     "parentSpanId": "2deb154f4c186437",
+     "causationId": "890dec24-af28-4e66-b0fa-cb15d006b9d8",
+     "transportRef": "payment-completed-2-14"
+    }
+   ],
+   "source_state": {
+    "sampled_at": "2026-09-21T11:58:49.745904+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "-1.0%",
+      "slowCallRate": "-1.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 0,
+      "failedCalls": 0,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "-1.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "-1.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 0,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 0,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:48:17.681611401Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:48:27.681703683Z[Etc/UTC]",
+      "stateTransition": "OPEN_TO_HALF_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:55:43.681407335Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_CLOSED"
+     }
+    ],
+    "unavailable": {}
+   }
+  },
+  {
+   "scenario_id": "SC17_STUCK_DEAD_PERMANENT",
+   "run_index": 2,
+   "execution_id": "default::f61b0645-47a6-44e1-8764-2f15bd152a89",
+   "raw_events": [
+    {
+     "eventId": "aaf83d6f-b41a-4e73-8c3f-29689b2cbc23",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 70.0, \"sagaId\": \"f61b0645-47a6-44e1-8764-2f15bd152a89\", \"spanId\": \"eef8523c2be53d87\", \"eventId\": \"aaf83d6f-b41a-4e73-8c3f-29689b2cbc23\", \"orderId\": \"ec8785e1-f303-46ab-a576-95527ed987d9\", \"traceId\": \"41f14b0bdaf250e0760020b71bbf8983\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789991969.276804514, \"customerId\": \"eval-17\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T11:59:29.277Z",
+     "receivedAt": "2026-09-21T11:59:29.288538Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "41f14b0bdaf250e0760020b71bbf8983",
+     "spanId": "eef8523c2be53d87",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-2-26"
+    },
+    {
+     "eventId": "d0a6f2f7-99aa-4d70-af7d-2d1de710a617",
+     "eventType": "PAYMENT_COMPLETED",
+     "payload": "{\"amount\": 70.0, \"sagaId\": \"f61b0645-47a6-44e1-8764-2f15bd152a89\", \"spanId\": \"95511daefd97750a\", \"eventId\": \"d0a6f2f7-99aa-4d70-af7d-2d1de710a617\", \"orderId\": \"ec8785e1-f303-46ab-a576-95527ed987d9\", \"traceId\": \"41f14b0bdaf250e0760020b71bbf8983\", \"quantity\": 1, \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_COMPLETED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789991969.454589108, \"causationId\": \"aaf83d6f-b41a-4e73-8c3f-29689b2cbc23\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"eef8523c2be53d87\"}",
+     "timestamp": "2026-09-21T11:59:29.455Z",
+     "receivedAt": "2026-09-21T11:59:29.464469Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "41f14b0bdaf250e0760020b71bbf8983",
+     "spanId": "95511daefd97750a",
+     "parentSpanId": "eef8523c2be53d87",
+     "causationId": "aaf83d6f-b41a-4e73-8c3f-29689b2cbc23",
+     "transportRef": "payment-completed-2-15"
+    }
+   ],
+   "source_state": {
+    "sampled_at": "2026-09-21T12:02:35.417435+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "-1.0%",
+      "slowCallRate": "-1.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 1,
+      "failedCalls": 0,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "-1.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "-1.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 1,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 0,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:48:17.681611401Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:48:27.681703683Z[Etc/UTC]",
+      "stateTransition": "OPEN_TO_HALF_OPEN"
+     },
+     {
+      "circuitBreakerName": "paymentProcessing",
+      "type": "STATE_TRANSITION",
+      "creationTime": "2026-09-21T11:55:43.681407335Z[Etc/UTC]",
+      "stateTransition": "HALF_OPEN_TO_CLOSED"
+     }
+    ],
+    "unavailable": {}
+   }
+  }
+ ]
+}

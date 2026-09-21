@@ -1,0 +1,157 @@
+{
+ "source_artifact": "results/evaluation_report_settled_20260921.json",
+ "source_sha256": "64eb56527dbdffce97a0e2198ac9f5dc0442894bd065124b92aa690c980b4368",
+ "scope": "SC03_STUCK_LIVE stored observations. source_state is oracle-only and MUST NOT be passed to the observer. No stored diagnosis is an input.",
+ "raw_runs": [
+  {
+   "scenario_id": "SC03_STUCK_LIVE",
+   "run_index": 1,
+   "execution_id": "default::8a9e47a8-3c60-469a-ae1a-9c2db665aa43",
+   "raw_events": [
+    {
+     "eventId": "e553d8ef-b732-42d4-ad4c-1be02cb4f579",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"8a9e47a8-3c60-469a-ae1a-9c2db665aa43\", \"spanId\": \"1461fb5a0d58d11e\", \"eventId\": \"e553d8ef-b732-42d4-ad4c-1be02cb4f579\", \"orderId\": \"72494d24-bcc4-479f-b9a3-2a011f315c76\", \"traceId\": \"9ddadbe3a795403519358c0341d0a25c\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789990675.803151946, \"customerId\": \"eval-03\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T11:37:55.803Z",
+     "receivedAt": "2026-09-21T11:37:55.808499Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "9ddadbe3a795403519358c0341d0a25c",
+     "spanId": "1461fb5a0d58d11e",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-1-13"
+    },
+    {
+     "eventId": "22e1cc2d-5f29-4c06-b6a0-5ebb45d556b8",
+     "eventType": "PAYMENT_COMPLETED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"8a9e47a8-3c60-469a-ae1a-9c2db665aa43\", \"spanId\": \"31917048392e3310\", \"eventId\": \"22e1cc2d-5f29-4c06-b6a0-5ebb45d556b8\", \"orderId\": \"72494d24-bcc4-479f-b9a3-2a011f315c76\", \"traceId\": \"9ddadbe3a795403519358c0341d0a25c\", \"quantity\": 1, \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_COMPLETED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789990675.818853507, \"causationId\": \"e553d8ef-b732-42d4-ad4c-1be02cb4f579\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"1461fb5a0d58d11e\"}",
+     "timestamp": "2026-09-21T11:37:55.819Z",
+     "receivedAt": "2026-09-21T11:37:55.828123Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "9ddadbe3a795403519358c0341d0a25c",
+     "spanId": "31917048392e3310",
+     "parentSpanId": "1461fb5a0d58d11e",
+     "causationId": "e553d8ef-b732-42d4-ad4c-1be02cb4f579",
+     "transportRef": "payment-completed-1-11"
+    }
+   ],
+   "source_state": {
+    "sampled_at": "2026-09-21T11:39:36.917034+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "0.0%",
+      "slowCallRate": "0.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 10,
+      "failedCalls": 0,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "0.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "0.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 10,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 0,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [],
+    "unavailable": {}
+   }
+  },
+  {
+   "scenario_id": "SC03_STUCK_LIVE",
+   "run_index": 2,
+   "execution_id": "default::cdf3dd54-aa00-4a49-a1d3-b821748cf258",
+   "raw_events": [
+    {
+     "eventId": "e27202b3-4c9a-47e1-aefd-2b0bcf2cb939",
+     "eventType": "ORDER_CREATED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"cdf3dd54-aa00-4a49-a1d3-b821748cf258\", \"spanId\": \"48d27808ef1daf93\", \"eventId\": \"e27202b3-4c9a-47e1-aefd-2b0bcf2cb939\", \"orderId\": \"3c934b6f-a7e8-4cc5-a048-9552e6a1b8a7\", \"traceId\": \"dcb491cad5f451e36a9b6d460153628e\", \"quantity\": 1, \"stepName\": \"CREATE_ORDER\", \"eventType\": \"ORDER_CREATED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789990818.639748821, \"customerId\": \"eval-03\", \"serviceName\": \"order-service\"}",
+     "timestamp": "2026-09-21T11:40:18.640Z",
+     "receivedAt": "2026-09-21T11:40:18.644893Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "order-service",
+     "stepName": "CREATE_ORDER",
+     "traceId": "dcb491cad5f451e36a9b6d460153628e",
+     "spanId": "48d27808ef1daf93",
+     "parentSpanId": null,
+     "causationId": null,
+     "transportRef": "order-created-0-21"
+    },
+    {
+     "eventId": "7f68f137-a63a-408e-9b89-ebe9e87d47c2",
+     "eventType": "PAYMENT_COMPLETED",
+     "payload": "{\"amount\": 50.0, \"sagaId\": \"cdf3dd54-aa00-4a49-a1d3-b821748cf258\", \"spanId\": \"a30ce1a71deb288c\", \"eventId\": \"7f68f137-a63a-408e-9b89-ebe9e87d47c2\", \"orderId\": \"3c934b6f-a7e8-4cc5-a048-9552e6a1b8a7\", \"traceId\": \"dcb491cad5f451e36a9b6d460153628e\", \"quantity\": 1, \"stepName\": \"PROCESS_PAYMENT\", \"eventType\": \"PAYMENT_COMPLETED\", \"productId\": \"PRODUCT-1\", \"timestamp\": 1789990818.663954650, \"causationId\": \"e27202b3-4c9a-47e1-aefd-2b0bcf2cb939\", \"serviceName\": \"payment-service\", \"parentSpanId\": \"48d27808ef1daf93\"}",
+     "timestamp": "2026-09-21T11:40:18.664Z",
+     "receivedAt": "2026-09-21T11:40:18.672246Z",
+     "correlationBasis": "DECLARED_KEY",
+     "sourceName": "default",
+     "serviceName": "payment-service",
+     "stepName": "PROCESS_PAYMENT",
+     "traceId": "dcb491cad5f451e36a9b6d460153628e",
+     "spanId": "a30ce1a71deb288c",
+     "parentSpanId": "48d27808ef1daf93",
+     "causationId": "e27202b3-4c9a-47e1-aefd-2b0bcf2cb939",
+     "transportRef": "payment-completed-0-19"
+    }
+   ],
+   "source_state": {
+    "sampled_at": "2026-09-21T11:41:59.715950+00:00",
+    "breaker_snapshot": {
+     "paymentProcessing": {
+      "failureRate": "0.0%",
+      "slowCallRate": "0.0%",
+      "failureRateThreshold": "50.0%",
+      "slowCallRateThreshold": "100.0%",
+      "bufferedCalls": 10,
+      "failedCalls": 0,
+      "slowCalls": 0,
+      "slowFailedCalls": 0,
+      "notPermittedCalls": 0,
+      "state": "CLOSED"
+     }
+    },
+    "breaker_health": {
+     "paymentProcessing": {
+      "status": "UP",
+      "details": {
+       "failureRate": "0.0%",
+       "failureRateThreshold": "50.0%",
+       "slowCallRate": "0.0%",
+       "slowCallRateThreshold": "100.0%",
+       "bufferedCalls": 10,
+       "slowCalls": 0,
+       "slowFailedCalls": 0,
+       "failedCalls": 0,
+       "notPermittedCalls": 0,
+       "state": "CLOSED"
+      }
+     }
+    },
+    "breaker_transitions": [],
+    "unavailable": {}
+   }
+  }
+ ]
+}

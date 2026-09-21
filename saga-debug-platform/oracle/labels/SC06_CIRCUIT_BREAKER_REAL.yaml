@@ -1,0 +1,186 @@
+# Nhãn oracle bằng chứng — SC06_CIRCUIT_BREAKER_REAL (lượt chạy 2026-09-21T11:47Z)
+#
+# Đọc docs/ORACLE.md trước. Từ vựng claim: oracle/claims.yaml.
+#
+# ⚠️ KHÔNG phải bản thay thế của oracle/sc06.yaml. File kia khóa vào artefact 06:53Z và
+# phục vụ phép so trước/sau F4 trên cùng tập observation (oracle/REPLAY.txt). File này
+# khóa vào CHUỖI KHÁC, chạy lúc 11:47Z trong bộ 27 lượt. Nhãn gắn với tập quan sát đã
+# ghi lại, không gắn với số hiệu lượt, nên hai chuỗi cần hai bộ nhãn.
+
+version: 1
+locked_at: "2026-09-21"
+locked_from: results/evaluation_report_settled_20260921.json
+evidence_fixture: ../evidence/SC06_CIRCUIT_BREAKER_REAL.json
+evidence_fixture_sha256: 539f9d7c047fee5e0869d49df21a072440f9db7e49fa2ed7e9c2f561fbfde037
+claims_from: ../claims.yaml
+supersedes: null
+related: oracle/sc06.yaml
+
+labelling: retrospective
+labelling_note: >-
+  KHÔNG mù, và mù kém nhất trong cả bộ: người dán nhãn đã đọc output SC06 của chuỗi 06:53
+  và đã viết oracle/sc06.yaml trước đó. Ghi đúng như vậy.
+reviewed_by: null
+
+# ── Ba lượt là MỘT CHUỖI CÓ TRẠNG THÁI, không phải ba mẫu ─────────────────────
+#
+# Cửa sổ trượt của breaker cộng dồn qua các lượt, nên đảo thứ tự sẽ cho ba nhãn khác.
+# Mốc thời gian tuyệt đối của chuỗi này (tính từ scored_at trừ đi khoảng im lặng đã ghi):
+#
+#   lượt 1  11:46:37.8 -> 11:46:45.0   breaker CLOSED suốt lượt
+#   lượt 2  11:47:26.3 -> 11:47:33.4   CLOSED_TO_OPEN lúc 11:47:26.387
+#   lượt 3  11:48:14.7 -> 11:48:21.7   HALF_OPEN_TO_OPEN lúc 11:48:17.682
+#
+# Hai transition đó khớp tới từng mili-giây với chính các quan sát retry, nên trạng thái
+# breaker ở đây được xác minh chứ không suy đoán:
+#   lượt 2: CLOSED_TO_OPEN 11:47:26.387 trùng retry lần 1 (11:47:26.388) -> lời gọi đầu
+#           làm breaker mở, hai retry sau bị từ chối.
+#   lượt 3: HALF_OPEN_TO_OPEN 11:48:17.682 trùng retry lần 3 (11:48:17.682) -> ba lời gọi
+#           trong HALF_OPEN đều hỏng vì gateway, lời gọi thứ tư mới bị từ chối.
+#
+# Chuỗi này LẶP LẠI được hình mẫu của chuỗi 06:53: lượt 1 breaker đóng, lượt 2 và 3 có
+# lời gọi bị từ chối. Hai chuỗi độc lập trong cùng một ngày, cùng một hình mẫu.
+
+# ── Giới hạn của kênh ground truth, phát hiện khi dán nhãn ────────────────────
+#
+# `breaker_transitions` đọc từ /actuator/circuitbreakerevents, mà Resilience4j giữ trong
+# một vòng đệm `eventConsumerBufferSize: 10` DÙNG CHUNG cho mọi loại event (success,
+# error, not_permitted, state_transition). Bằng chứng cho tính mất mát nằm ngay trong
+# artefact: danh sách của lượt 3 KHÔNG còn CLOSED_TO_OPEN lúc 11:47:26 mà danh sách của
+# lượt 2 có. Nên một danh sách transition rỗng hay ngắn KHÔNG chứng minh là không có
+# transition nào — nó chỉ chứng minh không có transition nào còn lại trong vòng đệm.
+# Ở lượt 1 kết luận "breaker đóng" đứng được vì có nguồn thứ hai độc lập với vòng đệm:
+# snapshot lúc lấy mẫu là CLOSED với notPermittedCalls = 0.
+source_state_caveat: lossy_ring_buffer
+
+cases:
+
+  - id: SC06_CIRCUIT_BREAKER_REAL
+    run_index: 1
+    scored_at_status: FAILED
+
+    true_cause:
+      injected: payment-service failMode — mọi lời gọi ném lỗi
+      breaker_state_during_run: CLOSED
+      evidence_for_true_cause: >-
+        source_state lúc lấy mẫu: state CLOSED, bufferedCalls 10, failedCalls 4,
+        failureRate 40 % (dưới ngưỡng 50 %), notPermittedCalls 0, transitions rỗng.
+        Transition đầu tiên của cả chuỗi là CLOSED_TO_OPEN lúc 11:47:26, tức 41 s SAU khi
+        lượt này kết thúc. Breaker đóng suốt lượt.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_FAILED]
+      retry_exceptions:
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+      failure_reason: "Circuit breaker / retry exhausted: Payment gateway unavailable (simulated failure)"
+      discriminating_field: >-
+        Hậu tố của reason, và trường lastException của từng retry. Tiền tố "Circuit breaker
+        / retry exhausted: " là hằng số fallback ghi ở MỌI lần cạn retry, nên nó không
+        phân biệt được gì. Ở lượt này cả bốn quan sát đều báo lỗi gateway; không quan sát
+        nào báo trạng thái breaker.
+
+    admissible_claims: [STEP_FAILED_AFTER_RETRY_EXHAUSTION]
+    abstention_required: false
+    inadmissible_claims:
+      CALL_REJECTED_BY_BREAKER: >-
+        Không quan sát nào báo breaker từ chối, và trên thực tế breaker đang đóng. Khẳng
+        định điều đó vừa vượt bằng chứng vừa trái sự thật.
+      TIMEOUT_DRIVEN_RETRY_BURST: Các quan sát retry báo lỗi gateway, không báo timeout.
+
+    assumptions:
+      - Payload tới observer còn nguyên chuỗi reason của hệ nguồn.
+      - >-
+        Số PAYMENT_RETRY được đối chiếu với retry policy đã khai (maxAttempts 4 = 1 lần
+        gọi + 3 retry). Lưu ý ngưỡng detector và policy được chỉnh cho khớp nhau (khối
+        CAUTION trong payment-service application.yml), nên RETRY_BURST fire không phải
+        bằng chứng độc lập rằng hành vi retry bất thường.
+
+  - id: SC06_CIRCUIT_BREAKER_REAL
+    run_index: 2
+    scored_at_status: FAILED
+
+    true_cause:
+      injected: payment-service failMode — mọi lời gọi ném lỗi
+      breaker_state_during_run: CLOSED_ROI_OPEN
+      evidence_for_true_cause: >-
+        CLOSED_TO_OPEN lúc 11:47:26.387, trùng mili-giây với retry lần 1 lúc 11:47:26.388:
+        lời gọi đầu của lượt này đẩy failure rate qua ngưỡng và làm breaker mở. Hai retry
+        sau rơi vào breaker đang mở. OPEN_TO_HALF_OPEN lúc 11:47:36.388, sau khi lượt kết thúc.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_FAILED]
+      retry_exceptions:
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+        - "CallNotPermittedException: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls"
+        - "CallNotPermittedException: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls"
+      failure_reason: "Circuit breaker / retry exhausted: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls"
+      discriminating_field: >-
+        Hậu tố mang chính thông điệp CallNotPermittedException của Resilience4j — hệ nguồn
+        báo trạng thái breaker của nó, không phải một nhãn observer tự đặt. Ở lượt này
+        bằng chứng xuất hiện ở CẢ quan sát retry lẫn event thất bại.
+
+    admissible_claims:
+      - STEP_FAILED_AFTER_RETRY_EXHAUSTION
+      - CALL_REJECTED_BY_BREAKER
+    abstention_required: false
+    inadmissible_claims:
+      TIMEOUT_DRIVEN_RETRY_BURST: Các quan sát retry báo lỗi gateway hoặc breaker từ chối, không báo timeout.
+
+    assumptions:
+      - Payload tới observer còn nguyên chuỗi reason của hệ nguồn.
+      - >-
+        Nhận ra thông điệp này là một khai báo phụ thuộc nguồn, không phải ngữ nghĩa lõi:
+        cách diễn đạt thuộc về một thư viện Java cụ thể; hệ Go hay .NET sẽ nói khác, nên
+        core không được biết trước (I7). Khai báo tương ứng:
+        declarations/failure-signals/demo-order-saga.yaml.
+
+  - id: SC06_CIRCUIT_BREAKER_REAL
+    run_index: 3
+    scored_at_status: FAILED
+
+    true_cause:
+      injected: payment-service failMode — mọi lời gọi ném lỗi
+      breaker_state_during_run: HALF_OPEN_ROI_OPEN
+      evidence_for_true_cause: >-
+        Lượt bắt đầu trong HALF_OPEN (OPEN_TO_HALF_OPEN 11:47:36.388). Ba lời gọi được
+        phép đều hỏng vì gateway; HALF_OPEN_TO_OPEN lúc 11:48:17.682 trùng mili-giây với
+        retry lần 3. Lời gọi thứ tư bị từ chối, và đó là cái vào reason của PAYMENT_FAILED.
+
+    available_evidence:
+      events: [ORDER_CREATED, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_RETRY, PAYMENT_FAILED]
+      retry_exceptions:
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+        - "RuntimeException: Payment gateway unavailable (simulated failure)"
+      failure_reason: "Circuit breaker / retry exhausted: CircuitBreaker 'paymentProcessing' is OPEN and does not permit further calls"
+      discriminating_field: >-
+        CHỈ hậu tố của event thất bại báo breaker từ chối; cả ba quan sát retry đều báo
+        lỗi gateway. Lượt này là chỗ khác biệt giữa "breaker đã từ chối lời gọi này" và
+        "breaker là lý do bước này hỏng" hiện ra ngay trong bằng chứng: ba trong bốn lần
+        thử hỏng vì gateway, breaker chỉ chặn lần cuối.
+
+    admissible_claims:
+      - STEP_FAILED_AFTER_RETRY_EXHAUSTION
+      - CALL_REJECTED_BY_BREAKER
+    abstention_required: false
+    admissible_note: >-
+      CALL_REJECTED_BY_BREAKER được phép ở mức của chính nó — "lời gọi ấy bị từ chối" —
+      và không hơn. Một giải thích nói breaker là nguyên nhân bước hỏng sẽ mâu thuẫn với
+      ba quan sát retry nằm ngay trong cùng tập.
+    inadmissible_claims:
+      TIMEOUT_DRIVEN_RETRY_BURST: Các quan sát retry báo lỗi gateway, không báo timeout.
+
+    assumptions:
+      - Payload tới observer còn nguyên chuỗi reason của hệ nguồn.
+      - Nhận diện thông điệp là khai báo phụ thuộc nguồn (I7), như lượt 2.
+
+# ── Chất lượng lập luận, chấm tách khỏi kết luận ──────────────────────────────
+#
+# Để trống có chủ ý. Khuyết tật ambiguous-signature của R01 được ghi trên artefact 06:53
+# (oracle/sc06.yaml) và đã là mục tiêu của F4. Build sinh ra artefact 11:47 là build SAU
+# F4, nên khuyết tật cũ KHÔNG được chép sang đây như thể vẫn còn. Muốn khẳng định nó đã
+# hết thì phải đọc giải thích mới của ba lượt này rồi ghi kết quả, không suy từ việc F4
+# đã merge.
+reasoning_defects: []
