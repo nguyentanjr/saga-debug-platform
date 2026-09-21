@@ -16,6 +16,23 @@ labelling_note: >-
   biết số tổng của cả bộ và biết SC02 không nằm trong 5 lượt đổi kết quả.
 reviewed_by: null
 
+amendments:
+  - at: "2026-09-21"
+    after_commit: 16382e2
+    after_reading_platform_output: true
+    change: Thêm FORWARD_STEP_FAILED vào admissible_claims của cả 5 lượt.
+    why: >-
+      Bản gốc chỉ có STEP_REJECTED_WITH_SOURCE_REASON và COMPENSATION_COMPLETED_AS_DECLARED.
+      Platform ra FORWARD_STEP_FAILURE (R11), mà R11 kết luận từ trạng thái COMPENSATED
+      cộng chuỗi bù trừ đã hoàn tất — nó KHÔNG đọc trường lý do. Không có claim nào ứng
+      với đúng mức đó, nên 5 lượt sẽ rơi vào UNSCORED: lỗ hổng của oracle, không phải lỗi
+      của platform.
+    why_this_is_not_bending_the_standard: >-
+      Claim thêm vào YẾU HƠN claim đã có trong tập (nó không đòi lý do do hệ nguồn nêu),
+      không mục nào bị gỡ khỏi inadmissible_claims, và tập inadmissible giữ nguyên. Nếu
+      muốn kiểm: bỏ FORWARD_STEP_FAILED đi thì 5 lượt thành UNSCORED, không lượt nào
+      thành "kết luận đúng" hay "không được bảo đảm" khác đi.
+
 cases:
 
   - &compensated
@@ -46,6 +63,7 @@ cases:
     admissible_claims:
       - STEP_REJECTED_WITH_SOURCE_REASON
       - COMPENSATION_COMPLETED_AS_DECLARED
+      - FORWARD_STEP_FAILED        # thêm sau, xem khối `amendments` ở đầu file
     abstention_required: false
     admissible_note: >-
       Bằng chứng đỡ được tới mức: "RESERVE_INVENTORY thất bại với lý do hệ nguồn tự nêu,

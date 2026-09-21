@@ -8,11 +8,26 @@
 # định claim này. Thiếu nó thì việc chấm đang so một claim với một nhãn, rồi gọi chỗ lệch
 # là lỗi của platform, trong khi đó là lỗi của phép so.
 #
-# ⚠️ TRẠNG THÁI: `platform_labels` đang rỗng ở mọi claim. Đó là CỐ Ý và có ghi ngày:
-# toàn bộ `admissible_claims` trong oracle/labels/ được viết TRƯỚC khi đọc tên nhãn của
-# platform, để lập luận không bị uốn theo tập nhãn sẵn có (docs/ORACLE.md mục 5.1 bước 1).
-# Lịch sử git là bằng chứng cho thứ tự đó. Nhãn nào chưa map sẽ bị chấm UNSCORED —
-# thiếu sót của oracle, không tính cho platform.
+# THỨ TỰ LÀM VIỆC, có trong lịch sử git: toàn bộ `admissible_claims` trong oracle/labels/
+# được viết và commit (16382e2) TRƯỚC khi đọc tên nhãn của platform. `platform_labels`
+# dưới đây điền sau, ở commit riêng. Nhãn nào không map sẽ bị chấm UNSCORED — thiếu sót
+# của oracle, không tính cho platform.
+#
+# ── HAI CÁCH ĐỌC MỘT NHÃN, KHÔNG GỘP ──────────────────────────────────
+#
+# `platform_labels`  -- nhãn mà NỘI DUNG luật viện dẫn khẳng định đúng claim này.
+# `name_asserts`     -- nhãn mà TÊN của nó khẳng định claim này, sâu hơn phần bằng chứng
+#                       luật đó trích dẫn.
+#
+# Một nhãn nằm ở cả hai chỗ là một nhãn nói nhiều hơn nó chứng minh. DOWNSTREAM_TIMEOUT
+# là ca đó: bằng chứng R07 trích dẫn là "bước X mất 72184 ms, ngưỡng khai báo 5000 ms" —
+# một phép so hai mốc thời gian với một ngưỡng, đúng mức observation. Nhưng cái tên quy
+# độ trễ ấy cho "downstream", và suggestion đầu tiên là "Check downstream service
+# performance". Ở SC29 hệ nguồn không hề chậm: nó chạy bình thường và bị cắt mạng.
+#
+# Người dán nhãn KHÔNG tự chọn một trong hai cách đọc, vì chọn cách nào cũng là tự quyết
+# một con số có lợi hay bất lợi cho hệ mình đang chấm. score.py in CẢ HAI, cạnh nhau,
+# không gộp — cùng nguyên tắc với hai oracle.
 
 version: 1
 locked_at: "2026-09-21"
@@ -45,7 +60,7 @@ claims:
       - vì sao im lặng
       - rằng hệ nguồn không phát event (khác với observer không nhận được)
       - rằng execution sẽ không hoàn tất
-    platform_labels: []
+    platform_labels: [STUCK_UNKNOWN_CAUSE]   # R21
 
   STEP_EXCEEDED_DECLARED_TIMEOUT:
     level: observation
@@ -62,7 +77,9 @@ claims:
       - rằng service của bước S chạy chậm
       - phần nào của khoảng đó nằm ở broker, ở consumer, hay ở service
       - vì sao khoảng đó dài
-    platform_labels: []
+    platform_labels: [DOWNSTREAM_TIMEOUT]    # R07, theo bằng chứng luật viện dẫn
+    # Cùng nhãn này còn nằm ở `name_asserts` của SOURCE_SERVICE_UNAVAILABLE, vì cái
+    # tên quy độ trễ cho downstream. Xem khối HAI CÁCH ĐỌC MỘT NHÃN ở đầu file.
 
   # ── Mức trạng thái execution ────────────────────────────────────────────────
 
@@ -72,7 +89,7 @@ claims:
       Mọi bước tiến đã khai báo đều có event completed, đúng thứ tự transition đã khai,
       và execution đạt trạng thái kết thúc thành công.
     rests_on: Tập observation đối chiếu với steps và transitions của workflow declaration.
-    platform_labels: []
+    platform_labels: []   # Platform trả NO_DIAGNOSIS_NEEDED, không đề cử nhãn nào.
 
   COMPENSATION_COMPLETED_AS_DECLARED:
     level: execution-state
@@ -96,7 +113,7 @@ claims:
       - rằng hệ nguồn tự hồi phục
       - rằng có can thiệp từ bên ngoài
       - rằng khoảng im lặng là do hệ nguồn chứ không do đường truyền
-    platform_labels: []
+    platform_labels: [RECOVERED_AFTER_SILENCE]   # R06 sau F5
 
   # ── Mức cơ chế ──────────────────────────────────────────────────────────────
 
@@ -114,6 +131,9 @@ claims:
       - rằng lý do hệ nguồn nêu là đúng
       - phân loại lỗi nghiệp vụ hay lỗi hạ tầng, nếu không có khai báo cho nguồn đó
     platform_labels: []
+    # FORWARD_STEP_FAILURE KHÔNG map vào đây: R11 kết luận từ việc saga ở COMPENSATED
+    # và chuỗi bù trừ đã chạy xong, nó không đọc trường lý do. Cho nó ăn claim này là
+    # ghi công cho một bằng chứng luật ấy không hề viện dẫn. Xem FORWARD_STEP_FAILED.
 
   STEP_FAILED_AFTER_RETRY_EXHAUSTION:
     level: mechanism
@@ -126,7 +146,7 @@ claims:
     # CẢNH BÁO độc lập: retry-burst-threshold của detector và maxAttempts của
     # payment-service được chỉnh cho khớp nhau (xem khối CAUTION trong application.yml),
     # nên RETRY_BURST fire KHÔNG phải bằng chứng độc lập rằng hành vi retry bất thường.
-    platform_labels: []
+    platform_labels: [RETRY_EXHAUSTED]   # R23, khớp khai báo failure-signal của nguồn
 
   CALL_REJECTED_BY_BREAKER:
     level: mechanism
@@ -143,7 +163,12 @@ claims:
       - vì sao breaker mở
       - rằng breaker là nguyên nhân sâu nhất của thất bại
       - trạng thái chính xác của breaker (OPEN hay HALF_OPEN) tại từng lời gọi
-    platform_labels: []
+    platform_labels: [CIRCUIT_BREAKER_OPEN]   # R01 sau F4
+    platform_labels_note: >-
+      Tên nhãn nói "breaker đang mở", claim nói "lời gọi này bị từ chối". Ở SC06 hai
+      thứ trùng nhau vì hệ nguồn báo đúng trạng thái OPEN trong thông điệp. Một nguồn
+      báo HALF_OPEN từ chối thì cái tên sẽ sai trong khi claim vẫn đúng — ghi lại để
+      không nhầm rằng phép map này là hiển nhiên.
 
   TIMEOUT_DRIVEN_RETRY_BURST:
     level: mechanism
@@ -151,7 +176,32 @@ claims:
     rests_on: >-
       RcaService.ruleTimeoutRetryStorm đòi RETRY_BURST cộng với bằng chứng timeout trong
       các event retry đã khai báo mới cho STRONG. Cạn retry một mình là không đủ.
-    platform_labels: []
+    platform_labels: [TIMEOUT_RETRY_STORM]   # R02
+
+  # ── BỔ SUNG SAU KHI ĐÃ ĐỌC TẬP NHÃN CỦA PLATFORM ───────────────────────
+  #
+  # Thêm ngày 2026-09-21, SAU commit 16382e2, để lấp một lỗ hổng của oracle chứ không
+  # phải để đổi chuẩn: SC02 ra FORWARD_STEP_FAILURE, mà từ vựng ban đầu không có claim
+  # nào ứng với nó, nên năm lượt sẽ rơi vào UNSCORED.
+  #
+  # Ba điều kiện tự đặt ra cho một claim thêm sau, để việc thêm không thành việc uốn
+  # tiêu chuẩn theo hành vi của hệ: (1) nó yếu hơn một claim đã nằm sẵn trong
+  # admissible_claims của ca đó; (2) nó không gỡ bất kỳ mục nào khỏi inadmissible_claims;
+  # (3) việc thêm được ghi ngày và lý do ngay tại đây. Cả ba đều thỏa.
+  FORWARD_STEP_FAILED:
+    level: execution-state
+    added_after_reading_platform_vocabulary: true
+    added_at: "2026-09-21"
+    statement: >-
+      Một bước tiến đã thất bại, và chuỗi bù trừ đã khai báo chạy xong sau đó.
+    rests_on: >-
+      Trạng thái COMPENSATED cộng với event started/completed của compensation step. Đây
+      là đúng những gì R11 viện dẫn — nó không đọc lý do thất bại.
+    does_not_establish:
+      - bước nào thất bại, nếu không đọc event failed
+      - vì sao bước đó thất bại
+      - rằng thất bại là lỗi hạ tầng hay kết quả nghiệp vụ đúng
+    platform_labels: [FORWARD_STEP_FAILURE]   # R11
 
   # ── Mức nguyên nhân: định nghĩa để PHÁT BIỂU ĐƯỢC tính bất khả thụ ──────────
   #
@@ -165,7 +215,8 @@ claims:
     rests_on: >-
       Cần một quan sát về chính hệ nguồn — health, heartbeat, hoặc event do nó phát ra
       trong khoảng đó. Im lặng không phải quan sát về hệ nguồn.
-    platform_labels: []
+    platform_labels: [SERVICE_CRASH]         # R05 — tên khẳng định hệ nguồn chết
+    name_asserts: [DOWNSTREAM_TIMEOUT]       # R07 — tên quy độ trễ cho downstream
 
   SOURCE_SERVICE_SELF_RECOVERED:
     level: cause
@@ -174,6 +225,10 @@ claims:
       Cần phân biệt được với khởi động lại bằng tay và với event tới muộn. Tập observation
       trong bộ này không phân biệt được — xem EXECUTION_COMPLETED_AFTER_SILENCE.
     platform_labels: []
+    retired_platform_labels: [TRANSIENT_SERVICE_FAILURE]
+    # F5 đã bỏ nhãn này khỏi R06. Giữ tên ở đây để chấm được artefact cũ: một artefact
+    # trước F5 mang TRANSIENT_SERVICE_FAILURE phải chấm là kết luận không được bảo đảm,
+    # chứ không phải UNSCORED vì "nhãn lạ".
 
   OBSERVER_MISSED_EVENTS:
     level: cause
@@ -181,7 +236,7 @@ claims:
     rests_on: >-
       Cần đối chiếu với chính hệ nguồn (outbox, offset, log của producer). Im lặng đồng
       thời tương thích với thế giới này VÀ với thế giới hệ nguồn không phát gì cả.
-    platform_labels: []
+    platform_labels: [OBSERVABILITY_GAP]   # R20
 
   EXECUTION_WILL_NOT_COMPLETE:
     level: prediction
