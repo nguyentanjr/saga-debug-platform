@@ -268,6 +268,7 @@ public class CorrelationService {
         sagaEvent.setStepName(observation.stepName());
         sagaEvent.setServiceName(observation.serviceName());
         sagaEvent.setTimestamp(observation.eventTime());
+        sagaEvent.setEventTimeSource(observation.eventTimeSource());
         sagaEvent.setPayload(observation.payload());
         sagaEvent.setReceivedAt(observation.receivedAt());
         sagaEvent.setCausationId(observation.causationId());

@@ -1,5 +1,6 @@
 package com.example.correlation.messaging;
 
+import com.example.correlation.domain.EventTimeSource;
 import com.example.saga.events.OrderCreatedEvent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,7 +45,7 @@ class EventTimeResolverTest {
 
         EventTimeResolver.Resolved resolved = resolver.resolve(payload, TRANSPORT);
 
-        assertThat(resolved.source()).isEqualTo(EventTimeResolver.Source.PAYLOAD);
+        assertThat(resolved.source()).isEqualTo(EventTimeSource.DECLARED);
         assertThat(resolved.eventTime()).isEqualTo(EVENT);
         assertThat(resolved.eventTime()).isNotEqualTo(TRANSPORT);
     }
@@ -73,7 +74,7 @@ class EventTimeResolverTest {
     void fallsBackToTransportTimeWhenTimestampIsAbsent() throws Exception {
         EventTimeResolver.Resolved resolved = resolve("{\"eventId\":\"e1\"}");
 
-        assertThat(resolved.source()).isEqualTo(EventTimeResolver.Source.TRANSPORT);
+        assertThat(resolved.source()).isEqualTo(EventTimeSource.TRANSPORT);
         assertThat(resolved.eventTime()).isEqualTo(TRANSPORT);
         assertThat(resolved.isObserved()).isFalse();
     }
@@ -81,22 +82,22 @@ class EventTimeResolverTest {
     @Test
     void fallsBackToTransportTimeWhenTimestampIsUnparseable() throws Exception {
         assertThat(resolve("{\"timestamp\":\"not-a-time\"}").source())
-                .isEqualTo(EventTimeResolver.Source.TRANSPORT);
+                .isEqualTo(EventTimeSource.TRANSPORT);
         assertThat(resolve("{\"timestamp\":null}").source())
-                .isEqualTo(EventTimeResolver.Source.TRANSPORT);
+                .isEqualTo(EventTimeSource.TRANSPORT);
         assertThat(resolve("{\"timestamp\":\"\"}").source())
-                .isEqualTo(EventTimeResolver.Source.TRANSPORT);
+                .isEqualTo(EventTimeSource.TRANSPORT);
     }
 
     @Test
     void fallsBackToTransportTimeWhenPayloadIsMissing() {
         assertThat(resolver.resolve(null, TRANSPORT).source())
-                .isEqualTo(EventTimeResolver.Source.TRANSPORT);
+                .isEqualTo(EventTimeSource.TRANSPORT);
     }
 
     private void assertResolvesTo(String json, Instant expected) throws Exception {
         EventTimeResolver.Resolved resolved = resolve(json);
-        assertThat(resolved.source()).isEqualTo(EventTimeResolver.Source.PAYLOAD);
+        assertThat(resolved.source()).isEqualTo(EventTimeSource.DECLARED);
         assertThat(resolved.eventTime()).isEqualTo(expected);
     }
 

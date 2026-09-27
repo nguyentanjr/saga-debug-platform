@@ -27,6 +27,7 @@ CREATE TABLE saga_events (
     step_name    VARCHAR(50),
     service_name VARCHAR(50),
     timestamp    TIMESTAMP WITH TIME ZONE NOT NULL,
+    event_time_source VARCHAR(20) CHECK (event_time_source IN ('DECLARED', 'TRANSPORT')),
     payload      JSON         NOT NULL,
     received_at  TIMESTAMP WITH TIME ZONE NOT NULL,
     causation_id   VARCHAR(100),

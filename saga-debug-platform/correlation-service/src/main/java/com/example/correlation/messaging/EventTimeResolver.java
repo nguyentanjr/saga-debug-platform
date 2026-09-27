@@ -1,5 +1,6 @@
 package com.example.correlation.messaging;
 
+import com.example.correlation.domain.EventTimeSource;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,16 +38,9 @@ public class EventTimeResolver {
      */
     private static final long EPOCH_MILLIS_THRESHOLD = 100_000_000_000L;
 
-    public enum Source {
-        /** Taken from the event's own {@code timestamp} field. */
-        PAYLOAD,
-        /** Payload carried no usable timestamp; transport time was used instead. */
-        TRANSPORT
-    }
-
-    public record Resolved(Instant eventTime, Source source) {
+    public record Resolved(Instant eventTime, EventTimeSource source) {
         public boolean isObserved() {
-            return source == Source.PAYLOAD;
+            return source == EventTimeSource.DECLARED;
         }
     }
 
@@ -65,8 +59,8 @@ public class EventTimeResolver {
     public Resolved resolveValue(String value, Instant transportTime) {
         Instant parsed = parseText(value);
         return parsed != null
-                ? new Resolved(parsed, Source.PAYLOAD)
-                : new Resolved(transportTime, Source.TRANSPORT);
+                ? new Resolved(parsed, EventTimeSource.DECLARED)
+                : new Resolved(transportTime, EventTimeSource.TRANSPORT);
     }
 
     /**
@@ -76,9 +70,9 @@ public class EventTimeResolver {
     public Resolved resolve(JsonNode payload, Instant transportTime, String path) {
         Instant fromPayload = readTimestamp(payload, path);
         if (fromPayload != null) {
-            return new Resolved(fromPayload, Source.PAYLOAD);
+            return new Resolved(fromPayload, EventTimeSource.DECLARED);
         }
-        return new Resolved(transportTime, Source.TRANSPORT);
+        return new Resolved(transportTime, EventTimeSource.TRANSPORT);
     }
 
     private Instant readTimestamp(JsonNode payload, String path) {

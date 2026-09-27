@@ -581,12 +581,37 @@ duoc **lan chay cuoi xac nhan**, khong duoc trich truoc.
 Day la truong hop oracle cu doi mot claim ma bang chung khong do duoc, nen diem giam la
 **dau hieu dung**, khong phai thoai lui. Phai bao ca hai oracle canh nhau.
 
-**F6 — Nguon cua moc thoi gian khong di theo quan sat** · Priority: trung binh-cao
+**F6 — Nguon cua moc thoi gian khong di theo quan sat — DA SUA 2026-09-23** · Priority: trung binh-cao
 Problem: `EventTimeResolver` phan biet PAYLOAD/TRANSPORT va tra ve `Resolved.source()`,
 nhung `EventIngestionService` chi dung no de **ghi WARN** roi vut di; khong cot nao giu lai.
 Downstream (`SAGA_STUCK`, `STEP_TIMEOUT`) do thoi gian ma khong biet minh dang do dong ho
 nao. I3 doi moi gia tri suy luan mang nhan xuat xu.
 Expected: giu nguon thoi gian cung su kien, nhu `CorrelationBasis` da lam cho tuong quan.
+
+Ket qua: chuyen enum nguon thoi gian san co tu resolver ve domain `EventTimeSource`,
+de persistence khong phu thuoc lop messaging. `DECLARED` thay ten `PAYLOAD` vi mapping
+da ho tro event time trong header/key, khong chi payload; `TRANSPORT` la fallback.
+`Resolved` -> `IngestedEvent` -> `SagaEvent.eventTimeSource` -> event trong read API,
+cung transaction voi timestamp/payload. Admin injection cung ghi nguon ro rang.
+
+V17 them cot nullable `event_time_source` va CHECK chi chap nhan DECLARED/TRANSPORT
+hoac NULL. Khong backfill, khong dat default: du lieu cu va constructor cu khong khai
+nguon van NULL (khong biet), ke ca khi payload co timestamp hoac timestamp = receivedAt.
+Nguon thoi gian khong chung minh dong ho he nguon chinh xac. Can apply V17 truoc khi
+chay binary moi; binary cu van ghi duoc sau migration vi cot moi nullable.
+
+Kiem chung 2026-09-22, chot task 2026-09-23: **46 focused test pass**, them **15 test**
+(12 persistence/provenance, 2 admin, 1 migration). Full reactor `mvn test`: **489 pass**
+(484 correlation-service + 5 saga-events), 0 failure/error/skipped; Python oracle
+**14 pass**; `git diff --check` pass. Tren PostgreSQL 16-alpine rieng: Flyway apply
+**V1..V17**, Hibernate `validate` thanh cong, **12/12 test persistence pass**, gom rollback
+event/nguon thoi gian cung nhau, retry sau rollback, replay khong doi nguon, va CHECK
+tu choi gia tri khong hop le. Test upgrade row cu/old writer chay migration V17 tren H2.
+Log: `correlation-service/target/f6-focused.log`, `f6-postgres.log`, `f6-full-suite.log`.
+
+Pham vi I3: da giu va cong bo nguon timestamp, khong thay thuat toan timeout, business
+order, tier hay RCA. Chua khang dinh moi phep do downstream da phan biet mixed clocks;
+phan do ghi F12. Khong doi oracle/headline KLTN. L9 van in loi scheduler H2 source_name.
 
 **F7 — Khai bao workflow xung dot thi giu cai dau** · Priority: trung binh
 Problem: execution da resolved gap bang chung tro toi workflow khac -> log ERROR, **giu
@@ -620,6 +645,16 @@ khong chi cutoff.
 ---
 
 ## LATER
+
+**F12 — Phep do duration chua dung nguon timestamp da luu** · Priority: **cao**
+Problem (ra soat code khi dong F6): `ExecutionProjection.Operation.duration()` va
+duong STEP_TIMEOUT van tinh khoang giua timestamp ma chua xet `eventTimeSource`.
+F6 lam nguon nay ton tai tren event, nhung hai dau co the la DECLARED/TRANSPORT hoac
+NULL; duration nhu vay chua du de khang dinh thoi gian xu ly cua he nguon. Day la
+kiem tra code, chua phai phep do so false positive tren bo live.
+Expected: tai hien mixed clocks/legacy unknown bang test, xac dinh claim va nhan
+provenance cho tung phep do; khong dong nhat StartProvenance (nguon ranh gioi buoc)
+voi nguon timestamp, khong tu dong sua tier/oracle. Chi ghi roadmap trong F6.
 
 **F11 — Citation cua cac occurrence khac va chon finding cho RCA con phu thuoc thu tu** · Priority: **cao**
 Problem (ra soat code khi sua F9, 2026-09-22): `detectStateRegression` va

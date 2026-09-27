@@ -187,7 +187,7 @@ public class EventIngestionService {
             // the event was rejected as "identity disagrees with itself" and dropped.
             correlationService.processEvent(observationOf(
                     mapping, raw, payload, correlated.source(), eventId, correlated, basis,
-                    resolved.eventTime(), traceId, raw.fallbackEventId()));
+                    resolved, traceId, raw.fallbackEventId()));
         });
 
         // Marked only now: the transaction above has committed, so a redelivery before this
@@ -207,7 +207,7 @@ public class EventIngestionService {
      */
     private IngestedEvent observationOf(SourceMapping mapping, RawObservation raw,
             JsonNode payload, String filedUnder, String eventId, ExecutionKey correlated,
-            CorrelationBasis basis, Instant eventTime, String traceId, String transportRef) {
+            CorrelationBasis basis, EventTimeResolver.Resolved time, String traceId, String transportRef) {
         return new IngestedEvent(
                 new IngestedEvent.Identity(filedUnder, correlated, eventId,
                         mapping.businessKey(payload, raw).orElse(null), basis),
@@ -215,7 +215,7 @@ public class EventIngestionService {
                 mapping.eventType(payload, raw).orElse(raw.sourceRef()),
                 mapping.stepName(payload, raw).orElse("UNKNOWN"),
                 mapping.serviceName(payload, raw).orElse("unknown"),
-                eventTime,
+                time.eventTime(),
                 raw.payload(),
                 Instant.now(),
                 new IngestedEvent.Causality(
@@ -223,7 +223,8 @@ public class EventIngestionService {
                         mapping.spanId(payload, raw).orElse(null),
                         mapping.parentSpanId(payload, raw).orElse(null),
                         traceId),
-                transportRef);
+                transportRef,
+                time.source());
     }
 
     /** A correlation key and the grounds it was arrived at on. */

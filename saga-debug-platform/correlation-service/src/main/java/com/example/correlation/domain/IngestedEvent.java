@@ -15,7 +15,7 @@ import java.time.Instant;
  * source, the namespaced key, the basis. Splitting them across a flat argument list is
  * what let the source be dropped on the floor for as long as it was.
  *
- * @param eventTime  when the work happened, per the producer; not when it was delivered
+ * @param eventTime  the resolved timestamp; see eventTimeSource before treating it as business time
  * @param receivedAt when this platform saw it
  */
 public record IngestedEvent(
@@ -43,7 +43,17 @@ public record IngestedEvent(
          * wire produced it, which is what tells a re-read of one record apart from two
          * records carrying the same event id. See {@code SagaEvent#transportRef}.
          */
-        String transportRef) {
+        String transportRef,
+        /** Null for callers that supplied an instant without recording its origin. */
+        EventTimeSource eventTimeSource) {
+
+    /** Compatibility for callers that do not report timestamp provenance; never guess it. */
+    public IngestedEvent(Identity identity, String declaredWorkflow, String eventType,
+            String stepName, String serviceName, Instant eventTime, String payload,
+            Instant receivedAt, Causality causality, String transportRef) {
+        this(identity, declaredWorkflow, eventType, stepName, serviceName, eventTime,
+                payload, receivedAt, causality, transportRef, null);
+    }
 
     /**
      * An observation whose transport offered no identity for its record.

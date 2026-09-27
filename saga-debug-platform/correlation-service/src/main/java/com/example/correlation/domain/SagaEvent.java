@@ -59,6 +59,15 @@ public class SagaEvent {
     @Column(nullable = false)
     private Instant timestamp;
 
+    /**
+     * Origin of timestamp, not evidence of clock accuracy. DECLARED includes mapped
+     * headers as well as payload fields. Null means the origin was not recorded (legacy
+     * rows/callers); equality with receivedAt does not establish an origin.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_time_source", length = 20)
+    private EventTimeSource eventTimeSource;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private String payload;
@@ -150,6 +159,9 @@ public class SagaEvent {
 
     public Instant getTimestamp() { return timestamp; }
     public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
+
+    public EventTimeSource getEventTimeSource() { return eventTimeSource; }
+    public void setEventTimeSource(EventTimeSource eventTimeSource) { this.eventTimeSource = eventTimeSource; }
 
     public String getPayload() { return payload; }
     public void setPayload(String payload) { this.payload = payload; }

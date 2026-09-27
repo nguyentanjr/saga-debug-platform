@@ -1,5 +1,6 @@
 package com.example.correlation.controller;
 
+import com.example.correlation.domain.EventTimeSource;
 import com.example.correlation.execution.ExecutionLookup;
 import com.example.correlation.service.CorrelationService;
 import com.example.correlation.service.RcaService;
@@ -69,7 +70,8 @@ public class AdminEventController {
                 null, eventType, stepName, serviceName, timestamp, payload, Instant.now(),
                 new com.example.correlation.domain.IngestedEvent.Causality(
                         body.get("causationId"), body.get("spanId"),
-                        body.get("parentSpanId"), body.get("traceId"))));
+                        body.get("parentSpanId"), body.get("traceId")),
+                null, timestampStr != null ? EventTimeSource.DECLARED : EventTimeSource.TRANSPORT));
 
         log.info("Injected event: sagaId={}, eventType={}", sagaId, eventType);
 
