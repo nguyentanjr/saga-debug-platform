@@ -771,7 +771,10 @@ loc `retractedAt`, nen `totalAnomalies`, `topAnomalyTypes`, `topAffectedSteps` d
 platform da noi la sai. RCA thi chi doc `findStandingBySagaId`.
 Expected: dashboard chi dem finding con dung; neu can, hien rieng so da rut lai.
 
-**L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc** · Priority: thap
+**L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc — DA SUA 2026-09-28** · Priority: thap
+Da sua: `WorkflowSpecValidator` canh bao khi map dat event vao buoc khac buoc dang khai bao no (ghi ro
+map thang). Canh bao, khong loi: spec van dung duoc. Khong spec nao dang ship bi canh bao. Test:
+`validEventTypesDisagreeingWithTheDeclaringStepIsAWarning` (fail truoc khi sua). Full suite: 537/537.
 Problem (sau L21): hai nguon cung noi event thuoc buoc nao; bat dong thi map thang, im lang.
 `WorkflowSpecValidator` chi canh bao buoc khong ton tai va event khong buoc nao khai bao. Hien
 khong spec nao bat dong (da doi chieu 9 spec), nen chua co use case.

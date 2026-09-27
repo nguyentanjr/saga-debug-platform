@@ -144,6 +144,25 @@ class WorkflowSpecValidatorTest {
                 w -> assertThat(w).contains("NEVER_DECLARED").contains("no step declares"));
     }
 
+    /**
+     * L24: since L21 both the map and the steps are consulted, and the map wins where it
+     * speaks. A map placing an event in a different step than the step declaring it is a
+     * mistake in one of the two, and used to decide every detector quietly.
+     */
+    @Test
+    void validEventTypesDisagreeingWithTheDeclaringStepIsAWarning() {
+        WorkflowSpec spec = WorkflowSpecTestFixture.orderSaga();
+        Map<String, String> map = new java.util.LinkedHashMap<>(spec.getValidEventTypes());
+        map.put("PAYMENT_COMPLETED", "RESERVE_INVENTORY");
+        spec.setValidEventTypes(map);
+
+        WorkflowSpecValidator.Report report = WorkflowSpecValidator.validate(spec);
+
+        assertThat(report.isUsable()).isTrue();
+        assertThat(report.warnings()).anySatisfy(w -> assertThat(w)
+                .contains("PAYMENT_COMPLETED").contains("RESERVE_INVENTORY").contains("PROCESS_PAYMENT"));
+    }
+
     @Test
     void aSpecWithNoTerminalTargetIsAWarning() {
         WorkflowSpec spec = minimal();

@@ -235,6 +235,14 @@ public final class WorkflowSpecValidator {
                 warnings.add("validEventTypes lists '" + eventType + "' but no step declares "
                         + "it, so classifyEvent() will not recognise it");
             }
+            // Both are read (L21) and the map wins where it speaks, so a disagreement would
+            // silently decide every detector that asks which step an event belongs to (L24).
+            spec.classifyEvent(eventType)
+                    .map(WorkflowSpec.EventRole::stepId)
+                    .filter(declaredStep -> stepId != null && !declaredStep.equals(stepId))
+                    .ifPresent(declaredStep -> warnings.add("validEventTypes places '" + eventType
+                            + "' in step '" + stepId + "', but step '" + declaredStep
+                            + "' declares it; the map wins, so check which one is right"));
         });
     }
 
