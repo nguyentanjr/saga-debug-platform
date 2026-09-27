@@ -7,6 +7,9 @@ import java.time.Instant;
 public class SagaListItem {
     private String sagaId;
     private String workflowType;
+    private java.util.List<String> workflowConflicts = java.util.List.of();
+    public java.util.List<String> getWorkflowConflicts() { return workflowConflicts; }
+    public void setWorkflowConflicts(java.util.List<String> conflicts) { workflowConflicts = conflicts; }
     private SagaStatus status;
     private Instant startTime;
     private Instant endTime;

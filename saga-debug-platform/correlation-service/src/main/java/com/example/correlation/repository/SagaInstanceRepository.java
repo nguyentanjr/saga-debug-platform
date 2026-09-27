@@ -20,6 +20,11 @@ public interface SagaInstanceRepository extends JpaRepository<SagaInstance, Stri
     List<SagaInstance> findByStatusAndLastUpdatedBefore(SagaStatus status, Instant before);
     long countByStartTimeAfter(Instant startTime);
     long countByStatusAndStartTimeAfter(SagaStatus status, Instant startTime);
+
+    /** A retained status is not a conclusion while its workflow is disputed. */
+    @Query(value = "SELECT count(*) FROM saga_instances WHERE status = :status "
+            + "AND start_time > :since AND CAST(workflow_conflicts AS varchar) = '[]'", nativeQuery = true)
+    long countUncontestedByStatusSince(@Param("status") String status, @Param("since") Instant since);
     Page<SagaInstance> findByStatus(SagaStatus status, Pageable pageable);
     Page<SagaInstance> findByStartTimeBetween(Instant start, Instant end, Pageable pageable);
     Page<SagaInstance> findByStatusAndStartTimeBetween(SagaStatus status, Instant start, Instant end, Pageable pageable);

@@ -101,6 +101,12 @@ public class RcaService {
         
         rcaResultRepository.deleteAllBySagaId(sagaId);
 
+        if (saga.hasWorkflowConflict()) {
+            RcaResult refusal = RcaResult.workflowConflict(saga);
+            rcaResultRepository.save(refusal);
+            return refusal;
+        }
+
         List<SagaEvent> events = sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId);
         // Only the findings that still stand. A withdrawn claim is one the platform has
         // said later observations falsified; reasoning from it publishes as a diagnosis
@@ -343,6 +349,8 @@ public class RcaService {
     }
 
     public List<RcaResult> getResults(String sagaId) {
+        SagaInstance saga = sagaInstanceRepository.findById(sagaId).orElse(null);
+        if (saga != null && saga.hasWorkflowConflict()) return List.of(RcaResult.workflowConflict(saga));
         return rcaResultRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
     }
 

@@ -11,6 +11,13 @@ import java.util.List;
 @Table(name = "anomalies")
 public class Anomaly {
 
+    /** Read-time qualification of historical findings; does not delete or retract their evidence. */
+    @Transient
+    private List<String> workflowConflicts = List.of();
+
+    public List<String> getWorkflowConflicts() { return workflowConflicts; }
+    public void setWorkflowConflicts(List<String> conflicts) { workflowConflicts = List.copyOf(conflicts); }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

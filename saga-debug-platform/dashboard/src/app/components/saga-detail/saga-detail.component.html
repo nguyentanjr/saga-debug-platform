@@ -5,7 +5,7 @@
       <mat-icon>arrow_back</mat-icon>
     </button>
     <h1>Saga Detail</h1>
-    <span class="status-badge" [ngClass]="getStatusClass(saga.status)">{{ saga.status }}</span>
+    <span class="status-badge" [ngClass]="getStatusClass(saga.status)">{{ saga.workflowConflicts?.length ? 'UNDETERMINED' : saga.status }}</span>
   </div>
 
   <!-- Error Banner -->
@@ -18,6 +18,12 @@
   </div>
 
   <!-- Summary Cards -->
+  <div class="error-banner" role="alert" *ngIf="saga.workflowConflicts?.length">
+    <mat-icon>warning</mat-icon>
+    <span>Conflicting workflow declarations: {{ saga.workflowConflicts?.join(', ') }}.
+      Status and diagnosis are undetermined. Earlier anomaly findings are retained for
+      inspection but must be re-evaluated after the declarations are corrected.</span>
+  </div>
   <div class="summary-cards">
     <mat-card>
       <mat-card-header><mat-card-title>Saga ID</mat-card-title></mat-card-header>
@@ -29,7 +35,7 @@
     </mat-card>
     <mat-card>
       <mat-card-header><mat-card-title>Duration</mat-card-title></mat-card-header>
-      <mat-card-content>{{ saga.durationMs ? (saga.durationMs + ' ms') : 'In progress' }}</mat-card-content>
+      <mat-card-content>{{ saga.workflowConflicts?.length ? 'Undetermined' : (saga.durationMs ? (saga.durationMs + ' ms') : 'In progress') }}</mat-card-content>
     </mat-card>
     <mat-card>
       <mat-card-header><mat-card-title>Events</mat-card-title></mat-card-header>

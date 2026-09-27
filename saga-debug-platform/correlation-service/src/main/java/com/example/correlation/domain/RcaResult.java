@@ -14,6 +14,20 @@ import java.util.List;
 @Table(name = "rca_results")
 public class RcaResult {
 
+    /** Current refusal, also used by read APIs to avoid serving a pre-conflict diagnosis. */
+    public static RcaResult workflowConflict(SagaInstance saga) {
+        RcaResult result = new RcaResult();
+        result.setSagaId(saga.getSagaId());
+        result.setOutcome("UNDETERMINED");
+        result.setSeverity("UNKNOWN");
+        result.setRcaStatus(RcaStatus.INSUFFICIENT_EVIDENCE);
+        result.setEvidence("[\"Workflow declarations conflict; diagnosis withheld\"]");
+        result.setSuggestions("[\"Correct the conflicting workflow declarations before re-evaluating this execution\"]");
+        result.setMissingEvidence(List.of("Unambiguous workflow required; conflicting declarations: "
+                + String.join(", ", saga.getWorkflowConflicts())));
+        return result;
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -1,13 +1,25 @@
 package com.example.correlation.workflow;
 
+import com.example.correlation.domain.CorrelationBasis;
+import com.example.correlation.domain.ExecutionKey;
+import com.example.correlation.domain.IngestedEvent;
+import com.example.correlation.domain.SagaInstance;
+import com.example.correlation.repository.SagaEventRepository;
+import com.example.correlation.repository.SagaInstanceRepository;
+import com.example.correlation.service.AnomalyDetectionService;
+import com.example.correlation.service.CorrelationService;
+import com.example.correlation.service.DeduplicationCache;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 /**
  * Judging a run against the right system's specification when two systems are watched.
@@ -152,6 +164,27 @@ class SourceScopedWorkflowResolutionTest {
         WorkflowRegistry registry = registryWith(shopOrderSaga());
 
         assertThat(resolveFresh(registry, SHOP, "SOMETHING_ELSE_ENTIRELY")).isEmpty();
+    }
+
+    @Test
+    void sourceAndMappingDisagreementIsFlaggedOnTheFirstObservation() {
+        WorkflowRegistry registry = registryWith(shopOrderSaga(), partnerOrderSaga());
+        var instances = mock(SagaInstanceRepository.class);
+        var events = mock(SagaEventRepository.class);
+        var detector = mock(AnomalyDetectionService.class);
+        var service = new CorrelationService(instances, events, detector,
+                new DeduplicationCache(), registry, new ObjectMapper());
+        var key = ExecutionKey.of(SHOP, "conflict");
+        service.processEvent(new IngestedEvent(
+                new IngestedEvent.Identity(SHOP, key, "e1", null, CorrelationBasis.DECLARED_KEY),
+                "PARTNER_ORDER_SAGA", "ORDER_CREATED", "UNKNOWN", "test", Instant.EPOCH,
+                "{}", Instant.EPOCH, IngestedEvent.Causality.NONE));
+        var saved = ArgumentCaptor.forClass(SagaInstance.class);
+        verify(instances).save(saved.capture());
+        assertThat(saved.getValue().getWorkflowType()).isEqualTo("SHOP_ORDER_SAGA");
+        assertThat(saved.getValue().getWorkflowConflicts())
+                .containsExactly("PARTNER_ORDER_SAGA", "SHOP_ORDER_SAGA");
+        verifyNoInteractions(detector);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

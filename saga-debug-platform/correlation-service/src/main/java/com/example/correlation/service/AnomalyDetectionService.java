@@ -617,6 +617,7 @@ public class AnomalyDetectionService {
         Instant now = Instant.now();
 
         for (SagaInstance saga : runningSagas) {
+            if (saga.hasWorkflowConflict()) continue;
             WorkflowSpec workflow = specFor(saga);
             SagaEvent lastEvent = sagaEventRepository
                     .findTopBySagaIdOrderByTimestampDesc(saga.getSagaId())
@@ -842,6 +843,7 @@ public class AnomalyDetectionService {
                 List.of(SagaStatus.STARTED, SagaStatus.IN_PROGRESS), cutoff, detectionBatch());
 
         for (SagaInstance saga : stuckSagas) {
+            if (saga.hasWorkflowConflict()) continue;
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
                     saga.getSagaId(), AnomalyType.MISSING_TERMINAL_EVENT)) continue;
 
@@ -1047,7 +1049,7 @@ public class AnomalyDetectionService {
 
     /** The specification governing this saga, or null when none is registered. */
     private WorkflowSpec specFor(SagaInstance saga) {
-        return workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
+        return saga.hasWorkflowConflict() ? null : workflowRegistry.byType(saga.getWorkflowType()).orElse(null);
     }
 
     /** Events playing the given lifecycle role on any forward step. */

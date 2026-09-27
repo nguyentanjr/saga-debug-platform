@@ -568,6 +568,22 @@ class ExecutionAliasResolverTest {
         return ExecutionKey.of(source, rawId);
     }
 
+    @Test
+    void workflowConflictSurvivesAliasMerge() {
+        SagaInstance left = givenInstance(SHOP, "ORD-1", T0, SagaStatus.IN_PROGRESS);
+        SagaInstance right = givenInstance(SHOP, "PAY-9", T0.plusSeconds(1), SagaStatus.IN_PROGRESS);
+        left.setWorkflowType("ORDER_SAGA");
+        left.setStatus(SagaStatus.COMPLETED);
+        left.setEndTime(T0.plusSeconds(1));
+        right.setWorkflowType("LOAN_APPROVAL");
+        right.recordWorkflowConflict("FULFILLMENT_SAGA");
+        resolver.canonical(key(SHOP, "ORD-1"), key(SHOP, "PAY-9"), "bridge", T0.plusSeconds(2));
+        assertThat(left.getWorkflowConflicts())
+                .containsExactly("FULFILLMENT_SAGA", "LOAN_APPROVAL", "ORDER_SAGA");
+        assertThat(left.getStatus()).isEqualTo(SagaStatus.IN_PROGRESS);
+        assertThat(left.getEndTime()).isNull();
+    }
+
     private SagaInstance givenInstance(String source, String rawId, Instant startTime,
             SagaStatus status) {
         ExecutionKey key = key(source, rawId);

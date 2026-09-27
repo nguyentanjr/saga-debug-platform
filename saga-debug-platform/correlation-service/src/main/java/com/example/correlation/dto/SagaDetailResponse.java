@@ -27,6 +27,9 @@ public class SagaDetailResponse {
      */
     private List<IdentityLink> identities;
     private String workflowType;
+    private List<String> workflowConflicts = List.of();
+    public List<String> getWorkflowConflicts() { return workflowConflicts; }
+    public void setWorkflowConflicts(List<String> conflicts) { workflowConflicts = conflicts; }
     private SagaStatus status;
     private Instant startTime;
     private Instant endTime;

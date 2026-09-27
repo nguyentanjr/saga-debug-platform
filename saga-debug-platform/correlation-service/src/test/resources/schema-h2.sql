@@ -11,6 +11,7 @@
 CREATE TABLE saga_instances (
     saga_id       VARCHAR(36) PRIMARY KEY,
     workflow_type VARCHAR(50)  NOT NULL DEFAULT 'ORDER_SAGA',
+    workflow_conflicts JSON NOT NULL DEFAULT '[]',
     order_id      VARCHAR(100),
     status        VARCHAR(20)  NOT NULL,
     start_time    TIMESTAMP WITH TIME ZONE NOT NULL,

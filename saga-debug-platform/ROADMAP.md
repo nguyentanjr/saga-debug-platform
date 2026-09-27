@@ -613,13 +613,51 @@ Pham vi I3: da giu va cong bo nguon timestamp, khong thay thuat toan timeout, bu
 order, tier hay RCA. Chua khang dinh moi phep do downstream da phan biet mixed clocks;
 phan do ghi F12. Khong doi oracle/headline KLTN. L9 van in loi scheduler H2 source_name.
 
-**F7 — Khai bao workflow xung dot thi giu cai dau** · Priority: trung binh
+**F7 — Khai bao workflow xung dot thi giu cai dau — DA SUA 2026-09-23** · Priority: trung binh
 Problem: execution da resolved gap bang chung tro toi workflow khac -> log ERROR, **giu
 nguyen cai cu**. Comment lap luan day la loi khai bao chu khong phai bat thuong cua he
 nguon, va no noi to ra — nhung lan chay van tiep tuc duoc do bang thuoc co the sai, dung
 canh ma I8 canh bao ("mot dac ta sai khong loi ra ngoai").
 Expected: quyet dinh ro — tu choi ket luan cho execution do, hay giu nguyen va danh dau moi
 finding sinh ra tu no la dang ngo.
+
+Ket qua: giu `workflowType` ban dau de truy vet (ADR 0004), nhung luu tap ten
+`workflowConflicts` sap xep, khong trung lap. Khi co bat dong duong tinh giua workflow
+da resolve va evidence moi, hoac giua source-scoped spec va mapping ngay event dau,
+observer giu observation nhung ngung suy ket cuc/detector theo workflow. Mapping
+khong ro hay event khong nhan dien khong tu no la bang chung xung dot.
+
+Alias merge hop nhat co xung dot va huy terminal/endTime cu ngay trong transaction,
+ke ca observation noi alias la replay va bo qua projection. Co khong tu mat khi event
+sau lai khop workflow cu. Trang thai luu dung `IN_PROGRESS` trung lap nhu unresolved;
+API tra them `workflowConflicts`, dashboard hien `UNDETERMINED`, khong khang dinh
+execution dang chay hoac da ket thuc. RCA abstain `INSUFFICIENT_EVIDENCE`, khong alert;
+read API khong phat lai RCA cu nhu ket luan hien tai. Anomaly cu van con de audit,
+duoc gan canh bao xung dot o read response; khong xoa hay rut lai OCCURRENCE (ADR 0006).
+Dashboard khong dem cac chan doan/anomaly do nhu bang chung hien tai, va khong tinh
+execution xung dot vao cac bo dem trang thai (ke ca active); van tinh vao tong execution.
+
+V18 them `workflow_conflicts JSONB NOT NULL DEFAULT '[]'` voi CHECK array rong hoac
+it nhat hai phan tu. Row cu/old writer nhan [] = chua ghi nhan conflict, KHONG co nghia
+da chung minh nhat quan; khong backfill tu payload. Apply migration truoc binary moi.
+Writer cu van tuong thich schema, nhung binary/client cu khong hieu co moi: can nang
+cap dong bo observer va dashboard de co semantics F7, khong coi mixed-version la an toan.
+Chua co API xoa co hay re-evaluate sau sua declaration; khong tu dong chon lai spec.
+
+Kiem chung: them **12 regression test Java**, gom hai delivery order, late conflict
+sau terminal, source/mapping bat dong, alias merge, reload/replay, rollback/retry,
+concurrent stale writer (optimistic lock san co), API/RCA abstention va scheduled sweep.
+**69 focused pass**, **501 full reactor pass**, **14 Python oracle pass**; dashboard
+production build pass (van canh bao CSS budget cua saga-detail, khong sua CSS trong F7).
+PostgreSQL 16-alpine rieng: Flyway **V1..V18**, Hibernate validate, **15 persistence test
+pass**; migration test tren TEMP table xac nhan row cu, old writer, CHECK tu choi
+singleton/non-array, chap nhan tap conflict. Hai script
+`src/test/resources/workflow-conflicts-postgres-{before,after}.sql` bao quanh V18,
+cung connection, rollback sau test. Container tam da xoa. Khong doi schema DB dang chay.
+Log trong `correlation-service/target/f7-{focused,postgres,full-suite,dashboard}.log`.
+I3/I8: khong dung spec tranh chap lam tham quyen; I5/I6: conflict va observation cung
+commit/rollback; I9: tap conflict va refusal khong phu thuoc thu tu den.
+Khong thay tier/oracle/ADR. L9 (scheduler H2 source_name) van la issue da ghi.
 
 **F8 — Giai thich cho 14.8% thieu la chua du** · Priority: trung binh-cao
 Problem: tai lieu quy toan bo phan thieu ve cutoff lam `MISSING_TERMINAL_EVENT` khong fire.
@@ -645,6 +683,12 @@ khong chi cutoff.
 ---
 
 ## LATER
+
+**L12 — Dashboard saga-detail vuot CSS warning budget** · Priority: **thap**
+Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budget
+6 kB; production build van pass, chua vuot error budget 10 kB. CSS khong doi trong F7.
+Expected: ra soat CSS lap/khong dung khi lam task dashboard; khong tang budget chi
+de tat canh bao. Chi ghi nhan, khong implement trong task workflow conflict.
 
 **F12 — Phep do duration chua dung nguon timestamp da luu** · Priority: **cao**
 Problem (ra soat code khi dong F6): `ExecutionProjection.Operation.duration()` va

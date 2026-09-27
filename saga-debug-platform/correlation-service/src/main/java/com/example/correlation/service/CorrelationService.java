@@ -125,7 +125,18 @@ public class CorrelationService {
             saga.setOrderId(observation.businessKey());
             log.info("New saga detected: {} (workflow={})", sagaId, saga.getWorkflowType());
         } else {
-            adoptWorkflowIfNowKnown(saga, workflow, observation, eventType);
+            adoptWorkflowIfNowKnown(saga, workflow, eventType);
+        }
+
+        saga.recordWorkflowConflict(workflowRegistry.resolveFromEvidence(
+                observation.declaredWorkflow(), observation.sourceName(), eventType)
+                .map(WorkflowSpec::getName).orElse(null));
+        saga.recordWorkflowConflict(workflowRegistry.byType(observation.declaredWorkflow())
+                .map(WorkflowSpec::getName).orElse(null));
+        if (saga.hasWorkflowConflict()) {
+            log.error("Execution {} has conflicting workflows {}; withholding workflow conclusions",
+                    sagaId, saga.getWorkflowConflicts());
+            workflow = null;
         }
 
         SagaEvent sagaEvent = observedEventOf(observation);
@@ -170,6 +181,9 @@ public class CorrelationService {
         sagaEventRepository.save(sagaEvent);
 
         log.info("Saga {} | event={} | step={} | status={}", sagaId, eventType, stepName, newStatus);
+
+        // Keep the observations. A configuration disagreement is not a source-system anomaly.
+        if (saga.hasWorkflowConflict()) return;
 
         // Claims about how this run behaved, each read off the reconstruction rather than
         // off whatever difference this one arrival happened to make to what was stored.
@@ -315,11 +329,8 @@ public class CorrelationService {
      * one established, or a run would flicker between workflows with the arrival order of
      * its events.
      *
-     * <p>A later observation pointing somewhere else entirely is a different matter -- two
-     * declarations disagreeing about one execution. That is a fault in the declarations,
-     * not an anomaly of the observed system, so it is reported to whoever runs the platform
-     * and the workflow is left alone. Nothing about the observed run changes on the
-     * strength of a configuration mistake.
+     * <p>A positive disagreement is recorded separately by processEvent. The original
+     * workflow label remains available for inspection, but no longer authorises inference.
      *
      * <p>It reports nothing back. It used to return whether this arrival was the one that
      * resolved the workflow, because that arrival was the single case where status was
@@ -327,18 +338,8 @@ public class CorrelationService {
      * is reconstructed from the whole sequence now, so the moment of resolution is no
      * longer special and nothing downstream has to be told about it.
      */
-    private void adoptWorkflowIfNowKnown(SagaInstance saga, WorkflowSpec workflow,
-            IngestedEvent observation, String eventType) {
+    private void adoptWorkflowIfNowKnown(SagaInstance saga, WorkflowSpec workflow, String eventType) {
         if (!SagaInstance.UNRESOLVED.equals(saga.getWorkflowType())) {
-            workflowRegistry.resolveFromEvidence(observation.declaredWorkflow(),
-                            observation.sourceName(), eventType)
-                    .filter(candidate -> !candidate.getName().equals(saga.getWorkflowType()))
-                    .ifPresent(candidate -> log.error(
-                            "Execution {} is filed under workflow {}, but event {} from "
-                                    + "source {} resolves to {}. Keeping the existing one; "
-                                    + "two declarations disagree about this execution.",
-                            saga.getSagaId(), saga.getWorkflowType(), eventType,
-                            observation.sourceName(), candidate.getName()));
             return;
         }
 

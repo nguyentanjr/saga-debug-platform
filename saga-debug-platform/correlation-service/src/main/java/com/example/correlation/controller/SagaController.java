@@ -81,6 +81,7 @@ public class SagaController {
             SagaListItem item = new SagaListItem();
             item.setSagaId(saga.getSagaId());
             item.setWorkflowType(saga.getWorkflowType());
+            item.setWorkflowConflicts(saga.getWorkflowConflicts());
             item.setStatus(saga.getStatus());
             item.setStartTime(saga.getStartTime());
             item.setEndTime(saga.getEndTime());
@@ -131,6 +132,7 @@ public class SagaController {
                         alias.getAliasKey(), alias.getSourceName(), alias.getLinkedByEventId()))
                 .toList());
         response.setWorkflowType(saga.getWorkflowType());
+        response.setWorkflowConflicts(saga.getWorkflowConflicts());
         response.setStatus(saga.getStatus());
         response.setStartTime(saga.getStartTime());
         response.setEndTime(saga.getEndTime());
@@ -138,6 +140,10 @@ public class SagaController {
             response.setDurationMs(Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis());
         }
         response.setEvents(events);
+        if (saga.hasWorkflowConflict()) {
+            anomalies.forEach(anomaly -> anomaly.setWorkflowConflicts(saga.getWorkflowConflicts()));
+            rcaResults = List.of(RcaResult.workflowConflict(saga));
+        }
         response.setAnomalies(anomalies);
         response.setRcaResults(rcaResults);
 

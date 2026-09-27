@@ -4,6 +4,7 @@ import com.example.correlation.domain.AnomalyType;
 import com.example.correlation.domain.ExecutionAlias;
 import com.example.correlation.domain.ExecutionKey;
 import com.example.correlation.domain.SagaInstance;
+import com.example.correlation.domain.SagaStatus;
 import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.ExecutionAliasRepository;
 import com.example.correlation.repository.RcaResultRepository;
@@ -252,7 +253,7 @@ public class ExecutionAliasResolver {
     /**
      * Widens the survivor to cover the run both halves describe.
      *
-     * <p>Status is left alone deliberately. The observation that revealed the link is still
+     * <p>Unless the workflow is disputed, status is left alone. The observation that revealed the link is still
      * being processed, and the correlation service derives status from the workflow
      * specification once it sees the whole sequence — a status invented here would be this
      * class guessing at something the specification answers.
@@ -279,6 +280,14 @@ public class ExecutionAliasResolver {
         if (SagaInstance.UNRESOLVED.equals(survivor.getWorkflowType())
                 && !SagaInstance.UNRESOLVED.equals(absorbed.getWorkflowType())) {
             survivor.setWorkflowType(absorbed.getWorkflowType());
+        }
+        survivor.recordWorkflowConflict(absorbed.getWorkflowType());
+        absorbed.getWorkflowConflicts().forEach(survivor::recordWorkflowConflict);
+        if (survivor.hasWorkflowConflict()) {
+            // The linking observation can be a replay and skip projection entirely.
+            // Invalidate the old outcome now, inside the same merge transaction.
+            survivor.setStatus(SagaStatus.IN_PROGRESS);
+            survivor.setEndTime(null);
         }
         sagaInstances.save(survivor);
     }

@@ -2,6 +2,7 @@ package com.example.correlation.service;
 
 import com.example.correlation.domain.Anomaly;
 import com.example.correlation.domain.RcaResult;
+import com.example.correlation.domain.SagaInstance;
 import com.example.correlation.domain.SagaStatus;
 import com.example.correlation.domain.rca.CandidateStatus;
 import com.example.correlation.domain.rca.RcaCandidate;
@@ -16,10 +17,12 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,6 +51,17 @@ public class DashboardMetricsService {
         List<Anomaly> anomalies = anomalyRepository.findByDetectedAtAfter(since);
         List<RcaResult> rcaResults = rcaResultRepository.findByCreatedAtAfter(since);
 
+        // Historical conclusions under a disputed specification are not current diagnoses.
+        Set<String> ids = new HashSet<>();
+        anomalies.forEach(a -> ids.add(a.getSagaId()));
+        rcaResults.forEach(r -> ids.add(r.getSagaId()));
+        Set<String> conflicted = new HashSet<>();
+        sagaInstanceRepository.findAllById(ids).stream()
+                .filter(SagaInstance::hasWorkflowConflict)
+                .forEach(saga -> conflicted.add(saga.getSagaId()));
+        anomalies = anomalies.stream().filter(a -> !conflicted.contains(a.getSagaId())).toList();
+        rcaResults = rcaResults.stream().filter(r -> !conflicted.contains(r.getSagaId())).toList();
+
         long activeSagas = countStatusSince(SagaStatus.STARTED, since)
                 + countStatusSince(SagaStatus.IN_PROGRESS, since)
                 + countStatusSince(SagaStatus.COMPENSATING, since);
@@ -70,7 +84,7 @@ public class DashboardMetricsService {
     }
 
     private long countStatusSince(SagaStatus status, Instant since) {
-        return sagaInstanceRepository.countByStatusAndStartTimeAfter(status, since);
+        return sagaInstanceRepository.countUncontestedByStatusSince(status.name(), since);
     }
 
     private long countRcaStatus(List<RcaResult> rcaResults, RcaStatus status) {

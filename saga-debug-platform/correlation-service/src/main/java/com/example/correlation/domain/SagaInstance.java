@@ -1,7 +1,11 @@
 package com.example.correlation.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
+import java.util.List;
+import java.util.TreeSet;
 
 @Entity
 @Table(name = "saga_instances")
@@ -29,6 +33,25 @@ public class SagaInstance {
 
     @Column(name = "workflow_type", nullable = false)
     private String workflowType = UNRESOLVED;
+
+    /** Conflicting positive resolutions. The retained workflowType is not authoritative while non-empty. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "workflow_conflicts", nullable = false, columnDefinition = "jsonb")
+    private List<String> workflowConflicts = List.of();
+
+    public List<String> getWorkflowConflicts() { return workflowConflicts; }
+    public boolean hasWorkflowConflict() { return !workflowConflicts.isEmpty(); }
+
+    /** Accumulates evidence; an ordinary subsequent match cannot resolve a disagreement. */
+    public void recordWorkflowConflict(String candidate) {
+        if (candidate == null || UNRESOLVED.equals(candidate)
+                || workflowType == null || UNRESOLVED.equals(workflowType)) return;
+        if (!hasWorkflowConflict() && workflowType.equals(candidate)) return;
+        TreeSet<String> names = new TreeSet<>(workflowConflicts);
+        names.add(workflowType);
+        names.add(candidate);
+        workflowConflicts = List.copyOf(names);
+    }
 
     @Column(name = "order_id")
     private String orderId;

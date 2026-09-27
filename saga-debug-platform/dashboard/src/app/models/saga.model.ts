@@ -1,4 +1,5 @@
 export interface SagaListItem {
+  workflowConflicts?: string[];
   sagaId: string;
   workflowType: string;
   status: string;
@@ -23,6 +24,7 @@ export interface SagaEvent {
 }
 
 export interface Anomaly {
+  workflowConflicts?: string[];
   id: number;
   sagaId: string;
   anomalyType: string;
@@ -71,6 +73,7 @@ export interface RcaResult {
 }
 
 export interface SagaDetail {
+  workflowConflicts?: string[];
   sagaId: string;
   workflowType: string;
   status: string;

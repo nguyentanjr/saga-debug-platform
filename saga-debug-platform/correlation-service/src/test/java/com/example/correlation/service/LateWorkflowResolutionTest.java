@@ -264,6 +264,37 @@ class LateWorkflowResolutionTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    @Test
+    void conflictingStartsStopInferenceInEitherDeliveryOrder() {
+        for (List<String> order : List.of(List.of("ORDER_CREATED", "APPLICATION_SUBMITTED"),
+                List.of("APPLICATION_SUBMITTED", "ORDER_CREATED"))) {
+            setUp();
+            observe("e1", order.get(0), T0);
+            org.mockito.Mockito.clearInvocations(anomalyDetectionService);
+            observe("e2", order.get(1), T0.minusSeconds(1));
+            assertThat(run().getWorkflowConflicts()).containsExactly("LOAN_APPROVAL", "ORDER_SAGA");
+            assertThat(run().getStatus()).isEqualTo(SagaStatus.IN_PROGRESS);
+            assertThat(run().getEndTime()).isNull();
+            assertThat(events).hasSize(2);
+            org.mockito.Mockito.verifyNoInteractions(anomalyDetectionService);
+            observe("e3", order.get(0), T0.plusSeconds(1));
+            assertThat(run().getWorkflowConflicts()).containsExactly("LOAN_APPROVAL", "ORDER_SAGA");
+            org.mockito.Mockito.verifyNoInteractions(anomalyDetectionService);
+        }
+    }
+
+    @Test
+    void lateConflictInvalidatesAPreviouslyConcludedEnding() {
+        observe("e1", "ORDER_CREATED", T0);
+        observe("e2", "PAYMENT_COMPLETED", T0.plusSeconds(1));
+        observe("e3", "INVENTORY_RESERVED", T0.plusSeconds(2));
+        assertThat(run().getStatus()).isEqualTo(SagaStatus.COMPLETED);
+        observe("e4", "APPLICATION_SUBMITTED", T0.minusSeconds(1));
+        assertThat(run().hasWorkflowConflict()).isTrue();
+        assertThat(run().getStatus()).isEqualTo(SagaStatus.IN_PROGRESS);
+        assertThat(run().getEndTime()).isNull();
+    }
+
     private SagaInstance run() {
         return instances.get(RUN.canonical());
     }

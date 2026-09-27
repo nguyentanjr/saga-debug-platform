@@ -167,6 +167,74 @@ class EventTimeProvenanceTest {
         assertThat(stored("e1").getEventTimeSource()).isEqualTo(EventTimeSource.TRANSPORT);
     }
 
+    @Test
+    void workflowConflictSurvivesReloadReplayAndLaterMatchingEvidence() {
+        ingest("e1", null);
+        long runningBefore = instances.countUncontestedByStatusSince("IN_PROGRESS", EVENT.minusSeconds(1));
+        assertThat(runningBefore).isPositive();
+        mapping.setWorkflow("LOAN_APPROVAL");
+        ingest("e2", null);
+        assertThat(instances.countUncontestedByStatusSince("IN_PROGRESS", EVENT.minusSeconds(1)))
+                .isEqualTo(runningBefore - 1);
+        assertThat(instances.findById("default::" + run).orElseThrow().getWorkflowConflicts())
+                .containsExactly("LOAN_APPROVAL", "ORDER_SAGA");
+        mapping.setWorkflow("ORDER_SAGA");
+        newIngestion().ingest(raw("e2", null, TRANSPORT, Map.of()));
+        newIngestion().ingest(raw("e3", null, TRANSPORT, Map.of()));
+        assertThat(instances.findById("default::" + run).orElseThrow().getWorkflowConflicts())
+                .containsExactly("LOAN_APPROVAL", "ORDER_SAGA");
+        assertThat(events.countBySagaId("default::" + run)).isEqualTo(3);
+    }
+
+    @Test
+    void workflowConflictRollsBackWithItsObservationAndRetryCanCommit() {
+        ingest("e1", null);
+        mapping.setWorkflow("LOAN_APPROVAL");
+        mapping.getEventTypes().put("ORDER_CREATED", "X".repeat(400));
+        assertThatThrownBy(() -> ingest("e2", null))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(instances.findById("default::" + run).orElseThrow().hasWorkflowConflict()).isFalse();
+        assertThat(events.countBySagaId("default::" + run)).isEqualTo(1);
+        mapping.getEventTypes().clear();
+        assertThat(ingest("e2", null).isAccepted()).isTrue();
+        assertThat(instances.findById("default::" + run).orElseThrow().hasWorkflowConflict()).isTrue();
+    }
+
+    @Test
+    void aConcurrentStaleWriterCannotClearACommittedWorkflowConflict() throws Exception {
+        ingest("e1", null);
+        var loaded = new java.util.concurrent.CountDownLatch(1);
+        var committed = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var staleWrite = executor.submit(() -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+                SagaInstance stale = instances.findById("default::" + run).orElseThrow();
+                loaded.countDown();
+                try {
+                    if (!committed.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                        throw new IllegalStateException("Timed out waiting for conflict commit");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+                stale.setLastUpdated(TRANSPORT.plusSeconds(1));
+                instances.saveAndFlush(stale);
+            }));
+            assertThat(loaded.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            mapping.setWorkflow("LOAN_APPROVAL");
+            ingest("e2", null);
+            committed.countDown();
+            assertThatThrownBy(() -> staleWrite.get(10, java.util.concurrent.TimeUnit.SECONDS))
+                    .isInstanceOf(java.util.concurrent.ExecutionException.class)
+                    .hasCauseInstanceOf(org.springframework.orm.ObjectOptimisticLockingFailureException.class);
+            assertThat(instances.findById("default::" + run).orElseThrow().getWorkflowConflicts())
+                    .containsExactly("LOAN_APPROVAL", "ORDER_SAGA");
+        } finally {
+            committed.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private EventIngestionService newIngestion() {
         return new EventIngestionService(correlation, json, new SourceCompletenessCheck(),
                 new DeduplicationCache(), new EventTimeResolver(), mappings,
