@@ -16,6 +16,9 @@ import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertEvent;
 import com.example.correlation.service.alert.AlertSink;
 import com.example.correlation.service.rca.AnomalySignatureRule;
+import com.example.correlation.service.rca.FailureSignal;
+import com.example.correlation.service.rca.FailureSignalDeclaration;
+import com.example.correlation.service.rca.FailureSignalRegistry;
 import com.example.correlation.service.rca.RcaSelector;
 import com.example.correlation.service.rca.RuleRegistry;
 import com.example.correlation.workflow.WorkflowRegistry;
@@ -54,6 +57,7 @@ public class RcaService {
     private final DetectionProperties detectionProperties;
     private final AlertSink alertSink;
     private final ExecutionProjectionService executionProjectionService;
+    private final FailureSignalRegistry failureSignalRegistry;
     private final RcaService self;
 
     public RcaService(SagaInstanceRepository sagaInstanceRepository,
@@ -67,7 +71,9 @@ public class RcaService {
             DetectionProperties detectionProperties,
             AlertSink alertSink,
             ExecutionProjectionService executionProjectionService,
+            FailureSignalRegistry failureSignalRegistry,
             @Lazy RcaService self) {
+        this.failureSignalRegistry = failureSignalRegistry;
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
@@ -111,7 +117,8 @@ public class RcaService {
 
         // Procedural rules: each needs something a signature match cannot express —
         // payload content, saga status, timestamp arithmetic, or a missing event.
-        addIfPresent(candidates, ruleCircuitBreakerOpen(workflow, events));
+        CandidateAssessment declaredSignal = ruleDeclaredFailureSignal(workflow, events);
+        addIfPresent(candidates, declaredSignal);
         addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
         addIfPresent(candidates, ruleTransientServiceFailure(saga, anomalies));
@@ -494,7 +501,33 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleCircuitBreakerOpen(WorkflowSpec workflow, List<SagaEvent> events) {
+    /**
+     * R01 / R23 — what the source system's own failure message says, read through its
+     * declaration.
+     *
+     * <p>The previous version matched {@code payload.contains("circuit breaker") ||
+     * contains("retry exhausted")} over the whole payload and answered
+     * {@code CIRCUIT_BREAKER_OPEN} at STRONG whenever either hit. Measuring SC06 on
+     * 2026-09-21 showed what that cost. Across three runs of one scenario the breaker was
+     * genuinely CLOSED in the first and OPEN in the other two — verified from
+     * payment-service's own actuator — and the platform returned the same verdict, at the
+     * same tier, citing the same evidence, all three times. Both substrings live in a
+     * constant prefix the source writes on <em>every</em> retry exhaustion, so the
+     * predicate could not see the difference. It was right twice for a reason that was not
+     * the evidence, and wrong once.
+     *
+     * <p>What actually separates the runs is the <em>suffix</em>: the underlying exception's
+     * message, which in two of them is the breaker's own refusal and in the other is the
+     * gateway error. Reading it requires knowing which field carries the reason and what
+     * that system's breaker refusal looks like — facts about the observed system, so
+     * declared per source rather than compiled in (I7). A source with no declaration yields
+     * no candidate here: the platform has not been told how to read its failure text, and
+     * inferring one anyway is the defect, not the fix.
+     *
+     * <p>Two candidates, because they are two claims at two depths. Both are mechanisms:
+     * neither says why the system was failing, only how this call ended.
+     */
+    private CandidateAssessment ruleDeclaredFailureSignal(WorkflowSpec workflow, List<SagaEvent> events) {
         if (workflow == null) return null;
         for (SagaEvent event : events) {
             boolean isFailure = workflow.classifyEvent(event.getEventType())
@@ -502,21 +535,59 @@ public class RcaService {
                     .isPresent();
             if (!isFailure) continue;
 
-            String payload = event.getPayload() != null ? event.getPayload().toLowerCase(Locale.ROOT) : "";
-            if (payload.contains("circuit breaker") || payload.contains("retry exhausted")) {
+            FailureSignalDeclaration declaration =
+                    failureSignalRegistry.forSource(event.getSourceName()).orElse(null);
+            if (declaration == null) continue;
+
+            String reason = declaration.readReason(event.getPayload()).orElse(null);
+            if (reason == null) continue;
+
+            // Breaker refusal first: it is the more specific of the two, and a message that
+            // reports it also came out of an exhausted retry, so testing exhaustion first
+            // would mask it.
+            String breakerPattern =
+                    declaration.matchedPattern(FailureSignal.BREAKER_REJECTED_CALL, reason).orElse(null);
+            if (breakerPattern != null) {
                 CandidateAssessment rr = candidate("CIRCUIT_BREAKER_OPEN", "CRITICAL", "R01",
                         CandidateStatus.STRONG_EVIDENCE);
                 rr.getEvidence().add(Evidence.ofEvent(
-                        event.getEventType() + " reports circuit breaker / retry exhaustion",
-                        event.getPayload(), "the step succeeds or reports a business failure",
+                        event.getEventType() + " carries the source's own report that a breaker "
+                                + "refused the call",
+                        reason, "the step succeeds or reports a business failure",
                         event.getEventId()));
-                rr.getEvidence().add(Evidence.of("Payload: " + event.getPayload(), null));
-                // The signature is a substring of a message the failing service writes,
-                // not a reading of breaker state. It establishes that retries were
-                // exhausted; whether a breaker ever opened is not shown by this evidence.
-                rr.setStatusReason("Signature matched in the failure payload; breaker state itself was not observed.");
+                rr.getEvidence().add(Evidence.of(
+                        "Matched declared BREAKER_REJECTED_CALL wording for source '"
+                                + event.getSourceName() + "': \"" + breakerPattern + "\"", null));
+                // Says what it is and what it is not. The refusal is observed; the reason
+                // the breaker was open is not in this evidence, and in SC06 it was in fact
+                // one layer below -- the breaker opened because the gateway kept failing.
+                rr.setStatusReason("The source reported breaker refusal for this call. Why the "
+                        + "breaker was open is not established by this evidence.");
                 rr.getSuggestions().add("Check downstream service health");
-                rr.getSuggestions().add("Review Resilience4j metrics at /actuator/circuitbreakers");
+                rr.getSuggestions().add("Look at what was failing before the breaker opened");
+                return rr;
+            }
+
+            String exhaustedPattern =
+                    declaration.matchedPattern(FailureSignal.RETRY_EXHAUSTED, reason).orElse(null);
+            if (exhaustedPattern != null) {
+                CandidateAssessment rr = candidate("RETRY_EXHAUSTED", "HIGH", "R23",
+                        CandidateStatus.STRONG_EVIDENCE);
+                rr.getEvidence().add(Evidence.ofEvent(
+                        event.getEventType() + " reports that the declared retry policy was "
+                                + "exhausted",
+                        reason, "the step succeeds or reports a business failure",
+                        event.getEventId()));
+                rr.getEvidence().add(Evidence.of(
+                        "Matched declared RETRY_EXHAUSTED wording for source '"
+                                + event.getSourceName() + "': \"" + exhaustedPattern + "\"", null));
+                // The claim stops where the evidence does. This is the run whose message
+                // says nothing about a breaker, and naming a breaker here is exactly the
+                // over-reach F4 removed.
+                rr.setStatusReason("Retries were exhausted. Nothing in this failure message "
+                        + "reports breaker state, so no claim is made about one.");
+                rr.getSuggestions().add("Check downstream service health");
+                rr.getSuggestions().add("Review the retry policy against the step's real latency");
                 return rr;
             }
         }

@@ -15,6 +15,7 @@ import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertSink;
+import com.example.correlation.service.rca.FailureSignalRegistry;
 import com.example.correlation.service.rca.RcaSelector;
 import com.example.correlation.service.rca.RuleRegistry;
 import com.example.correlation.workflow.WorkflowRegistry;
@@ -69,6 +70,10 @@ import static org.mockito.Mockito.when;
  * middle observation simply has not arrived.
  */
 class ParallelTransitionSemanticsTest {
+
+    /** No source has declared how it words failures -- what R01/R23 see when untold. */
+    private static final FailureSignalRegistry EMPTY_FAILURE_SIGNALS =
+            new FailureSignalRegistry("");
 
     private static final String SOURCE = ExecutionKey.DEFAULT_SOURCE;
     private static final ExecutionKey RUN = ExecutionKey.of(SOURCE, "run-1");
@@ -408,7 +413,8 @@ class ParallelTransitionSemanticsTest {
 
         return new RcaService(sagaInstances, sagaEvents, anomalyRepository, results, registry,
                 new ObjectMapper(), new RcaSelector(), rules, new DetectionProperties(),
-                mock(AlertSink.class), new ExecutionProjectionService(), null)
+                mock(AlertSink.class), new ExecutionProjectionService(),
+                EMPTY_FAILURE_SIGNALS, null)
                 .analyze(RUN.canonical());
     }
 }

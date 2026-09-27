@@ -12,6 +12,7 @@ import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertSink;
+import com.example.correlation.service.rca.FailureSignalRegistry;
 import com.example.correlation.service.rca.RcaSelector;
 import com.example.correlation.service.rca.RuleRegistry;
 import com.example.correlation.workflow.WorkflowRegistry;
@@ -52,6 +53,10 @@ import static org.mockito.Mockito.when;
  * the platform's own evidence being read as evidence about the observed system.
  */
 class RetractedEvidenceTest {
+
+    /** No source has declared how it words failures -- what R01/R23 see when untold. */
+    private static final FailureSignalRegistry EMPTY_FAILURE_SIGNALS =
+            new FailureSignalRegistry("");
 
     private static final String SAGA = "default::run-1";
 
@@ -100,7 +105,8 @@ class RetractedEvidenceTest {
         rcaService = new RcaService(sagaInstanceRepository, sagaEventRepository,
                 anomalyRepository, rcaResultRepository, registry, new ObjectMapper(),
                 new RcaSelector(), ruleRegistry, new DetectionProperties(), alertSink,
-                new ExecutionProjectionService(), null);
+                new ExecutionProjectionService(),
+                EMPTY_FAILURE_SIGNALS, null);
     }
 
     /**

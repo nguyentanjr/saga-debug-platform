@@ -53,6 +53,10 @@ import static org.mockito.Mockito.when;
  */
 class RcaPromotionTest {
 
+    /** No source has declared how it words failures -- what R01/R23 see when untold. */
+    private static final FailureSignalRegistry EMPTY_FAILURE_SIGNALS =
+            new FailureSignalRegistry("");
+
     // ══ the selector: which candidate, if any, is promoted ════════════════════
 
     private final RcaSelector selector = new RcaSelector();
@@ -216,6 +220,7 @@ class RcaPromotionTest {
                 new DetectionProperties(),
                 mock(AlertSink.class),
                 new ExecutionProjectionService(),
+                EMPTY_FAILURE_SIGNALS,
                 null);
     }
 

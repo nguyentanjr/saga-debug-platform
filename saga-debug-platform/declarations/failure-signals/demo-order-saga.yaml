@@ -1,0 +1,40 @@
+# How the bundled demo saga words its failures.
+#
+# This file exists so that one Java library's phrasing stays out of the platform. The
+# wording below belongs to Resilience4j as payment-service uses it; a system built on Go's
+# gobreaker or .NET's Polly reports the same two situations in different words, and the
+# core must not know any of them in advance (I7).
+#
+# Read out of PaymentService.handleOrderCreatedFallback, which builds the reason as
+#     "Circuit breaker / retry exhausted: " + t.getMessage()
+# -- a constant prefix, then the underlying exception. The prefix is written on EVERY
+# exhaustion; only the suffix says which situation occurred. Measured on SC06 (2026-09-21,
+# results/evaluation_report_sc06_evidence_20260921.json), across three runs of one
+# scenario:
+#
+#   run 1  suffix "Payment gateway unavailable (simulated failure)"        breaker CLOSED
+#   run 2  suffix "CircuitBreaker 'paymentProcessing' is OPEN and does..."  breaker OPEN
+#   run 3  suffix "CircuitBreaker 'paymentProcessing' is OPEN and does..."  breaker OPEN
+#
+# Breaker state was verified from payment-service's own actuator, not inferred from the
+# message. That verification is experiment instrumentation and the observer reads none of
+# it -- see docs/ORACLE.md 5.0b.
+
+failureSignals:
+  source: default
+
+  # PaymentFailedEvent carries it as `reason`. Listed rather than fixed so a version that
+  # renames the field is a declaration change, not a code change.
+  reasonFields: [reason, failureReason, errorMessage]
+
+  signals:
+    # Resilience4j's CallNotPermittedException message. This is the source reporting
+    # breaker STATE -- the only wording here that does.
+    BREAKER_REJECTED_CALL:
+      - "is OPEN and does not permit further calls"
+
+    # The constant prefix. It establishes that the fallback ran, i.e. the declared retry
+    # policy was exhausted, and nothing beyond that. Deliberately kept: a run whose suffix
+    # says nothing about a breaker should still yield the conclusion its evidence supports.
+    RETRY_EXHAUSTED:
+      - "retry exhausted"

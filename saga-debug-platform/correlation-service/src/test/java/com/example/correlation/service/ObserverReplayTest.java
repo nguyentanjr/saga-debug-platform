@@ -15,6 +15,7 @@ import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertSink;
+import com.example.correlation.service.rca.FailureSignalRegistry;
 import com.example.correlation.service.rca.RcaSelector;
 import com.example.correlation.service.rca.RuleRegistry;
 import com.example.correlation.workflow.WorkflowRegistry;
@@ -62,6 +63,10 @@ import static org.mockito.Mockito.when;
  * inferred from timing, and not from the payload looking familiar.
  */
 class ObserverReplayTest {
+
+    /** No source has declared how it words failures -- what R01/R23 see when untold. */
+    private static final FailureSignalRegistry EMPTY_FAILURE_SIGNALS =
+            new FailureSignalRegistry("");
 
     private static final Instant T0 = Instant.parse("2026-01-01T00:00:00Z");
     private static final ExecutionKey RUN = ExecutionKey.of("shop", "ORD-1");
@@ -336,7 +341,8 @@ class ObserverReplayTest {
 
         return new RcaService(sagaInstances, sagaEvents, anomalies, results, workflows,
                 new ObjectMapper(), new RcaSelector(), rules, new DetectionProperties(),
-                mock(AlertSink.class), new ExecutionProjectionService(), null)
+                mock(AlertSink.class), new ExecutionProjectionService(),
+                EMPTY_FAILURE_SIGNALS, null)
                 .analyze(RUN.canonical());
     }
 }
