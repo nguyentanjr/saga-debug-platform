@@ -903,6 +903,9 @@ giu nguyen tung byte. Khai bao cho hai topic lenh cua hotel (`creditCardNo`). Te
 `"creditCardNo": "[redacted]"`, khong event nao con so the.
 Gioi han: duong dan chi di qua JSON object, khong vao payload nhung dang chuoi; ban ghi cu trong DB khong
 duoc viet lai (khong sua DB truc tiep) — can mot migration/job rieng neu muon xoa du lieu cu.
+Bo sung 2026-09-28: log ERROR khi bo cuoc mot record (`KafkaErrorHandlingConfig`) in nguyen `record.value()`
+— so the vao log. Nay che theo mapping cua topic truoc khi in; replay tay khong mat gi vi observer cung
+khong luu gia tri do. Test: `KafkaErrorHandlingConfigTest`.
 Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
 nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.
 Expected: co phuong an che truong khai bao theo source truoc khi quan sat he that.

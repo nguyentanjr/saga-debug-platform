@@ -1,5 +1,7 @@
 package com.example.correlation.config;
 
+import com.example.correlation.ingestion.SourceMappingRegistry;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -28,7 +30,7 @@ public class KafkaErrorHandlingConfig {
     private static final Logger log = LoggerFactory.getLogger(KafkaErrorHandlingConfig.class);
 
     @Bean
-    public DefaultErrorHandler kafkaErrorHandler() {
+    public DefaultErrorHandler kafkaErrorHandler(SourceMappingRegistry mappings) {
         ExponentialBackOff backOff = new ExponentialBackOff(500L, 2.0);
         backOff.setMaxInterval(20_000L);
         backOff.setMaxElapsedTime(60_000L);
@@ -38,7 +40,7 @@ public class KafkaErrorHandlingConfig {
                                 + "key={} value={}. This event is NOT stored; replay it manually "
                                 + "if the saga matters.",
                         record.topic(), record.partition(), record.offset(),
-                        record.key(), record.value(), exception),
+                        record.key(), valueForLog(record, mappings), exception),
                 backOff);
 
         // A record that cannot be deserialized will fail identically on every attempt.
@@ -47,5 +49,15 @@ public class KafkaErrorHandlingConfig {
                 IllegalArgumentException.class);
 
         return handler;
+    }
+
+    /**
+     * The record's value as it may be written to a log: with every field its source
+     * declares sensitive already replaced (L14). The log exists so the record can be replayed
+     * by hand, and replay loses nothing — the observer never stores those values either.
+     */
+    static String valueForLog(ConsumerRecord<?, ?> record, SourceMappingRegistry mappings) {
+        if (record.value() == null) return null;
+        return mappings.forTopic(record.topic()).redact(String.valueOf(record.value()));
     }
 }
