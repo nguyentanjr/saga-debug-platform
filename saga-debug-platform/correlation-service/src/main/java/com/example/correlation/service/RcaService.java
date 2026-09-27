@@ -281,20 +281,28 @@ public class RcaService {
                 .collect(Collectors.toMap(SagaEvent::getEventId, e -> e, (a, b) -> a));
 
         for (CandidateAssessment candidate : candidates) {
-            SagaEvent earliest = candidate.getEvidence().stream()
+            List<SagaEvent> cited = candidate.getEvidence().stream()
                     .flatMap(evidence -> evidence.eventIds().stream())
                     .map(eventsById::get)
                     .filter(Objects::nonNull)
                     .filter(e -> e.getTimestamp() != null)
-                    .min(Comparator.comparing(SagaEvent::getTimestamp))
-                    .orElse(null);
+                    .toList();
+            if (cited.isEmpty()) continue;
 
-            if (earliest == null) continue;
+            Instant anchorAt = cited.stream().map(SagaEvent::getTimestamp)
+                    .min(Comparator.naturalOrder()).orElseThrow();
+            candidate.setAnchorAt(anchorAt);
+            if (workflow == null) continue;
 
-            candidate.setAnchorAt(earliest.getTimestamp());
-            if (workflow != null) {
-                workflow.classifyEvent(earliest.getEventType())
-                        .map(WorkflowSpec.EventRole::stepId)
+            // Every cited event at the earliest instant, not the first one the stream met:
+            // when they belong to different steps the evidence does not say which step the
+            // story starts in, and the step stays unknown rather than being picked (F11).
+            Set<Optional<String>> steps = cited.stream()
+                    .filter(e -> e.getTimestamp().equals(anchorAt))
+                    .map(e -> workflow.classifyEvent(e.getEventType()).map(WorkflowSpec.EventRole::stepId))
+                    .collect(Collectors.toSet());
+            if (steps.size() == 1) {
+                steps.iterator().next()
                         .filter(stepId -> projection.operation(stepId).isPresent())
                         .ifPresent(candidate::setAnchorStepId);
             }
@@ -498,18 +506,18 @@ public class RcaService {
         List<CandidateAssessment> matched = new ArrayList<>();
 
         for (AnomalySignatureRule rule : ruleRegistry.rules()) {
-            rule.firstMatch(anomalies).ifPresent(anomaly -> {
-                CandidateAssessment candidate = candidate(
-                        rule.getRootCause(), rule.getSeverity(), rule.getId(), rule.getEvidence());
+            List<Anomaly> matches = rule.matching(anomalies);
+            if (matches.isEmpty()) continue;
+            CandidateAssessment candidate = candidate(
+                    rule.getRootCause(), rule.getSeverity(), rule.getId(), rule.getEvidence());
 
-                // The matched anomaly first: it carries the event ids that let
-                // anchorCandidates() place this candidate in the execution.
-                candidate.getEvidence().add(evidence(anomaly));
-                rule.getEvidenceNotes().forEach(note -> candidate.getEvidence().add(evidence(note)));
-                candidate.getSuggestions().addAll(rule.getSuggestions());
+            // The matched anomalies first: they carry the event ids that let
+            // anchorCandidates() place this candidate in the execution.
+            matches.forEach(anomaly -> candidate.getEvidence().add(evidence(anomaly)));
+            rule.getEvidenceNotes().forEach(note -> candidate.getEvidence().add(evidence(note)));
+            candidate.getSuggestions().addAll(rule.getSuggestions());
 
-                matched.add(candidate);
-            });
+            matched.add(candidate);
         }
         return matched;
     }

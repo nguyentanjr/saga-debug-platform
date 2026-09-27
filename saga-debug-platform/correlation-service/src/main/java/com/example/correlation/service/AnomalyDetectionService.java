@@ -281,11 +281,10 @@ public class AnomalyDetectionService {
      */
     public void detectStateRegression(String sagaId, EvidenceTimeline.Regression regression) {
         if (regression == null) return;
-        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.STATE_REGRESSION)) return;
 
         SagaStatus from = regression.from();
         SagaStatus to = regression.to();
-        createAnomaly(sagaId, AnomalyType.STATE_REGRESSION,
+        raiseOrRevise(sagaId, AnomalyType.STATE_REGRESSION,
                 String.format("State regression: %s → %s (rank %d → %d) between '%s' and '%s'",
                         from, to, from.progressRank(), to.progressRank(),
                         regression.earlier().getEventType(), regression.later().getEventType()),
@@ -328,14 +327,26 @@ public class AnomalyDetectionService {
                 .thresholdSource("code:terminal-status-guard")
                 .evidenceEvents(terminalEvent, lateEvent)
                 .measuredAt(lateEvent.getTimestamp());
-        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL)) {
-            createAnomaly(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL, description, evidence);
+        raiseOrRevise(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL, description, evidence);
+    }
+
+    /**
+     * One standing occurrence of {@code type} per run, citing what the whole evidence in hand
+     * selects rather than what the first prefix to prove the occurrence happened to contain.
+     *
+     * <p>F9 introduced this for FORBIDDEN_POST_TERMINAL; F11 found STATE_REGRESSION and
+     * MULTI_TERMINAL_CONFLICT still returning as soon as a finding existed, so their citation
+     * depended on delivery order. A changed citation advances detectedAt so the RCA sweep
+     * notices; an unchanged one writes nothing. A late alias merge can leave standing rows
+     * from both fragments, and each gets the canonical citation — none is deleted.
+     */
+    private void raiseOrRevise(String sagaId, AnomalyType type, String description, AnomalyDetails evidence) {
+        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, type)) {
+            createAnomaly(sagaId, type, description, evidence);
             return;
         }
-        // A late alias merge can leave standing rows from both fragments. Give each the
-        // canonical citation without deleting the previously reported occurrences.
         for (Anomaly anomaly : anomalyRepository.findStandingBySagaId(sagaId)) {
-            if (anomaly.getAnomalyType() != AnomalyType.FORBIDDEN_POST_TERMINAL) continue;
+            if (anomaly.getAnomalyType() != type) continue;
             if (Objects.equals(anomaly.getEvidenceEventIds(), evidence.evidenceEventIds)
                     && Objects.equals(anomaly.getMeasuredAt(), evidence.measuredAt)
                     && Objects.equals(anomaly.getDescription(), description)) continue;
@@ -347,8 +358,7 @@ public class AnomalyDetectionService {
             anomaly.setMeasuredAt(evidence.measuredAt);
             anomaly.setDetectedAt(Instant.now());
             anomalyRepository.save(anomaly);
-            log.info("Anomaly evidence revised: [{}] {} - {}",
-                    AnomalyType.FORBIDDEN_POST_TERMINAL, sagaId, description);
+            log.info("Anomaly evidence revised: [{}] {} - {}", type, sagaId, description);
         }
     }
 
@@ -392,7 +402,6 @@ public class AnomalyDetectionService {
      */
     public void detectMultiTerminalConflict(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
         if (workflow == null) return;
-        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT)) return;
 
         List<SagaEvent> succeeded = terminalEvents(workflow, events, SagaStatus.COMPLETED);
         List<SagaEvent> notSucceeded = new ArrayList<>(
@@ -407,7 +416,7 @@ public class AnomalyDetectionService {
 
         String successTypes = distinctTypes(succeeded);
         String failTypes = distinctTypes(notSucceeded);
-        createAnomaly(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT,
+        raiseOrRevise(sagaId, AnomalyType.MULTI_TERMINAL_CONFLICT,
                 String.format("Both success [%s] and non-success [%s] terminal events present in same saga",
                         successTypes, failTypes),
                 details()

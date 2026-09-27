@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -672,14 +673,64 @@ class TransitionEvidenceTest {
                 new String[]{"e5", "INVENTORY_FAILED", "4"});
     }
 
+    // ── F11: the other occurrence findings, and which finding a rule cites ────
+
+    /** F11: STATE_REGRESSION's cited pair no longer depends on how much of the run had arrived. */
+    @Test
+    void everyDeliveryOrderCitesTheSameStateRegressionPair() {
+        assertThat(shapesOverEveryOrderOf(severalQualifyingPairs(), AnomalyType.STATE_REGRESSION))
+                .hasSize(1)
+                .doesNotContainKey(NO_FINDING);
+    }
+
+    /** F11: nor does the set of terminal observations MULTI_TERMINAL_CONFLICT cites. */
+    @Test
+    void everyDeliveryOrderCitesTheSameConflictingTerminals() {
+        // INVENTORY_FAILED routes to compensation rather than ending the run, so it is not
+        // one of the conflicting terminals.
+        assertThat(shapesOverEveryOrderOf(severalQualifyingPairs(), AnomalyType.MULTI_TERMINAL_CONFLICT))
+                .containsOnlyKeys("[e3, e4] @" + T0.plusSeconds(3));
+    }
+
+    /**
+     * F11: R04 matches both FORBIDDEN_POST_TERMINAL and STATE_REGRESSION, and cited whichever
+     * the repository happened to return first — findStandingBySagaId has no ORDER BY. The
+     * same findings, returned in every order, must produce the same diagnosis.
+     */
+    @Test
+    void theOrderFindingsAreReadBackInDoesNotChangeTheDiagnosis() {
+        severalQualifyingPairs().forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+        List<Anomaly> standing = anomalies.stream().filter(a -> !a.isRetracted()).toList();
+        assertThat(standing).extracting(Anomaly::getAnomalyType)
+                .contains(AnomalyType.FORBIDDEN_POST_TERMINAL, AnomalyType.STATE_REGRESSION);
+        RuleRegistry rules = new RuleRegistry();
+        rules.load();
+
+        Set<String> diagnoses = new java.util.HashSet<>();
+        for (List<Anomaly> order : permutations(standing)) {
+            when(anomalyRepository.findStandingBySagaId(RUN.canonical())).thenReturn(order);
+            RcaResult result = rcaService(rules, mock(RcaResultRepository.class), null).analyze(RUN.canonical());
+            diagnoses.add(result.getRootCause() + " " + result.getEvidence() + " "
+                    + result.getCandidates().stream()
+                            .map(c -> c.getRuleId() + "@" + c.getAnchorAt() + "/" + c.getAnchorStepId())
+                            .toList());
+        }
+        assertThat(diagnoses).hasSize(1);
+    }
+
     /** Every delivery order of {@code run}, against what its post-terminal finding cites. */
     private Map<String, List<String>> postTerminalShapesOverEveryOrderOf(List<String[]> run) {
+        return shapesOverEveryOrderOf(run, AnomalyType.FORBIDDEN_POST_TERMINAL);
+    }
+
+    /** Every delivery order of {@code run}, against what its standing finding of {@code type} cites. */
+    private Map<String, List<String>> shapesOverEveryOrderOf(List<String[]> run, AnomalyType type) {
         Map<String, List<String>> shapes = new LinkedHashMap<>();
         for (List<String[]> order : permutations(run)) {
             setUp();
             order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
             String shape = anomalies.stream()
-                    .filter(a -> a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL)
+                    .filter(a -> a.getAnomalyType() == type && !a.isRetracted())
                     .findFirst()
                     .map(a -> a.getEvidenceEventIds() + " @" + a.getMeasuredAt())
                     .orElse(NO_FINDING);

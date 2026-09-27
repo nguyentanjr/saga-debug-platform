@@ -6,6 +6,7 @@ import com.example.correlation.domain.rca.CandidateStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -66,24 +67,37 @@ public class AnomalySignatureRule {
     private List<String> suggestions = new ArrayList<>();
 
     /**
-     * The first anomaly this rule matches, in the order the anomalies were detected.
+     * Every anomaly this rule matches, earliest business time first.
      *
-     * <p>The first rather than any, because it is the one that anchors the candidate in
-     * the execution: {@code RcaService} positions a candidate by the earliest event its
-     * evidence names, so quoting a later anomaly would place the candidate later than the
-     * point its story actually starts.
+     * <p>This used to return the first match in the order it was handed, meant as "the
+     * first detected" so the candidate would anchor where its story starts. But the list
+     * comes from {@code findStandingBySagaId}, which has no ORDER BY, and a rule matching
+     * two findings — R04 on FORBIDDEN_POST_TERMINAL and STATE_REGRESSION, R12 on two
+     * invalid transitions — cited whichever came back first. The same findings in another
+     * order moved the anchor and changed the promoted cause (ROADMAP F11). Quoting all of
+     * them lets {@code RcaService} anchor at the earliest event any of them names, which is
+     * what "first" was for, with nothing left to the storage order.
      *
      * @return empty when no anomaly matches, which means the rule does not fire
      */
-    public Optional<Anomaly> firstMatch(List<Anomaly> anomalies) {
+    public List<Anomaly> matching(List<Anomaly> anomalies) {
         if (anomalies == null || matchesAnyAnomaly.isEmpty()) {
-            return Optional.empty();
+            return List.of();
         }
         Set<AnomalyType> wanted = Set.copyOf(matchesAnyAnomaly);
         return anomalies.stream()
                 .filter(anomaly -> anomaly != null && wanted.contains(anomaly.getAnomalyType()))
-                .findFirst();
+                .sorted(CITATION_ORDER)
+                .toList();
     }
+
+    /** Business time first; the rest only makes the order total, and claims nothing. */
+    private static final Comparator<Anomaly> CITATION_ORDER = Comparator
+            .comparing(Anomaly::getMeasuredAt, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(anomaly -> anomaly.getAnomalyType().name())
+            .thenComparing(anomaly -> String.valueOf(anomaly.getObservedValue()))
+            .thenComparing(anomaly -> String.valueOf(anomaly.getEvidenceEventIds()))
+            .thenComparing(anomaly -> String.valueOf(anomaly.getDescription()));
 
     /**
      * Why this rule could never fire, or empty when it is well formed.

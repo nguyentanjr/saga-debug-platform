@@ -738,6 +738,13 @@ phai 10s cua PROCESS_PAYMENT.
 Expected: bo map (hoac chi dung khi buoc khong noi gi) — doi hanh vi ORDER_SAGA, nen phai chay lai
 danh gia va bao ca hai bo so. Khong gop vao L16.
 
+**F14 — INVALID_TRANSITION ghi trung cung mot cap** · Priority: trung binh-cao
+Problem (phat hien khi sua F11): `judgeTransitions` xet lai moi cap lien ke o moi event den, va
+`detectInvalidTransition` khong kiem tra finding da co. Run e1..e5 cua F9 co hai finding
+`RESERVE_INVENTORY -> PROCESS_PAYMENT on SUCCESS` cung trich [e4]. Dem anomaly tren dashboard bi
+thoi phong; evidence RCA lap lai.
+Expected: moi cap (buoc truoc, buoc sau, dieu kien, event) chi mot finding dung; lap lai la khong ghi.
+
 **L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc** · Priority: thap
 Problem (sau L21): hai nguon cung noi event thuoc buoc nao; bat dong thi map thang, im lang.
 `WorkflowSpecValidator` chi canh bao buoc khong ton tai va event khong buoc nao khai bao. Hien
@@ -875,7 +882,18 @@ Expected: tai hien mixed clocks/legacy unknown bang test, xac dinh claim va nhan
 provenance cho tung phep do; khong dong nhat StartProvenance (nguon ranh gioi buoc)
 voi nguon timestamp, khong tu dong sua tier/oracle. Chi ghi roadmap trong F6.
 
-**F11 — Citation cua cac occurrence khac va chon finding cho RCA con phu thuoc thu tu** · Priority: **cao**
+**F11 — Citation cua cac occurrence khac va chon finding cho RCA con phu thuoc thu tu — DA SUA 2026-09-28** · Priority: **cao**
+Tai hien truoc khi sua: STATE_REGRESSION co 3 dang citation qua 120 hoan vi; MULTI_TERMINAL_CONFLICT
+nhieu dang; va cung mot tap finding tra theo thu tu khac nhau cho **4 chan doan khac nhau, doi ca
+nguyen nhan de cu** (MULTI_TERMINAL_CONFLICT <-> INVALID_TRANSITION) vi R12 trich finding dau tien.
+Da sua: (a) `raiseOrRevise` — co che F9 dung chung cho FORBIDDEN_POST_TERMINAL, STATE_REGRESSION,
+MULTI_TERMINAL_CONFLICT; (b) `AnomalySignatureRule.matching` thay `firstMatch`: trich moi finding
+khop, business time som nhat truoc, thu tu tong nhung khong khang dinh gi them; (c) anchor lay moc
+som nhat, `anchorStepId` chi gan khi moi event o moc do cung mot buoc, hoa giua cac buoc -> UNKNOWN.
+Test: `TransitionEvidenceTest` (3 moi, deu fail truoc khi sua), `RuleRegistryTest` (test "earliest"
+truoc day chi ghim thu tu danh sach). Full suite sach: 526/526. Replay 27 run settled (co sweep
+step-timeout) cu vs moi: khong run nao khac — moi run chi co toi da mot finding moi luat.
+Van de goc giu lai ben duoi.
 Problem (ra soat code khi sua F9, 2026-09-22): `detectStateRegression` va
 `detectMultiTerminalConflict` van return khi da co finding, nen evidence cua chung giu
 nguyen tien to dau tien. `AnomalySignatureRule.firstMatch` lay phan tu dau tien khop loai
