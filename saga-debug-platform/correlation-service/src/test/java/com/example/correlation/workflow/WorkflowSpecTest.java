@@ -134,10 +134,27 @@ class WorkflowSpecTest {
         }
     }
 
-    /** Where the map is declared it decides, including where it is silent (ROADMAP L21). */
+    /**
+     * L21: ORDER_SAGA's map leaves out every started and retry event and two failed ones.
+     * Where it is silent the steps answer, instead of the event belonging to no step.
+     */
     @Test
-    void aDeclaredMapStaysAuthoritativeEvenWhereItIsSilent() {
-        assertThat(spec.getExpectedStepForEvent("PAYMENT_COMPLETED")).isEqualTo("PROCESS_PAYMENT");
-        assertThat(spec.getExpectedStepForEvent("PAYMENT_STARTED")).isNull();
+    void whereTheDeclaredMapIsSilentTheStepsAnswer() {
+        assertThat(spec.getExpectedStepForEvent("PAYMENT_STARTED")).isEqualTo("PROCESS_PAYMENT");
+        assertThat(spec.getExpectedStepForEvent("PAYMENT_RETRY")).isEqualTo("PROCESS_PAYMENT");
+        assertThat(spec.getExpectedStepForEvent("INVENTORY_STARTED")).isEqualTo("RESERVE_INVENTORY");
+        assertThat(spec.getExpectedStepForEvent("ORDER_FAILED")).isEqualTo("CREATE_ORDER");
+        assertThat(spec.getExpectedStepForEvent("REFUND_FAILED")).isEqualTo("REFUND_PAYMENT");
+    }
+
+    /** Where the map speaks it still decides, even against the steps. No shipped spec disagrees. */
+    @Test
+    void whereTheDeclaredMapSpeaksItStillDecides() {
+        WorkflowSpec overridden = WorkflowSpecTestFixture.orderSaga();
+        java.util.Map<String, String> map = new java.util.LinkedHashMap<>(overridden.getValidEventTypes());
+        map.put("PAYMENT_COMPLETED", "RESERVE_INVENTORY");
+        overridden.setValidEventTypes(map);
+
+        assertThat(overridden.getExpectedStepForEvent("PAYMENT_COMPLETED")).isEqualTo("RESERVE_INVENTORY");
     }
 }

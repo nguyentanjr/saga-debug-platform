@@ -86,18 +86,20 @@ public class WorkflowSpec {
 
 
     /**
-     * The step an event belongs to: from {@code validEventTypes} when the workflow declares
-     * that map, and otherwise from the steps' own {@code events} and {@code outcomes}.
+     * The step an event belongs to: from {@code validEventTypes} where that map names the
+     * event, and otherwise from the steps' own {@code events} and {@code outcomes}.
      *
-     * <p>The map repeats what the steps already say. A workflow written without it —
-     * ROOM_RESERVATION and PARTNER_ORDER_SAGA in {@code declarations/} — used to get null
-     * for every event, so SAGA_STUCK fell back to the default timeout instead of the
-     * declared one, the adjacency STEP_TIMEOUT never fired, and no transition was judged.
-     * Where the map is declared it stays authoritative, including for the events it leaves
-     * out; that gap is ROADMAP L21.
+     * <p>The map repeats what the steps already say, and only in part. Consulted alone, it
+     * left every event it did not list in no step at all: a workflow written without it —
+     * ROOM_RESERVATION, PARTNER_ORDER_SAGA — got null for every event (L16), and ORDER_SAGA,
+     * whose map omits every started and retry event, got null for those (L21). SAGA_STUCK then
+     * fell back to the default timeout, the adjacency STEP_TIMEOUT skipped the event, and no
+     * transition into or out of it was judged. Where the map does name an event it still
+     * decides; no shipped specification has it disagree with the steps.
      */
     public String getExpectedStepForEvent(String eventType) {
-        if (validEventTypes != null) return validEventTypes.get(eventType);
+        String mapped = validEventTypes != null ? validEventTypes.get(eventType) : null;
+        if (mapped != null) return mapped;
         return classifyEvent(eventType).map(EventRole::stepId).orElse(null);
     }
 

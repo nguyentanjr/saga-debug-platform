@@ -718,7 +718,18 @@ guest 21: FAILED > 5 phut, khong co RCA nao cho den khi goi tay. Dashboard dem R
 Expected: xac dinh co can kich hoat RCA khi run dat trang thai ket thuc hay khong; neu co thi xet
 lai quyet dinh "business rejection khong can chan doan" cung luc, khong va rieng mot duong.
 
-**L21 — Workflow co `validEventTypes` im lang voi event started/retry/mot so failed** · Priority: trung binh-cao
+**L21 — Workflow co `validEventTypes` im lang voi event started/retry/mot so failed — DA SUA 2026-09-28** · Priority: trung binh-cao
+Da sua: `getExpectedStepForEvent` hoi map truoc; map khong nhac toi event thi hoi `events`/
+`outcomes` cua buoc. Noi map co noi, map van quyet dinh (khong spec nao dang co map va buoc bat
+dong). Test: `WorkflowSpecTest` (2), `DetectorEvidenceTest` (2: SAGA_STUCK sau PAYMENT_STARTED do
+bang `workflow:PROCESS_PAYMENT.timeout`; PAYMENT_FAILED roi INVENTORY_STARTED -> INVALID_TRANSITION);
+ba test loi fail truoc khi sua. Full suite sach: 523/523.
+Danh gia: replay 27 run settled (correlation + detector inline + sweep `detectStepTimeouts` + RCA),
+code cu (L16+L22) so voi moi: **khong run nao khac**. Sweep that su chay (STEP_TIMEOUT o SC04/16/
+27/28/29). Ly do: he demo khong phat `*_STARTED`; chi SC06 co event ngoai map (`PAYMENT_RETRY`),
+khoang cach lon nhat 4.1s < 10s cua PROCESS_PAYMENT, va ORDER_CREATED -> PAYMENT_RETRY hop le.
+SAGA_STUCK khong replay duoc (phu thuoc dong ho hien tai) — ket luan khong doi cho no la suy tu
+cung khoang cach 4.1s, chua do.
 Problem (phat hien khi sua L16): map la tap con cua `events:`. ORDER_SAGA thieu PAYMENT_STARTED,
 INVENTORY_STARTED, PAYMENT_RETRY, ORDER_FAILED, REFUND_FAILED; FULFILLMENT/LOAN/PARALLEL_CHECKOUT
 tuong tu. Voi cac event do: SAGA_STUCK dung nguong mac dinh thay vi nguong buoc, adjacency
@@ -726,6 +737,12 @@ STEP_TIMEOUT va judgeTransitions bo qua. Vi du: run im sau PAYMENT_STARTED bi do
 phai 10s cua PROCESS_PAYMENT.
 Expected: bo map (hoac chi dung khi buoc khong noi gi) — doi hanh vi ORDER_SAGA, nen phai chay lai
 danh gia va bao ca hai bo so. Khong gop vao L16.
+
+**L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc** · Priority: thap
+Problem (sau L21): hai nguon cung noi event thuoc buoc nao; bat dong thi map thang, im lang.
+`WorkflowSpecValidator` chi canh bao buoc khong ton tai va event khong buoc nao khai bao. Hien
+khong spec nao bat dong (da doi chieu 9 spec), nen chua co use case.
+Expected: canh bao khi viet mot spec moi bat dong; hoac bo han map neu thay no khong con tac dung.
 
 **L22 — Outcome FAILED duoc chap nhan toi moi dich co canh khai bao, ke ca canh chi cho SUCCESS — DA SUA 2026-09-28** · Priority: trung binh-cao
 Nguyen nhan: nhanh FAILED co tu 9b64062 (khi con `isValidTransition` tra boolean, chua xu ly

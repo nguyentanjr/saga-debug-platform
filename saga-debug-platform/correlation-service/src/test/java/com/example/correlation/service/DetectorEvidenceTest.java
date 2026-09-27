@@ -403,6 +403,38 @@ class DetectorEvidenceTest {
         assertThat(instances.get(compensated.canonical()).getStatus()).isEqualTo(SagaStatus.COMPENSATED);
     }
 
+    // ── L21: events a declared validEventTypes map leaves out ─────────────────
+
+    /**
+     * ORDER_SAGA declares PAYMENT_STARTED but its map does not list it, so a run that went
+     * quiet right after payment began was held to the 60s default, not PROCESS_PAYMENT's 10s.
+     */
+    @Test
+    void silenceAfterAStartEventTheMapOmitsIsHeldToThatStepsTimeout() {
+        Instant heard = Instant.now().minusSeconds(30);
+        observeAt("e1", "ORDER_CREATED", heard.minusSeconds(1), heard.minusSeconds(1));
+        observeAt("e2", "PAYMENT_STARTED", heard, heard);
+
+        anomalyDetectionService.detectStuckSagas();
+
+        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK)
+                .singleElement()
+                .satisfies(a -> assertThat(a.getThresholdSource()).isEqualTo("workflow:PROCESS_PAYMENT.timeout"));
+    }
+
+    /** And a transition into such an event is judged: inventory work begun after payment failed. */
+    @Test
+    void aTransitionIntoAnEventTheMapOmitsIsJudged() {
+        observe("e1", "ORDER_CREATED", 0);
+        observe("e2", "PAYMENT_FAILED", 1);
+        observe("e3", "INVENTORY_STARTED", 2);
+
+        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
+                .singleElement()
+                .satisfies(a -> assertThat(a.getObservedValue())
+                        .isEqualTo("PROCESS_PAYMENT -> RESERVE_INVENTORY on FAILED"));
+    }
+
     private static WorkflowRegistry declaredRegistry() {
         Path here = Path.of("").toAbsolutePath();
         Path root = Files.exists(here.resolve("declarations")) ? here : here.getParent();
