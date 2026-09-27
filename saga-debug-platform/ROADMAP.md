@@ -999,7 +999,13 @@ Problem: chạy nhiều replica thì cache không dùng chung.
 Expected: chấp nhận được (UNIQUE constraint mới là ranh giới thật) — ghi lại để không ai
 tưởng cache là cơ chế đúng đắn.
 
-**L9 — schema-h2.sql lech khoi migration that** · Priority: thap-trung binh
+**L9 — schema-h2.sql lech khoi migration that — DA SUA 2026-09-28** · Priority: thap-trung binh
+Da chon: cho ban H2 bam migration, va them test de lech lan sau lam test do thay vi thanh tieng on.
+Them `source_name`, `correlation_basis`, `trace_id`, `transport_ref`, `retracted_at`, `retraction_reason`,
+bang `execution_aliases`, rong `saga_id`/`event_id` 300, unique (source_name, event_id) nhu V13.
+Test: `ApplicationContextTest.everyScheduledPassRunsAgainstTheTestSchema` goi truc tiep 8 luot quet
+(khong qua lease, de khong pass rong) — fail truoc khi sua voi dung loi `SI1_0.SOURCE_NAME`. Full suite:
+538/538, 0 dong "Column ... not found" trong log.
 Problem: `ApplicationContextTest` khoi dong that, cac luot quet chay ngay, va chung query
 cot `source_name` ma ban H2 khong co — moi lan chay in ra mot loat ERROR
 `Column "SI1_0.SOURCE_NAME" not found`. Test van xanh, nen tieng on nay che dung cai ma

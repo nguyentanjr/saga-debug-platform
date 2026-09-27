@@ -19,6 +19,7 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Starts the application context.
@@ -82,6 +83,33 @@ class ApplicationContextTest {
         assertThat(registry.forStartEvent("SHIPMENT_CREATED"))
                 .get().extracting(WorkflowSpec::getName).isEqualTo("FULFILLMENT_SAGA");
         assertThat(registry.forStartEvent("PAYMENT_COMPLETED")).isEmpty();
+    }
+
+    /**
+     * L9: every scheduled pass runs against the test schema without a SQL error.
+     *
+     * <p>The sweeps start with the context, and schema-h2.sql had fallen behind the
+     * migrations (source_name, correlation_basis, trace_id, transport_ref, retraction, the
+     * alias table), so each tick logged {@code Column "SI1_0.SOURCE_NAME" not found} while
+     * this class stayed green — the very noise its schema comment warns will hide a real
+     * wiring failure. Called directly rather than through ScheduledSweeps: a lease held by
+     * the background scheduler would skip the pass and let this pass without running it.
+     */
+    @Test
+    void everyScheduledPassRunsAgainstTheTestSchema() {
+        AnomalyDetectionService detection = context.getBean(AnomalyDetectionService.class);
+        RcaService rca = context.getBean(RcaService.class);
+
+        assertThatCode(() -> {
+            detection.detectStuckSagas();
+            detection.detectStepTimeouts();
+            detection.detectMissingTerminalEvents();
+            detection.detectCompensationMissing();
+            detection.detectMissingCompensationAck();
+            detection.detectDelayedCompensation();
+            rca.autoAnalyzeNewlyDetectedAnomalies();
+            rca.autoAnalyzeEndedRuns();
+        }).doesNotThrowAnyException();
     }
 
     @Test
