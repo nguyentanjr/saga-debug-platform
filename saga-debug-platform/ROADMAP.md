@@ -659,7 +659,11 @@ I3/I8: khong dung spec tranh chap lam tham quyen; I5/I6: conflict va observation
 commit/rollback; I9: tap conflict va refusal khong phu thuoc thu tu den.
 Khong thay tier/oracle/ADR. L9 (scheduler H2 source_name) van la issue da ghi.
 
-**F8 — Giai thich cho 14.8% thieu la chua du** · Priority: trung binh-cao
+**F8 — Giai thich cho 14.8% thieu la chua du — PHAN GIAI THICH DA SUA 2026-09-28** · Priority: trung binh-cao
+`docs/KLTN_STATUS.md` L-1 con khang dinh cutoff la nguyen nhan cua **toan bo** 14.8%, mau thuan L-23
+ngay trong file. Da dinh chinh cau do va tro sang L-23; khong doi so lieu (`docs/` bi gitignore — file chi
+o local, khong nam trong commit). Cutoff chua sua (neu sua phai
+xu ly ca muc bang chung R05, nhu duoi).
 Problem: tai lieu quy toan bo phan thieu ve cutoff lam `MISSING_TERMINAL_EVENT` khong fire.
 Nhung R05 `SERVICE_CRASH` duoc gan `SUPPORTING_EVIDENCE`, ma `RcaSelector.promote` **chi de
 cu STRONG**. Nen sua cutoff co the vot duoc chi so lenient (nhan co mat trong tap ung vien)

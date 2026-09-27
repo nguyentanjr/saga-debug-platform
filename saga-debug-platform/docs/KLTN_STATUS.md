@@ -320,8 +320,9 @@ stop/start container.
 Những giới hạn dưới đây **đã biết, đã ghi, chưa sửa**. Chúng cần được nói rõ trong luận
 văn thay vì để hội đồng phát hiện.
 
-**L-1 · `SERVICE_CRASH` / `MISSING_TERMINAL_EVENT` — khoảng trống đánh giá, và là nguyên
-nhân của **toàn bộ** 14.8 % còn thiếu.**
+**L-1 · `SERVICE_CRASH` / `MISSING_TERMINAL_EVENT` — khoảng trống đánh giá.** *(Đính chính
+2026-09-28: bản trước ghi đây là nguyên nhân của **toàn bộ** 14.8 % còn thiếu — sai; sửa cutoff
+không vớt được lượt nào, vì R05 chỉ là `SUPPORTING` mà chỉ số chấm trên nhãn đề cử. Xem L-23.)*
 R05 đòi `SAGA_STUCK && MISSING_TERMINAL_EVENT && !STEP_TIMEOUT`, mà
 `MISSING_TERMINAL_EVENT` không bao giờ fire.
 `AnomalyDetectionService.maxStepTimeoutAcrossWorkflows()` lấy timeout lớn nhất trên **mọi**
