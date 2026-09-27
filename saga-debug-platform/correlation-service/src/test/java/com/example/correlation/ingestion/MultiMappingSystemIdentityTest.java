@@ -434,14 +434,13 @@ class MultiMappingSystemIdentityTest {
     }
 
     /**
-     * The real declaration files, loaded the way the running service loads them, rather
-     * than the inline mappings above. Two separate files, each with its own name, both
-     * naming one system.
+     * The real declaration files in {@code declarations/}, loaded the way the running
+     * service loads them, rather than the inline mappings above. Two separate files, each
+     * with its own name, both naming one system.
      */
     @Test
     void theShippedHotelSagaMappingsObserveOneSystem() {
-        SourceMappingRegistry registry = new SourceMappingRegistry();
-        registry.load();
+        SourceMappingRegistry registry = OutboxPatternIngestionTest.declaredMappings();
 
         SourceMapping rooms = registry.forTopic("room-booking.outbox.events");
         SourceMapping payments = registry.forTopic("payment.outbox.events");
@@ -455,8 +454,7 @@ class MultiMappingSystemIdentityTest {
     /** And read end to end, they put one saga id in one place. */
     @Test
     void theShippedHotelSagaMappingsPutOneSagaIdInOneExecution() {
-        SourceMappingRegistry registry = new SourceMappingRegistry();
-        registry.load();
+        SourceMappingRegistry registry = OutboxPatternIngestionTest.declaredMappings();
 
         EventIngestionService ingestion = new EventIngestionService(
                 correlationService, new ObjectMapper(), new SourceCompletenessCheck(),

@@ -14,9 +14,15 @@ import org.apache.kafka.common.record.TimestampType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -46,13 +52,18 @@ import static org.mockito.Mockito.verify;
  * {@code header:NAME} forms are the answer to it.
  *
  * <h2>Cost of the integration</h2>
- * Three YAML files and no Java: two ingestion mappings and one workflow specification,
- * all under {@code src/test/resources}. Nothing in the observed project was changed.
+ * YAML and no Java: four ingestion mappings and one workflow specification, read from
+ * {@code declarations/} — the files the observer loads when it watches this system. They
+ * used to be copies under {@code src/test/resources}, and the copies drifted: the workflow
+ * lost its {@code started} events while the live one kept them, so these tests checked a
+ * specification nobody ran (ROADMAP L13). Nothing in the observed project was changed.
  */
 class OutboxPatternIngestionTest {
 
     private static final String ROOM_TOPIC = "room-booking.outbox.events";
     private static final String PAYMENT_TOPIC = "payment.outbox.events";
+    private static final List<String> ALL_TOPICS = List.of(ROOM_TOPIC, PAYMENT_TOPIC,
+            "room-booking.inbox.events", "payment.inbox.events");
 
     /** The saga id, which this system carries as the Kafka record key. */
     private static final String SAGA_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
@@ -64,8 +75,7 @@ class OutboxPatternIngestionTest {
     void setUp() {
         correlationService = mock(CorrelationService.class);
 
-        SourceMappingRegistry registry = new SourceMappingRegistry();
-        registry.load();
+        SourceMappingRegistry registry = declaredMappings();
 
         consumer = new SagaEventConsumer(new EventIngestionService(
                 correlationService,
@@ -82,8 +92,7 @@ class OutboxPatternIngestionTest {
 
     @Test
     void bothOutboxTopicsHaveTheirOwnMapping() {
-        SourceMappingRegistry registry = new SourceMappingRegistry();
-        registry.load();
+        SourceMappingRegistry registry = declaredMappings();
 
         assertThat(registry.forTopic(ROOM_TOPIC).getName()).isEqualTo("hotel-saga-room-booking");
         assertThat(registry.forTopic(PAYMENT_TOPIC).getName()).isEqualTo("hotel-saga-payment");
@@ -208,22 +217,42 @@ class OutboxPatternIngestionTest {
      */
     @Test
     void theWorkflowSpecificationRecognisesEveryMappedEventType() {
-        WorkflowRegistry registry = new WorkflowRegistry();
-        registry.load();
-        WorkflowSpec spec = registry.byType("ROOM_RESERVATION").orElseThrow();
+        WorkflowSpec spec = roomReservation();
+        // Read from the mappings rather than listed here, so a name added or renamed on
+        // either side is checked without anyone remembering to update this test.
+        Set<String> mapped = new TreeSet<>();
+        SourceMappingRegistry mappings = declaredMappings();
+        for (String topic : ALL_TOPICS) {
+            mapped.addAll(mappings.forTopic(topic).getEventTypes().values());
+        }
 
-        assertThat(spec.classifyEvent("ROOM_BOOKED")).isPresent();
-        assertThat(spec.classifyEvent("ROOM_REJECTED")).isPresent();
-        assertThat(spec.classifyEvent("ROOM_CANCELLED")).isPresent();
-        assertThat(spec.classifyEvent("PAYMENT_ACCEPTED")).isPresent();
-        assertThat(spec.classifyEvent("PAYMENT_REJECTED")).isPresent();
+        assertThat(mapped).contains("BOOK_ROOM_REQUESTED", "ROOM_BOOKED");
+        assertThat(mapped).filteredOn(type -> !MAPPED_BUT_UNREACHABLE.contains(type))
+                .allSatisfy(type -> assertThat(spec.classifyEvent(type)).as(type).isPresent());
+    }
+
+    /**
+     * Mapped so that nothing arriving on these topics is left untranslated, and absent
+     * from the workflow because the observed system never sends them: its orchestrator's
+     * {@code goBack()} cancels only the step before the failing one, and payment is the
+     * last step, so no payment is ever cancelled. Declaring them would describe a
+     * compensation this system does not have. Pinned so that the day one of them joins the
+     * workflow, this list is revisited rather than silently outgrown.
+     */
+    private static final Set<String> MAPPED_BUT_UNREACHABLE =
+            Set.of("REFUND_PAYMENT_REQUESTED", "PAYMENT_REVERSED");
+
+    @Test
+    void theMappedButUnreachableNamesAreNotPartOfTheWorkflow() {
+        WorkflowSpec spec = roomReservation();
+
+        assertThat(MAPPED_BUT_UNREACHABLE)
+                .allSatisfy(type -> assertThat(spec.classifyEvent(type)).as(type).isEmpty());
     }
 
     @Test
     void aRejectedPaymentRoutesToCompensationNotToOutrightFailure() {
-        WorkflowRegistry registry = new WorkflowRegistry();
-        registry.load();
-        WorkflowSpec spec = registry.byType("ROOM_RESERVATION").orElseThrow();
+        WorkflowSpec spec = roomReservation();
 
         // A held room has to be released, which is the whole reason this saga has a
         // compensation step; a rejected booking has nothing to undo.
@@ -235,9 +264,7 @@ class OutboxPatternIngestionTest {
 
     @Test
     void aPaymentAcceptedCompletesTheSaga() {
-        WorkflowRegistry registry = new WorkflowRegistry();
-        registry.load();
-        WorkflowSpec spec = registry.byType("ROOM_RESERVATION").orElseThrow();
+        WorkflowSpec spec = roomReservation();
 
         assertThat(spec.classifyEvent("PAYMENT_ACCEPTED").flatMap(spec::statusAfter))
                 .contains(com.example.correlation.domain.SagaStatus.COMPLETED);
@@ -245,15 +272,35 @@ class OutboxPatternIngestionTest {
 
     @Test
     void releasingTheRoomResolvesTheSagaAsCompensated() {
-        WorkflowRegistry registry = new WorkflowRegistry();
-        registry.load();
-        WorkflowSpec spec = registry.byType("ROOM_RESERVATION").orElseThrow();
+        WorkflowSpec spec = roomReservation();
 
         assertThat(spec.classifyEvent("ROOM_CANCELLED").flatMap(spec::statusAfter))
                 .contains(com.example.correlation.domain.SagaStatus.COMPENSATED);
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────────
+
+    /** The repository's declarations directory, whether surefire runs from the module or the root. */
+    private static String declarationsDirectory() {
+        Path here = Path.of("").toAbsolutePath();
+        Path root = Files.exists(here.resolve("declarations")) ? here : here.getParent();
+        return root.resolve("declarations").toString();
+    }
+
+    /** Package-private: MultiMappingSystemIdentityTest reads the same files. */
+    static SourceMappingRegistry declaredMappings() {
+        SourceMappingRegistry registry = new SourceMappingRegistry();
+        ReflectionTestUtils.setField(registry, "declarationsDirectory", declarationsDirectory());
+        registry.load();
+        return registry;
+    }
+
+    private static WorkflowSpec roomReservation() {
+        WorkflowRegistry registry = new WorkflowRegistry();
+        ReflectionTestUtils.setField(registry, "declarationsDirectory", declarationsDirectory());
+        registry.load();
+        return registry.byType("ROOM_RESERVATION").orElseThrow();
+    }
 
     private ConsumerRecord<String, String> roomRecord(String body, String eventId) {
         return record(ROOM_TOPIC, body, eventId, "RoomUpdated");

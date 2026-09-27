@@ -718,6 +718,22 @@ guest 21: FAILED > 5 phut, khong co RCA nao cho den khi goi tay. Dashboard dem R
 Expected: xac dinh co can kich hoat RCA khi run dat trang thai ket thuc hay khong; neu co thi xet
 lai quyet dinh "business rejection khong can chan doan" cung luc, khong va rieng mot duong.
 
+**L19 — Khai bao cua cac he khac chua co test doi chieu mapping <-> workflow** · Priority: trung binh
+Problem (phat hien khi sua L13): `declarations/` con kms-order-saga, saga-pattern-order,
+partner-order, second-estate. Khong test nao nap cac file nay va kiem tra ten event ma mapping
+sinh ra co nam trong workflow cua he do; doi ten o mot ben chi lo ra khi chay live.
+`SourceMappingRegistry` khong co API liet ke mapping, nen mot test tong quat can them API hoac
+tu doc file.
+Expected: lam theo mau L13 cho tung he co mot use case chay that; khong them API chi cho test
+neu doc file truc tiep du.
+
+**L20 — Workflow trong declarations/ khong ghi de duoc ban dong goi cung ten** · Priority: thap
+Problem (phat hien khi sua L13): `WorkflowRegistry.register` giu ban nap truoc khi trung ten
+(classpath truoc, declarations sau), chi log ERROR. Chinh co che nay lam test L13 fail khi
+`target/test-classes` con ban cu. Trong jar hien chi co ORDER_SAGA, nen chi anh huong neu ai do
+dat ORDER_SAGA vao declarations/ de sua.
+Expected: quyet dinh thu tu uu tien co chu y va ghi ro; chua co use case -> chua lam.
+
 **L18 — Moi lan tu choi nghiep vu deu sinh alert — DA DIEU TRA 2026-09-27; sua mot loi that, giu nguyen chinh sach** · Priority: trung binh
 Tim thay khi dieu tra (tai hien live, saga hotel `cf99…`): alert noi nhieu hon ket qua no
 thong bao. Ket qua luu `primaryRootCauses=[]` (R14 la OBSERVATION_PROCESS, khong promote),
@@ -740,6 +756,22 @@ het cho / the bi tu choi deu ghi mot dong vao alerts-realtime.log (da thay: R11 
 Truoc L17 dieu nay cung xay ra, nhung chi khi goi tay.
 Expected: quyet dinh chinh sach alert theo muc claim (execution-state vs mechanism/cause), gan
 voi cau hoi "business rejection co can chan doan khong". Khong tu loc trong code.
+
+**L13 — Ban workflow ROOM_RESERVATION trong test resources da lech — DA SUA 2026-09-27** · Priority: trung binh
+Da sua: xoa ba ban copy (`src/test/resources/workflows/room-reservation-workflow.yaml`,
+`ingestion/hotel-saga-{room-booking,payment}.yaml`). `OutboxPatternIngestionTest` va hai test
+"shipped" cua `MultiMappingSystemIdentityTest` nap thang `declarations/` — dung file observer
+chay. Test tu vung nay lay ten event tu chinh cac mapping (4 topic) thay vi liet ke cung; hai ten
+map nhung khong the xay ra (`REFUND_PAYMENT_REQUESTED`, `PAYMENT_REVERSED` — `goBack()` cua upstream
+chi huy buoc truoc, payment la buoc cuoi) duoc ghim rieng kem ly do. Mutation: bo
+`started: BOOK_ROOM_REQUESTED` khoi declarations -> test fail. Full suite sach (mvn clean): 511/511.
+Luu y: `mvn test` khong `clean` sau khi keo thay doi nay van thay ban cu trong
+`target/test-classes` va test tu vung se fail — can `clean` mot lan.
+Problem (phat hien khi sua F13, 2026-09-27): `src/test/resources/workflows/room-reservation-workflow.yaml`
+khong co `BOOK_ROOM_REQUESTED` (start events [ROOM_BOOKED, ROOM_REJECTED]); ban
+`declarations/workflows/` ma observer live nap co them event `started` do. Test doc ROOM_RESERVATION
+dang kiem mot workflow khac voi ban chay that.
+Expected: mot nguon duy nhat cho test va runtime, hoac test nap tu `declarations/` nhu Sc06ReplayTest.
 
 **L14 — Payload luu nguyen, khong che truong nhay cam** · Priority: trung binh
 Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
