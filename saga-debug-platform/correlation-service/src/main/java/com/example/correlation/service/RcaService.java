@@ -1020,7 +1020,11 @@ public class RcaService {
                 } else {
                     rr.getEvidence().add(evidence("Saga still in " + saga.getStatus() + " status"));
                 }
-                rr.getSuggestions().add("Check Kafka partition key assignment");
+                // About the reading, like the claim (L15). Pointing at the source's partition
+                // keys sent readers to a fault the evidence does not show.
+                rr.getSuggestions().add("Nothing indicated in the source: this is the order the observer "
+                        + "read the events in, and Kafka does not order separate topics against each other");
+                rr.getSuggestions().add("Read the run by event time, not by arrival");
                 return rr;
             }
         }

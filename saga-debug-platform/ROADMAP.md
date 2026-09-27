@@ -853,7 +853,11 @@ Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditC
 nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.
 Expected: co phuong an che truong khai bao theo source truoc khi quan sat he that.
 
-**L15 — Goi y cua R14 trai voi chinh Javadoc cua no** · Priority: thap
+**L15 — Goi y cua R14 trai voi chinh Javadoc cua no — DA SUA 2026-09-28** · Priority: thap
+Da sua: goi y cua R14 noi ve qua trinh doc (thu tu observer doc; Kafka khong sap thu tu giua cac
+topic; doc run theo event time) thay vi partition key cua he nguon. Oracle chi cham nhan de cu, R14
+khong bao gio duoc de cu (OBSERVATION_PROCESS), nen so khong doi. Test: `RcaPromotionTest`
+`outOfOrderDeliveryAdvisesAboutTheReadingNotTheSource` (fail truoc khi sua). Full suite: 533/533.
 Problem: R14 da danh dau `OBSERVATION_PROCESS` (thu tu la do observer doc nhieu topic), nhung suggestion
 van la "Check Kafka partition key assignment" — huong nguoi doc ve phia he nguon. Tai hien live F13
 khi replay 4 topic tu offset 0.

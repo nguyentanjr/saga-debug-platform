@@ -346,6 +346,24 @@ class RcaPromotionTest {
         assertThat(result.getRootCause()).isEqualTo("RECOVERED_AFTER_SILENCE");
     }
 
+    /**
+     * L15: R14 is declared a claim about this platform's own reading order, and its advice
+     * used to send the reader to the source's Kafka partition keys — on the live hotel run
+     * whose four topics simply were not ordered against each other. The advice now points
+     * where the claim does.
+     */
+    @Test
+    void outOfOrderDeliveryAdvisesAboutTheReadingNotTheSource() {
+        storedAnomalies.add(anomaly(1L, AnomalyType.OUT_OF_ORDER));
+
+        com.example.correlation.domain.rca.RcaCandidate r14 = rcaService.analyze("saga-1").getCandidates()
+                .stream().filter(c -> "R14".equals(c.getRuleId())).findFirst().orElseThrow();
+
+        assertThat(r14.getSuggestions())
+                .noneMatch(s -> s.toLowerCase().contains("partition key"))
+                .anyMatch(s -> s.contains("observer"));
+    }
+
     /** A healthy run still reports nothing, and still needs no diagnosis. */
     @Test
     void aRunWithNoAnomaliesPromotesNothing() {
