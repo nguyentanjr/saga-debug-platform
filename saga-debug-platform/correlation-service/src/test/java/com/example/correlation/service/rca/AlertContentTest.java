@@ -154,6 +154,8 @@ class AlertContentTest {
         event.setEventType(type);
         event.setPayload("{}");
         event.setTimestamp(T0.plusSeconds(second));
+        // Heard when stamped; left unset, receivedAt defaults to the moment the test runs.
+        event.setReceivedAt(T0.plusSeconds(second));
         return event;
     }
 }

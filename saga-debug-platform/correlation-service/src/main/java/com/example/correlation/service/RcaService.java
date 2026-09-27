@@ -738,23 +738,24 @@ public class RcaService {
             }
             int serviceCrashTimeoutSeconds = maxTimeout * detectionProperties.getServiceCrashTimeoutMultiplier();
 
-            if (saga.getLastUpdated() != null) {
-                
-                
-                
-                Instant stuckMeasurePoint = anomalies.stream()
-                        .filter(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK
-                                || a.getAnomalyType() == AnomalyType.MISSING_TERMINAL_EVENT)
-                        .map(Anomaly::getDetectedAt)
-                        .filter(Objects::nonNull)
-                        .max(Instant::compareTo)
-                        .orElse(Instant.now());
-                Instant stuckStart = events.stream()
-                        .map(SagaEvent::getTimestamp)
-                        .filter(Objects::nonNull)
-                        .filter(timestamp -> !timestamp.isAfter(stuckMeasurePoint))
-                        .max(Instant::compareTo)
-                        .orElse(saga.getLastUpdated());
+            // Both ends on the platform's clock (F15). detectedAt is when this platform raised
+            // the findings; the start is when it last heard from the run, which is
+            // receivedAt. Subtracting the source's own timestamp instead added a lagging
+            // source's lag to the silence and let one running ahead hide it entirely.
+            Instant stuckMeasurePoint = anomalies.stream()
+                    .filter(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK
+                            || a.getAnomalyType() == AnomalyType.MISSING_TERMINAL_EVENT)
+                    .map(Anomaly::getDetectedAt)
+                    .filter(Objects::nonNull)
+                    .max(Instant::compareTo)
+                    .orElse(Instant.now());
+            Instant stuckStart = events.stream()
+                    .map(e -> e.getReceivedAt() != null ? e.getReceivedAt() : e.getTimestamp())
+                    .filter(Objects::nonNull)
+                    .filter(heard -> !heard.isAfter(stuckMeasurePoint))
+                    .max(Instant::compareTo)
+                    .orElse(null);
+            if (stuckStart != null) {
                 long stuckSeconds = Duration.between(stuckStart, stuckMeasurePoint).getSeconds();
 
                 if (stuckSeconds > serviceCrashTimeoutSeconds) {
