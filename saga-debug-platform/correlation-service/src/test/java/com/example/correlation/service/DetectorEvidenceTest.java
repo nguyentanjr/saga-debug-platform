@@ -350,8 +350,8 @@ class DetectorEvidenceTest {
 
     /**
      * And its transitions are judged: a room outcome after payment completed the run.
-     * (Payment requested after a room rejection would be the more natural case, but a FAILED
-     * outcome is currently accepted towards any declared target — ROADMAP L22.)
+     * (Payment requested after a room rejection is the more natural case; until L22 a FAILED
+     * outcome was accepted towards any declared target, so it is pinned separately below.)
      */
     @Test
     void aWorkflowWithoutAStepMapHasItsTransitionsJudged() {
@@ -365,6 +365,22 @@ class DetectorEvidenceTest {
         assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
                 .singleElement()
                 .satisfies(a -> assertThat(a.getObservedValue()).isEqualTo("TAKE_PAYMENT -> BOOK_ROOM on SUCCESS"));
+    }
+
+    /**
+     * L22: BOOK_ROOM → TAKE_PAYMENT is declared for SUCCESS, and a rejected room is declared
+     * to end the run. Payment requested after the rejection contradicts both.
+     */
+    @Test
+    void paymentRequestedAfterARejectedRoomIsAnInvalidTransition() {
+        wire(declaredRegistry());
+        observe("e1", "BOOK_ROOM_REQUESTED", 0);
+        observe("e2", "ROOM_REJECTED", 1);
+        observe("e3", "TAKE_PAYMENT_REQUESTED", 2);
+
+        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
+                .singleElement()
+                .satisfies(a -> assertThat(a.getObservedValue()).isEqualTo("BOOK_ROOM -> TAKE_PAYMENT on FAILED"));
     }
 
     /** Judging them costs nothing on the paths the system really takes. */

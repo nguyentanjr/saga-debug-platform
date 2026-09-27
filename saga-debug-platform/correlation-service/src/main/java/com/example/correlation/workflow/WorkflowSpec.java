@@ -511,12 +511,11 @@ public class WorkflowSpec {
                 (condition == null || condition.equals(t.getCondition())));
         if (exactMatch) return TransitionJudgment.of(TransitionVerdict.VALID);
 
-        // A failure may route to a compensation target declared without a condition.
-        if (FAILED_OUTCOME.equals(condition)) {
-            boolean targetReachable = transitions.stream().anyMatch(t ->
-                    t.getFrom().equals(fromStep) && t.getTo().equals(toStep));
-            if (targetReachable) return TransitionJudgment.of(TransitionVerdict.VALID);
-        }
+        // No special case for FAILED here. One stood here, meant for "a failure may route to
+        // a target declared without a condition", and it accepted any edge between the two
+        // steps whatever its condition -- so a failed payment followed by inventory work was
+        // VALID because PROCESS_PAYMENT -> RESERVE_INVENTORY exists for SUCCESS (ROADMAP L22).
+        // The case it was written for is unconditionedTargets below.
 
         // Two steps the specification declares concurrent are not ordered by it, so seeing
         // one after the other contradicts nothing it says. Everything below asks where the

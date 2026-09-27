@@ -1,6 +1,9 @@
 package com.example.correlation.workflow;
 
 import com.example.correlation.workflow.WorkflowSpec.EventRole;
+import com.example.correlation.workflow.WorkflowSpec.TransitionVerdict;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,6 +81,57 @@ class WorkflowSpecTest {
         assertThat(undeclared.getExpectedStepForEvent("PAYMENT_STARTED")).isEqualTo("PROCESS_PAYMENT");
         assertThat(undeclared.getExpectedStepForEvent("PAYMENT_REFUNDED")).isEqualTo("REFUND_PAYMENT");
         assertThat(undeclared.getExpectedStepForEvent("AUDIT_PING")).isNull();
+    }
+
+    // ── L22: which edges a FAILED outcome may take ────────────────────────────
+
+    /**
+     * PROCESS_PAYMENT → RESERVE_INVENTORY is declared for SUCCESS only. A failed payment
+     * followed by inventory work is the run contradicting its specification; it used to be
+     * judged VALID because any edge between the two steps was accepted for FAILED.
+     */
+    @Test
+    void aFailedOutcomeDoesNotTakeAnEdgeDeclaredOnlyForSuccess() {
+        assertThat(spec.explainTransition("PROCESS_PAYMENT", "RESERVE_INVENTORY",
+                WorkflowSpec.FAILED_OUTCOME).verdict()).isEqualTo(TransitionVerdict.INVALID);
+    }
+
+    /** What that branch was written for still holds: an edge with no condition takes any outcome. */
+    @Test
+    void aFailedOutcomeStillTakesAnEdgeDeclaredWithoutACondition() {
+        WorkflowSpec unconditioned = parse("""
+                name: UNCONDITIONED
+                version: "1.0"
+                steps:
+                  - id: CHARGE
+                    service: a
+                    events: {completed: CHARGED, failed: CHARGE_FAILED}
+                  - id: NOTIFY
+                    service: b
+                    events: {completed: NOTIFIED}
+                transitions:
+                  - {from: STARTED, to: CHARGE}
+                  - {from: CHARGE, to: NOTIFY}
+                  - {from: NOTIFY, to: COMPLETED, condition: SUCCESS}
+                """);
+
+        assertThat(unconditioned.explainTransition("CHARGE", "NOTIFY",
+                WorkflowSpec.FAILED_OUTCOME).verdict()).isEqualTo(TransitionVerdict.VALID);
+    }
+
+    /** And a failure routed into compensation is still a declared handoff. */
+    @Test
+    void aFailedOutcomeStillTakesTheCompensationItIsRoutedTo() {
+        assertThat(spec.explainTransition("RESERVE_INVENTORY", "REFUND_PAYMENT",
+                WorkflowSpec.FAILED_OUTCOME).verdict()).isEqualTo(TransitionVerdict.VALID);
+    }
+
+    private static WorkflowSpec parse(String yaml) {
+        try {
+            return new ObjectMapper(new YAMLFactory()).readValue(yaml, WorkflowSpec.class);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("unreadable test specification", e);
+        }
     }
 
     /** Where the map is declared it decides, including where it is silent (ROADMAP L21). */

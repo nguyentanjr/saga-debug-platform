@@ -727,7 +727,19 @@ phai 10s cua PROCESS_PAYMENT.
 Expected: bo map (hoac chi dung khi buoc khong noi gi) — doi hanh vi ORDER_SAGA, nen phai chay lai
 danh gia va bao ca hai bo so. Khong gop vao L16.
 
-**L22 — Outcome FAILED duoc chap nhan toi moi dich co canh khai bao, ke ca canh chi cho SUCCESS** · Priority: trung binh-cao
+**L22 — Outcome FAILED duoc chap nhan toi moi dich co canh khai bao, ke ca canh chi cho SUCCESS — DA SUA 2026-09-28** · Priority: trung binh-cao
+Nguyen nhan: nhanh FAILED co tu 9b64062 (khi con `isValidTransition` tra boolean, chua xu ly
+canh khong dieu kien). Sau khi `unconditionedTargets` duoc them, truong hop comment nhac toi da
+duoc lo o duoi; nhanh cu chi con tac dung sai. Da sua: bo nhanh. Test: `WorkflowSpecTest` (3:
+FAILED khong di canh chi-SUCCESS -> INVALID; FAILED van di canh khong dieu kien va vao bu tru ->
+VALID), `DetectorEvidenceTest` (ROOM_REJECTED roi TAKE_PAYMENT_REQUESTED tren ROOM_RESERVATION
+that -> INVALID_TRANSITION "BOOK_ROOM -> TAKE_PAYMENT on FAILED"). Hai test loi fail truoc khi sua.
+Full suite sach: 520/520.
+Danh gia: replay 27 run cua `evaluation_report_settled_20260921.json` qua pipeline that (co che
+Sc06ReplayTest: correlation + detector inline + RCA; INVALID_TRANSITION la detector inline) voi
+code cu va moi: **khong run nao khac**, 0 INVALID_TRANSITION ca hai. Bo danh gia khong co run nao
+co buoc FAILED roi di tiep, nen so lieu khong doi; khong gioi han cho SAGA_STUCK/STEP_TIMEOUT
+(sweep) vi L22 khong cham chung.
 Problem (phat hien khi viet test L16): `WorkflowSpec.explainTransition`, nhanh
 `FAILED_OUTCOME.equals(condition)`, tra VALID neu co bat ky canh `from -> to`, khong xet
 `t.getCondition() == null` du comment noi "declared without a condition". Nen BOOK_ROOM (FAILED) ->
