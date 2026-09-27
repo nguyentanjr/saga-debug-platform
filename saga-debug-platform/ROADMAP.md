@@ -748,14 +748,18 @@ Problem (phat hien khi sua F11): `judgeTransitions` xet lai moi cap lien ke o mo
 thoi phong; evidence RCA lap lai.
 Expected: moi cap (buoc truoc, buoc sau, dieu kien, event) chi mot finding dung; lap lai la khong ghi.
 
-**F15 — R05 tru dong ho platform cho timestamp nguon; R06/durationMs khong kem nguon dong ho — R05 DA SUA 2026-09-28** · Priority: trung binh
+**F15 — R05 tru dong ho platform cho timestamp nguon; R06/durationMs khong kem nguon dong ho — DA SUA 2026-09-28 (tru durationMs API)** · Priority: trung binh
 Da sua phan R05: khoang im lang do tren dong ho platform ca hai dau (`detectedAt` - `receivedAt` cuoi
 cung), nhu SAGA_STUCK; khong con event nao nghe duoc truoc moc do thi khong do (khong ve `lastUpdated`,
 dong ho nguon). Test: `SilenceClockTest` (nguon cham 10 phut khong con thoi phong; nguon nhanh 10 phut
 khong con che mat — ca hai fail truoc khi sua). `AlertContentTest` sua fixture: receivedAt mac dinh la
 `Instant.now()` luc chay test. Full suite: 532/532. Bo settled: khong run nao co MISSING_TERMINAL_EVENT nen
-R05 khong du dieu kien; tren he demo hai cong thuc lech ~10ms. Con lai (chua lam): nhan nguon cho R06 va
-`durationMs`.
+R05 khong du dieu kien; tren he demo hai cong thuc lech ~10ms.
+Phan con lai DA SUA 2026-09-28: ba dong "Total duration" cua RCA (R06, R11, nhanh NORMAL) kem
+`clocks=` tu nguon timestamp cua event o hai moc; cac event cung moc ma khac nguon -> unrecorded, khong
+chon mot (khong phu thuoc thu tu). Test: `theRecoveredRunsTotalDurationSaysWhichClocksItSpans` (fail
+truoc khi sua). Full suite: 539/539. Chua lam: `durationMs` trong API — them truong vao DTO la doi API,
+chua co ai can.
 Problem (phat hien khi sua F12): `ruleServiceCrash` tinh `stuckSeconds` = `detectedAt` (Instant.now()
 cua platform luc detector chay) tru timestamp event lon nhat (dong ho nguon) — hai dong ho khac nhau
 trong mot phep tru, lech dong ho nguon di thang vao so giay "stuck". R06 va `SagaInstance.durationMs`

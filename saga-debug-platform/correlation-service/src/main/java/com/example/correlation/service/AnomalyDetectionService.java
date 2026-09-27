@@ -856,8 +856,12 @@ public class AnomalyDetectionService {
      * left to assume one clock when there may be two. Tier and threshold are untouched.
      */
     static String clocks(SagaEvent from, SagaEvent to) {
-        EventTimeSource a = from != null ? from.getEventTimeSource() : null;
-        EventTimeSource b = to != null ? to.getEventTimeSource() : null;
+        return clocks(from != null ? from.getEventTimeSource() : null,
+                to != null ? to.getEventTimeSource() : null);
+    }
+
+    /** Same label, from the two origins directly; null means not recorded or not established. */
+    static String clocks(EventTimeSource a, EventTimeSource b) {
         if (a == null || b == null) return "clocks=unrecorded";
         return "clocks=" + a + "->" + b + (a == b ? "" : " (mixed)");
     }

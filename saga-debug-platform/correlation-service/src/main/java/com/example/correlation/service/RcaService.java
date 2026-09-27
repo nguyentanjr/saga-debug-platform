@@ -128,7 +128,7 @@ public class RcaService {
         addIfPresent(candidates, declaredSignal);
         addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
-        addIfPresent(candidates, ruleRecoveredAfterSilence(saga, anomalies));
+        addIfPresent(candidates, ruleRecoveredAfterSilence(saga, anomalies, events));
         addIfPresent(candidates, ruleCompensationStepFailure(workflow, saga, events, anomalies));
         addIfPresent(candidates, ruleForwardStepFailure(workflow, saga, events));
         // Only when R01/R23 read nothing: they cite the same failed event more specifically,
@@ -182,8 +182,7 @@ public class RcaService {
             if ("NORMAL".equals(outcome)) {
                 evidence.add("Saga completed successfully with " + events.size() + " events");
                 if (saga.getStartTime() != null && saga.getEndTime() != null) {
-                    long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
-                    evidence.add("Total duration: " + ms + "ms");
+                    evidence.add(totalDuration("Total duration", saga, events));
                 }
             } else {
                 evidence.addAll(selection.getMissingEvidence());
@@ -831,7 +830,28 @@ public class RcaService {
      * moved breaker state out of substring guessing — read from what the system says, not
      * inferred from what it failed to say.
      */
-    private CandidateAssessment ruleRecoveredAfterSilence(SagaInstance saga, List<Anomaly> anomalies) {
+    /**
+     * "<label>: <ms>ms; clocks=..." — the run's span between its first and last timestamps,
+     * with where those two timestamps came from (F15, as F12 did for step timeouts). When
+     * the events at a bound disagree on origin the bound's clock is not established, and
+     * the label says unrecorded rather than picking one of them.
+     */
+    private static String totalDuration(String label, SagaInstance saga, List<SagaEvent> events) {
+        long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
+        return label + ": " + ms + "ms; " + AnomalyDetectionService.clocks(
+                clockAt(saga.getStartTime(), events), clockAt(saga.getEndTime(), events));
+    }
+
+    private static EventTimeSource clockAt(Instant instant, List<SagaEvent> events) {
+        Set<EventTimeSource> sources = events.stream()
+                .filter(e -> instant.equals(e.getTimestamp()))
+                .map(SagaEvent::getEventTimeSource)
+                .collect(Collectors.toSet());
+        return sources.size() == 1 ? sources.iterator().next() : null;
+    }
+
+    private CandidateAssessment ruleRecoveredAfterSilence(SagaInstance saga, List<Anomaly> anomalies,
+            List<SagaEvent> events) {
         boolean hasStuck = anomalies.stream()
                 .anyMatch(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK);
         boolean hasMissingTerminal = anomalies.stream()
@@ -850,9 +870,8 @@ public class RcaService {
             rr.getEvidence().add(evidence(
                     "The run was later observed to end → final status: " + saga.getStatus()));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
-                long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
                 rr.getEvidence().add(evidence(
-                        "Total duration including the silent period: " + ms + "ms"));
+                        totalDuration("Total duration including the silent period", saga, events)));
             }
             // Says plainly what the silence does not settle, so a reader does not supply
             // the missing half themselves.
@@ -969,8 +988,8 @@ public class RcaService {
                     + eventTypes(started) + " -> " + eventTypes(completed)));
             rr.getEvidence().add(evidence("Saga status: COMPENSATED"));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
-                long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
-                rr.getEvidence().add(evidence("Total duration (including compensation): " + ms + "ms"));
+                rr.getEvidence().add(evidence(
+                        totalDuration("Total duration (including compensation)", saga, events)));
             }
             rr.getSuggestions().add("Saga rolled back correctly");
             rr.getSuggestions().add("Review why the forward step failed to prevent recurrence");

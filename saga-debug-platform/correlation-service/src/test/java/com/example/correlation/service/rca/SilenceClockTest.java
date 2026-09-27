@@ -59,31 +59,64 @@ class SilenceClockTest {
                 .satisfies(c -> assertThat(c.getEvidence()).anyMatch(e -> e.fact().contains("60s")));
     }
 
+    /**
+     * F15, rest: R06 reports the run's total duration, between its first and last event's
+     * timestamps. Like a step timeout since F12, it now says which clocks those came from.
+     */
+    @Test
+    void theRecoveredRunsTotalDurationSaysWhichClocksItSpans() {
+        SagaEvent first = event("e-1", "ORDER_CREATED", HEARD, HEARD);
+        first.setEventTimeSource(com.example.correlation.domain.EventTimeSource.DECLARED);
+        SagaEvent last = event("e-2", "INVENTORY_RESERVED", HEARD.plusSeconds(90), HEARD.plusSeconds(90));
+        last.setEventTimeSource(com.example.correlation.domain.EventTimeSource.TRANSPORT);
+        SagaInstance saga = saga(SagaStatus.COMPLETED, HEARD);
+        saga.setEndTime(HEARD.plusSeconds(90));
+
+        RcaResult result = analyze(saga, List.of(first, last),
+                List.of(anomaly(1L, AnomalyType.SAGA_STUCK, HEARD.plusSeconds(60))));
+
+        assertThat(result.getCandidates()).filteredOn(c -> "R06".equals(c.getRuleId()))
+                .singleElement()
+                .satisfies(c -> assertThat(c.getEvidence()).anyMatch(e ->
+                        e.fact().contains("90000ms") && e.fact().contains("clocks=DECLARED->TRANSPORT (mixed)")));
+    }
+
     private static RcaResult analyze(Instant stamped, Instant received, Instant detected) {
+        return analyze(saga(SagaStatus.IN_PROGRESS, stamped),
+                List.of(event("e-1", "ORDER_CREATED", stamped, received)),
+                List.of(anomaly(1L, AnomalyType.SAGA_STUCK, detected),
+                        anomaly(2L, AnomalyType.MISSING_TERMINAL_EVENT, detected)));
+    }
+
+    private static SagaEvent event(String id, String type, Instant stamped, Instant received) {
         SagaEvent event = new SagaEvent();
         event.setSagaId("saga-1");
         event.setSourceName("default");
-        event.setEventId("e-1");
-        event.setEventType("ORDER_CREATED");
+        event.setEventId(id);
+        event.setEventType(type);
         event.setPayload("{}");
         event.setTimestamp(stamped);
         event.setReceivedAt(received);
+        return event;
+    }
 
+    private static SagaInstance saga(SagaStatus status, Instant start) {
         SagaInstance saga = new SagaInstance();
         saga.setSagaId("saga-1");
         saga.setWorkflowType("ORDER_SAGA");
-        saga.setStatus(SagaStatus.IN_PROGRESS);
-        saga.setStartTime(stamped);
-        saga.setLastUpdated(stamped);
+        saga.setStatus(status);
+        saga.setStartTime(start);
+        saga.setLastUpdated(start);
+        return saga;
+    }
 
+    private static RcaResult analyze(SagaInstance saga, List<SagaEvent> events, List<Anomaly> standing) {
         SagaInstanceRepository sagas = mock(SagaInstanceRepository.class);
         when(sagas.findByIdForUpdate(anyString())).thenReturn(Optional.of(saga));
         SagaEventRepository eventRepo = mock(SagaEventRepository.class);
-        when(eventRepo.findBySagaIdOrderByTimestampAsc(anyString())).thenReturn(List.of(event));
+        when(eventRepo.findBySagaIdOrderByTimestampAsc(anyString())).thenReturn(events);
         AnomalyRepository anomalies = mock(AnomalyRepository.class);
-        when(anomalies.findStandingBySagaId(anyString())).thenReturn(List.of(
-                anomaly(1L, AnomalyType.SAGA_STUCK, detected),
-                anomaly(2L, AnomalyType.MISSING_TERMINAL_EVENT, detected)));
+        when(anomalies.findStandingBySagaId(anyString())).thenReturn(standing);
         RcaResultRepository results = mock(RcaResultRepository.class);
         when(results.save(any(RcaResult.class))).thenAnswer(call -> call.getArgument(0));
 
