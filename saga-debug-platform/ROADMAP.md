@@ -762,7 +762,10 @@ trong mot phep tru, lech dong ho nguon di thang vao so giay "stuck". R06 va `Sag
 in khoang thoi gian khong nhan nguon.
 Expected: do khoang im lang tren cung dong ho (receivedAt, nhu SAGA_STUCK da lam); gan nhan cho R06.
 
-**L25 — Dashboard dem ca finding da bi rut lai** · Priority: trung binh
+**L25 — Dashboard dem ca finding da bi rut lai — DA SUA 2026-09-28** · Priority: trung binh
+Da sua: `summarize` loc `retractedAt == null` truoc moi phep dem, giong cach RCA doc. Khong hien so da
+rut lai (chua co ai can). Test: `aWithdrawnFindingIsNotCountedAsAnAnomaly` (fail truoc khi sua).
+Full suite: 535/535.
 Problem (phat hien khi sua L23): `DashboardMetricsService.summarize` dung `findByDetectedAtAfter`, khong
 loc `retractedAt`, nen `totalAnomalies`, `topAnomalyTypes`, `topAffectedSteps` dem ca nhung claim chinh
 platform da noi la sai. RCA thi chi doc `findStandingBySagaId`.

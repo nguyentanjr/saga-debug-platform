@@ -54,7 +54,11 @@ public class DashboardMetricsService {
         int windowHours = requestedWindowHours > 0 ? requestedWindowHours : 24;
         Instant since = Instant.now().minus(windowHours, ChronoUnit.HOURS);
 
-        List<Anomaly> anomalies = anomalyRepository.findByDetectedAtAfter(since);
+        // Standing findings only, as RCA reads them: a withdrawn one is a claim the platform
+        // has said later observations falsified, and counting it reports it as current (L25).
+        List<Anomaly> anomalies = anomalyRepository.findByDetectedAtAfter(since).stream()
+                .filter(anomaly -> anomaly.getRetractedAt() == null)
+                .toList();
         List<RcaResult> rcaResults = rcaResultRepository.findByCreatedAtAfter(since);
 
         // Historical conclusions under a disputed specification are not current diagnoses.

@@ -60,6 +60,26 @@ class DashboardMetricsServiceTest {
                 .singleElement().extracting(MetricItem::count).isEqualTo(2L);
     }
 
+    /**
+     * L25: a finding the platform has withdrawn — later observations showed it was not true
+     * of the run — is not an anomaly of the run, and the RCA already never reads it. The
+     * dashboard counted it anyway, because its window query does not filter retractions.
+     */
+    @Test
+    void aWithdrawnFindingIsNotCountedAsAnAnomaly() {
+        Anomaly standing = anomaly(AnomalyType.STEP_TIMEOUT, "workflow:PROCESS_PAYMENT.timeout",
+                "Step 'PROCESS_PAYMENT' took 12000ms", "e1", "e2");
+        Anomaly withdrawn = anomaly(AnomalyType.ORPHAN_EVENT, null, "no start event yet", "e2");
+        withdrawn.setRetractedAt(T0.plusSeconds(90));
+        withdrawn.setRetractionReason("the start event arrived");
+
+        var summary = summarize(List.of(standing, withdrawn));
+
+        assertThat(summary.totalAnomalies()).isEqualTo(1);
+        assertThat(summary.topAnomalyTypes()).extracting(MetricItem::name).containsExactly("STEP_TIMEOUT");
+        assertThat(summary.topAffectedSteps()).extracting(MetricItem::count).containsExactly(1L);
+    }
+
     private com.example.correlation.dto.DashboardSummaryResponse summarize(List<Anomaly> anomalies) {
         SagaInstance saga = new SagaInstance();
         saga.setSagaId("default::run-1");
