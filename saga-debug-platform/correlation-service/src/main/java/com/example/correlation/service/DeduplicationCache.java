@@ -20,8 +20,10 @@ import java.time.Duration;
  * the real duplicates either. Marking is now the caller's explicit final step, taken
  * only once the event is durably persisted.
  *
- * <p>Best-effort by nature: entries expire, the cache is per instance, and it is not
- * a correctness boundary. The unique constraint on {@code saga_events.event_id} is.
+ * <p>Best-effort by nature: entries expire, the cache is per instance — replicas do not
+ * share it — and it is not a correctness boundary. The boundary is the stored-event lookup
+ * by {@code (source_name, event_id)} in CorrelationService and, for two replicas racing on
+ * one event, the unique constraint on that pair (V13; it was {@code event_id} alone before).
  *
  * <h2>What is remembered, and why it is not just a flag</h2>
  * Each entry records <em>which record</em> carried the event, not merely that one did.

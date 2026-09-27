@@ -1005,7 +1005,10 @@ Expected: đánh giá xem có use case thật không trước khi đổi. Chưa 
 Problem: `/api/ingest/**` không xác thực; sự kiện gửi vào trở thành bằng chứng chẩn đoán.
 Expected: có phương án trước khi chạy ở môi trường thật.
 
-**L6 — `DeduplicationCache` per-instance** · Priority: thấp
+**L6 — `DeduplicationCache` per-instance — DA GHI RO 2026-09-28** · Priority: thấp
+Javadoc cua `DeduplicationCache` da noi cache khong phai ranh gioi dung dan, nhung con tro vao unique
+`event_id` — da loi thoi tu V13. Sua cho dung code: tra cuu (source_name, event_id) va unique tren cap do.
+Chi doi tai lieu; hanh vi khong doi.
 Problem: chạy nhiều replica thì cache không dùng chung.
 Expected: chấp nhận được (UNIQUE constraint mới là ranh giới thật) — ghi lại để không ai
 tưởng cache là cơ chế đúng đắn.
