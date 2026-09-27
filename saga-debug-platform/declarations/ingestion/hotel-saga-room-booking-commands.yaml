@@ -37,3 +37,7 @@ source:
   eventTypes:
     "REQUEST": BOOK_ROOM_REQUESTED
     "CANCEL": RELEASE_ROOM_REQUESTED
+
+  # The orchestrator copies the whole reservation into every command, card number
+  # included. The observer has no use for it and must not keep it (ROADMAP L14).
+  redact: [creditCardNo]

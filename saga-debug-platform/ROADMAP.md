@@ -876,7 +876,14 @@ khong co `BOOK_ROOM_REQUESTED` (start events [ROOM_BOOKED, ROOM_REJECTED]); ban
 dang kiem mot workflow khac voi ban chay that.
 Expected: mot nguon duy nhat cho test va runtime, hoac test nap tu `declarations/` nhu Sc06ReplayTest.
 
-**L14 — Payload luu nguyen, khong che truong nhay cam** · Priority: trung binh
+**L14 — Payload luu nguyen, khong che truong nhay cam — DA SUA 2026-09-28** · Priority: trung binh
+Da sua: mapping khai bao `redact: [duong.dan, ...]` theo tung nguon (zero-touch); payload **luu tru**
+thay gia tri bang `[redacted]`, sau khi moi truong nhan dang da doc tu ban goc. Khong co gi de che ->
+giu nguyen tung byte. Khai bao cho hai topic lenh cua hotel (`creditCardNo`). Test: `RedactionTest`
+(4; mutation bo khai bao -> test dau-cuoi fail). Full suite: 543/543. Live: BOOK_ROOM_REQUESTED luu
+`"creditCardNo": "[redacted]"`, khong event nao con so the.
+Gioi han: duong dan chi di qua JSON object, khong vao payload nhung dang chuoi; ban ghi cu trong DB khong
+duoc viet lai (khong sua DB truc tiep) — can mot migration/job rieng neu muon xoa du lieu cu.
 Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
 nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.
 Expected: co phuong an che truong khai bao theo source truoc khi quan sat he that.

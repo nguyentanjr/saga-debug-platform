@@ -137,6 +137,53 @@ public class SourceMapping {
 
     private Pattern compiledPattern;
 
+    /**
+     * Dotted payload paths whose values this platform must not keep (L14).
+     *
+     * <p>What is sensitive is a fact about the observed system, so it is declared here with
+     * the rest of what is known about that system — the source changes nothing. Applied to
+     * the payload that is stored, after every field above has been read from the original,
+     * so correlation, identity and event time are unaffected. Paths walk JSON objects only;
+     * a value inside a payload embedded as a string is not reached.
+     */
+    private List<String> redact = new ArrayList<>();
+
+    /** What a redacted value is replaced with. */
+    public static final String REDACTED = "[redacted]";
+
+    public List<String> getRedact() { return redact; }
+    public void setRedact(List<String> redact) { this.redact = redact != null ? redact : new ArrayList<>(); }
+
+    /**
+     * The payload with every declared path that is present replaced by {@link #REDACTED}.
+     * Returned unchanged, byte for byte, when there is nothing to replace or it is not a
+     * JSON object — stored payloads are evidence, and are not re-serialised for nothing.
+     */
+    public String redact(String rawPayload) {
+        if (redact.isEmpty() || rawPayload == null) return rawPayload;
+        JsonNode tree;
+        try {
+            tree = JSON.readTree(rawPayload);
+        } catch (Exception e) {
+            return rawPayload;
+        }
+        if (tree == null || !tree.isObject()) return rawPayload;
+        boolean changed = false;
+        for (String path : redact) {
+            String[] segments = path.split("\\.");
+            JsonNode parent = tree;
+            for (int i = 0; i < segments.length - 1 && parent != null; i++) {
+                parent = parent.get(segments[i]);
+            }
+            String leaf = segments[segments.length - 1];
+            if (parent instanceof com.fasterxml.jackson.databind.node.ObjectNode object && object.has(leaf)) {
+                object.put(leaf, REDACTED);
+                changed = true;
+            }
+        }
+        return changed ? tree.toString() : rawPayload;
+    }
+
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 

@@ -216,7 +216,7 @@ public class EventIngestionService {
                 mapping.stepName(payload, raw).orElse("UNKNOWN"),
                 mapping.serviceName(payload, raw).orElse("unknown"),
                 time.eventTime(),
-                raw.payload(),
+                mapping.redact(raw.payload()),
                 Instant.now(),
                 new IngestedEvent.Causality(
                         mapping.causationId(payload, raw).orElse(null),
