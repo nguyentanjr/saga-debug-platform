@@ -400,6 +400,12 @@ public final class EvidenceTimeline {
      * stayed silent on another. That is the shape of the FP-2 defect — a claim decided on a
      * prefix and never revisited — reached through a different predicate, and it breaks I9
      * for a finding I9 does not exempt.
+     *
+     * <p>The representative pair is the first qualifying terminal, then the first
+     * observation provably after it, in {@link #businessOrder}. That order's id tie-break
+     * only makes the citation deterministic; {@link #relate} still has to prove the pair.
+     * Callers must refresh an existing citation when the fuller reconstruction selects a
+     * different pair (F9).
      */
     public Optional<PostTerminal> postTerminal() {
         return bearings.stream()

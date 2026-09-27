@@ -358,7 +358,7 @@ dataset**, khong phai ve bo detector.
 Sau dot audit doc lap 2026-09-20 (tren muc 58ea076). Moi muc duoi day **da duoc kiem chung
 lai truc tiep**, khong phai chep lai nhan dinh cua nguoi review.
 
-**F9 — Cap evidence ma `FORBIDDEN_POST_TERMINAL` trich dan con phu thuoc tien to** · Priority: **cao**
+**F9 — Cap evidence ma `FORBIDDEN_POST_TERMINAL` trich dan con phu thuoc tien to — DA SUA 2026-09-22** · Priority: **cao**
 Problem: tach ra tu F3. Sau F3, **viec finding co duoc raise hay khong** da doc lap thu tu
 den. Nhung `detectForbiddenPostTerminal` giu finding dau tien cua loai do cho mot run roi
 bo moi lan sau, nen **cap event duoc ghi vao evidence va `measuredAt`** la cap dau tien tro
@@ -389,6 +389,32 @@ nhieu, khong dong F9.
 evidence khong co event id thi "the anomaly's own measurement time still positions it in
 time", nhung code la `if (earliest == null) continue;` — `measuredAt` **khong bao gio**
 duoc dung de anchor. Hoac sua doc, hoac lam dung nhu doc noi.
+
+**Ket qua F9 (2026-09-22):** giu cap dai dien do `EvidenceTimeline.postTerminal()` chon
+tren toan bo reconstruction: terminal dau tien co cap hop le, roi observation dau tien
+chung minh duoc la sau terminal do. Tie-break event id chi chon citation on dinh, khong
+duoc dung de chung minh business order. Detector cap nhat finding dang dung khi citation
+doi, giu ID va claim OCCURRENCE; description, observedValue, evidenceEventIds va measuredAt
+cung doi. Khong doi schema, predicate, tier hay ranking.
+
+`detectedAt` cua finding nay la thoi diem phat hien **ban evidence hien tai**: chi tang
+khi citation doi, de auto-RCA san co nhan ra ket qua cu da stale, ke ca khi event den muon
+hon cua so hai phut. No khong con giu thoi diem phat hien dau tien sau mot lan revision;
+`measuredAt` van la business time. Cap khong doi va duplicate khong ghi lai finding.
+Javadoc anchor RCA da sua dung theo code; khong them fallback tu measuredAt.
+
+Kiem chung: test equality fail tren code cu voi **3** dang citation, pass sau sua voi
+**1** dang `[e3, e4] @2026-01-01T00:00:03Z` tren **120/120 hoan vi**. Them 6 test cho
+terminal den muon, observation chen giua, duplicate/no-op, timestamp bang nhau va tu choi
+cap khong chung minh duoc, RCA anchor/ranking/primary, va auto-RCA sau revision.
+Ca RCA giu evidence canh tranh R03 co dinh de co lap F9; R03/R04 deu STRONG, anchor R04
+va ket qua de cu R03 on dinh tren 120 hoan vi. Day la test voi repository trong bo nho,
+khong phai phep do live hay chung minh ACID/concurrent ingestion tren Postgres.
+
+Tests: focused **62 pass**; full reactor `mvn test` **474 pass** (469 correlation-service
++ 5 saga-events), 0 failure/error/skipped; Python oracle **14 pass**; `git diff --check`
+pass. L9 van in loi scheduler H2 thieu source_name. Khong do lai headline KLTN, khong doi
+oracle. I9 chi duoc kiem chung cho citation F9 va duong RCA da co lap; phan con lai F11.
 
 **F4 — R01 `CIRCUIT_BREAKER_OPEN` gan STRONG tu mot chuoi con trong log** · Priority: **cao**
 Problem: `payload.contains("circuit breaker") || payload.contains("retry exhausted")` ->
@@ -594,6 +620,18 @@ khong chi cutoff.
 ---
 
 ## LATER
+
+**F11 — Citation cua cac occurrence khac va chon finding cho RCA con phu thuoc thu tu** · Priority: **cao**
+Problem (ra soat code khi sua F9, 2026-09-22): `detectStateRegression` va
+`detectMultiTerminalConflict` van return khi da co finding, nen evidence cua chung giu
+nguyen tien to dau tien. `AnomalySignatureRule.firstMatch` lay phan tu dau tien khop loai
+tu danh sach repository; `findStandingBySagaId` khong co ORDER BY. R04 khop ca
+FORBIDDEN_POST_TERMINAL va STATE_REGRESSION, nen chuan hoa citation F9 chua du de khang
+dinh moi anchor/RCA deu doc lap thu tu. Chua do so ket qua de cu thay doi trong pipeline
+day du; test F9 co tinh giu evidence canh tranh co dinh de khong danh dong hai van de.
+Expected: tai hien bang hoan vi event va thu tu tra finding, roi chon evidence theo
+business order da chung minh; giu UNKNOWN khi khong du can cu. Khong sua tier, oracle
+hay doi dac ta I9 de hop thuc hoa processing order. Chi ghi roadmap trong task F9.
 
 **F10 — Ngu nghia ten R07 va phep map strict cua oracle** · Priority: **trung binh-cao**
 Problem: R07 de cu DOWNSTREAM_TIMEOUT tu khoang giua observation vuot nguong; khoang

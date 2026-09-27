@@ -5,13 +5,19 @@ import com.example.correlation.domain.AnomalyType;
 import com.example.correlation.domain.CorrelationBasis;
 import com.example.correlation.domain.ExecutionKey;
 import com.example.correlation.domain.IngestedEvent;
+import com.example.correlation.domain.RcaResult;
 import com.example.correlation.domain.SagaEvent;
 import com.example.correlation.domain.SagaInstance;
 import com.example.correlation.domain.SagaStatus;
+import com.example.correlation.domain.rca.RcaCandidate;
 import com.example.correlation.execution.ExecutionProjectionService;
 import com.example.correlation.repository.AnomalyRepository;
+import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
+import com.example.correlation.service.rca.FailureSignalRegistry;
+import com.example.correlation.service.rca.RcaSelector;
+import com.example.correlation.service.rca.RuleRegistry;
 import com.example.correlation.workflow.WorkflowRegistry;
 import com.example.correlation.workflow.WorkflowSpec;
 import com.example.correlation.workflow.WorkflowSpec.TransitionJudgment;
@@ -32,6 +38,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -80,6 +89,9 @@ class TransitionEvidenceTest {
     private WorkflowSpec orderSaga;
     private WorkflowSpec loanApproval;
     private CorrelationService correlationService;
+    private SagaInstanceRepository sagaInstanceRepository;
+    private SagaEventRepository sagaEventRepository;
+    private AnomalyRepository anomalyRepository;
 
     @BeforeEach
     void setUp() {
@@ -87,8 +99,10 @@ class TransitionEvidenceTest {
         events = new ArrayList<>();
         anomalies = new ArrayList<>();
 
-        SagaInstanceRepository sagaInstanceRepository = mock(SagaInstanceRepository.class);
+        sagaInstanceRepository = mock(SagaInstanceRepository.class);
         when(sagaInstanceRepository.findById(anyString()))
+                .thenAnswer(call -> Optional.ofNullable(instances.get(call.getArgument(0))));
+        when(sagaInstanceRepository.findByIdForUpdate(anyString()))
                 .thenAnswer(call -> Optional.ofNullable(instances.get(call.getArgument(0))));
         when(sagaInstanceRepository.save(any(SagaInstance.class))).thenAnswer(call -> {
             SagaInstance instance = call.getArgument(0);
@@ -96,7 +110,7 @@ class TransitionEvidenceTest {
             return instance;
         });
 
-        SagaEventRepository sagaEventRepository = mock(SagaEventRepository.class);
+        sagaEventRepository = mock(SagaEventRepository.class);
         when(sagaEventRepository.findBySourceNameAndEventId(anyString(), anyString()))
                 .thenAnswer(call -> events.stream()
                         .filter(e -> e.getEventId().equals(call.getArgument(1)))
@@ -111,15 +125,22 @@ class TransitionEvidenceTest {
             return call.getArgument(0);
         });
 
-        AnomalyRepository anomalyRepository = mock(AnomalyRepository.class);
+        anomalyRepository = mock(AnomalyRepository.class);
         when(anomalyRepository.save(any(Anomaly.class))).thenAnswer(call -> {
-            anomalies.add(call.getArgument(0));
-            return call.getArgument(0);
+            Anomaly anomaly = call.getArgument(0);
+            if (anomaly.getId() == null) {
+                anomaly.setId((long) anomalies.size() + 1);
+                anomalies.add(anomaly);
+            }
+            return anomaly;
         });
+        when(anomalyRepository.findStandingBySagaId(anyString())).thenAnswer(call ->
+                anomalies.stream().filter(a -> a.getSagaId().equals(call.getArgument(0))
+                        && !a.isRetracted()).toList());
         when(anomalyRepository.existsBySagaIdAndAnomalyType(anyString(), any()))
                 .thenAnswer(call -> anomalies.stream()
                         .anyMatch(a -> a.getSagaId().equals(call.getArgument(0))
-                                && a.getAnomalyType() == call.getArgument(1)));
+                                && a.getAnomalyType() == call.getArgument(1) && !a.isRetracted()));
 
         registry = new WorkflowRegistry();
         registry.load();
@@ -480,23 +501,164 @@ class TransitionEvidenceTest {
                 .doesNotContainKey(NO_FINDING);
     }
 
+    /** F9: the cited pair and its business time must also be independent of delivery. */
+    @Test
+    void everyDeliveryOrderCitesTheSamePostTerminalPair() {
+        assertThat(postTerminalShapesOverEveryOrderOf(severalQualifyingPairs()))
+                .containsOnlyKeys("[e3, e4] @" + T0.plusSeconds(3));
+    }
+
+    @Test
+    void aLateEarlierEndingRevisesTheSameOccurrenceAndItsWholeExplanation() {
+        observe("e1", "ORDER_CREATED", 0);
+        observe("e4", "PAYMENT_FAILED", 3);
+        observe("e5", "INVENTORY_FAILED", 4);
+        Anomaly finding = postTerminalFinding();
+        Long id = finding.getId();
+        assertThat(finding.getEvidenceEventIds()).containsExactly("e4", "e5");
+        finding.setDetectedAt(T0); // Earlier analysis/detection, without a wall-clock sleep.
+
+        observe("e3", "INVENTORY_RESERVED", 2);
+
+        assertThat(postTerminalFinding()).isSameAs(finding);
+        assertThat(finding.getId()).isEqualTo(id);
+        assertThat(finding.getEvidenceEventIds()).containsExactly("e3", "e4");
+        assertThat(finding.getMeasuredAt()).isEqualTo(T0.plusSeconds(3));
+        assertThat(finding.getDescription()).isEqualTo(
+                "Event 'PAYMENT_FAILED' at 2026-01-01T00:00:03Z happened after "
+                        + "'INVENTORY_RESERVED' ended the saga as COMPLETED at 2026-01-01T00:00:02Z");
+        assertThat(finding.getObservedValue()).isEqualTo("PAYMENT_FAILED after terminal status COMPLETED");
+        assertThat(finding.getExpectedValue()).isEqualTo("no events after terminal saga status");
+        assertThat(finding.getThresholdSource()).isEqualTo("code:terminal-status-guard");
+        assertThat(finding.getDetectedAt()).isAfter(T0);
+        assertThat(finding.isRetracted()).isFalse();
+    }
+
+    @Test
+    void anEarlierPostTerminalObservationRevisesTheMeasurementToo() {
+        observe("e1", "ORDER_CREATED", 0);
+        observe("e3", "INVENTORY_RESERVED", 2);
+        observe("e5", "INVENTORY_FAILED", 4);
+        Anomaly finding = postTerminalFinding();
+        assertThat(finding.getEvidenceEventIds()).containsExactly("e3", "e5");
+
+        observe("e4", "PAYMENT_FAILED", 3);
+
+        assertThat(postTerminalFinding()).isSameAs(finding);
+        assertThat(finding.getEvidenceEventIds()).containsExactly("e3", "e4");
+        assertThat(finding.getMeasuredAt()).isEqualTo(T0.plusSeconds(3));
+    }
+
+    @Test
+    void anUnchangedPairAndADuplicateDoNotRewriteOrRedetectTheFinding() {
+        observe("e1", "ORDER_CREATED", 0);
+        observe("e3", "INVENTORY_RESERVED", 2);
+        observe("e4", "PAYMENT_FAILED", 3);
+        Anomaly finding = postTerminalFinding();
+        Instant detected = finding.getDetectedAt();
+        clearInvocations(anomalyRepository);
+
+        observe("e2", "PAYMENT_COMPLETED", 1); // More evidence, same canonical pair.
+        observe("e4", "PAYMENT_FAILED", 3); // Duplicate observation.
+
+        assertThat(postTerminalFinding()).isSameAs(finding);
+        assertThat(finding.getDetectedAt()).isEqualTo(detected);
+        assertThat(events).hasSize(4);
+        verify(anomalyRepository, never()).save(finding);
+    }
+
+    @Test
+    void tiedEndingsChooseADeterministicCitationWithoutClaimingOrderBetweenThem() {
+        List<String[]> run = List.of(
+                new String[]{"e1", "ORDER_CREATED", "0"},
+                new String[]{"e3b", "INVENTORY_RESERVED", "2"},
+                new String[]{"e3a", "INVENTORY_RESERVED", "2"},
+                new String[]{"e4", "PAYMENT_FAILED", "3"});
+        assertThat(postTerminalShapesOverEveryOrderOf(run))
+                .containsOnlyKeys("[e3a, e4] @" + T0.plusSeconds(3));
+
+        assertThat(postTerminalShapesOverEveryOrderOf(run.subList(0, 3)))
+                .containsOnlyKeys(NO_FINDING);
+    }
+
     /**
-     * And the limit of that claim, pinned rather than argued.
-     *
-     * <p>{@code detectForbiddenPostTerminal} keeps the first finding of its type for a run
-     * and drops every later one, so the pair written down is the first one that became
-     * provable — a property of how much of the run had arrived, not of the run. Measured:
-     * three distinct {@code (evidenceEventIds, measuredAt)} shapes across the 120 orders.
-     *
-     * <p>So F3 normalises <em>whether</em> the finding is raised, not <em>what it cites</em>.
-     * I9 covers both; only the first half is closed here. This test fails the day the second
-     * half is, which is when it should be rewritten as an equality — not deleted.
+     * Holds the competing evidence fixed to isolate F9 from other detectors' citations.
+     * Both R03 and R04 are STRONG; an old (e4,e5) citation incorrectly anchors R04 at
+     * payment, before the competing inventory finding. The canonical pair anchors it at
+     * inventory, where R03's higher severity wins.
      */
     @Test
-    void butWhichPairItCitesStillDependsOnHowMuchOfTheRunHadArrived() {
-        assertThat(postTerminalShapesOverEveryOrderOf(severalQualifyingPairs()))
-                .as("distinct evidence shapes — 1 would mean the evidence is normalised too")
-                .hasSize(3);
+    void thePostTerminalCitationGivesTheSameRcaAnchorRankingAndPrimaryInEveryOrder() {
+        RuleRegistry rules = new RuleRegistry();
+        rules.load();
+        for (List<String[]> order : permutations(severalQualifyingPairs())) {
+            setUp();
+            order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+            Anomaly conflict = new Anomaly();
+            conflict.setSagaId(RUN.canonical());
+            conflict.setAnomalyType(AnomalyType.MULTI_TERMINAL_CONFLICT);
+            conflict.setDescription("COMPLETED and FAILED terminal observations");
+            conflict.setEvidenceEventIds(List.of("e3", "e5"));
+            conflict.setMeasuredAt(T0.plusSeconds(4));
+            when(anomalyRepository.findStandingBySagaId(RUN.canonical()))
+                    .thenReturn(List.of(postTerminalFinding(), conflict));
+            RcaService rca = rcaService(rules, mock(RcaResultRepository.class), null);
+
+            RcaResult result = rca.analyze(RUN.canonical());
+
+            RcaCandidate candidate = result.getCandidates().stream()
+                    .filter(c -> "R04".equals(c.getRuleId())).findFirst().orElseThrow();
+            assertThat(candidate.getAnchorAt()).isEqualTo(T0.plusSeconds(2));
+            assertThat(candidate.getAnchorStepId()).isEqualTo("RESERVE_INVENTORY");
+            assertThat(result.getCandidates().stream().map(RcaCandidate::getRuleId).toList())
+                    .containsSubsequence("R03", "R04");
+            assertThat(result.getRuleId()).isEqualTo("R03");
+        }
+    }
+
+    @Test
+    void revisedEvidenceMakesTheExistingAutoRcaSweepReanalyzeButAnUnchangedPairDoesNot() {
+        observe("e1", "ORDER_CREATED", 0);
+        observe("e4", "PAYMENT_FAILED", 3);
+        observe("e5", "INVENTORY_FAILED", 4);
+        Anomaly finding = postTerminalFinding();
+        finding.setDetectedAt(T0);
+        RcaResult previous = new RcaResult();
+        previous.setCreatedAt(T0.plusSeconds(10));
+        RcaResultRepository results = mock(RcaResultRepository.class);
+        when(results.findBySagaIdOrderByCreatedAtDesc(RUN.canonical())).thenReturn(List.of(previous));
+        when(anomalyRepository.findSagaIdsWithAnomaliesSince(any())).thenAnswer(call ->
+                finding.getDetectedAt().isBefore(call.getArgument(0)) ? List.of() : List.of(RUN.canonical()));
+        when(anomalyRepository.findLatestDetectedAtBySagaId(RUN.canonical()))
+                .thenAnswer(call -> finding.getDetectedAt());
+        RcaService analysis = mock(RcaService.class);
+        RcaService sweep = rcaService(new RuleRegistry(), results, analysis);
+
+        sweep.autoAnalyzeNewlyDetectedAnomalies();
+        verify(analysis, never()).analyze(anyString());
+        observe("e3", "INVENTORY_RESERVED", 2);
+        sweep.autoAnalyzeNewlyDetectedAnomalies();
+        verify(analysis).analyze(RUN.canonical());
+
+        previous.setCreatedAt(finding.getDetectedAt().plusSeconds(1));
+        clearInvocations(analysis);
+        observe("e2", "PAYMENT_COMPLETED", 1);
+        sweep.autoAnalyzeNewlyDetectedAnomalies();
+        verify(analysis, never()).analyze(anyString());
+    }
+
+    private RcaService rcaService(RuleRegistry rules, RcaResultRepository results, RcaService self) {
+        return new RcaService(sagaInstanceRepository, sagaEventRepository, anomalyRepository,
+                results, registry, new ObjectMapper(), new RcaSelector(), rules,
+                new DetectionProperties(), alert -> { }, new ExecutionProjectionService(),
+                new FailureSignalRegistry(""), self);
+    }
+
+    private Anomaly postTerminalFinding() {
+        List<Anomaly> findings = anomalies.stream()
+                .filter(a -> a.getAnomalyType() == AnomalyType.FORBIDDEN_POST_TERMINAL).toList();
+        assertThat(findings).hasSize(1);
+        return findings.get(0);
     }
 
     private static final String NO_FINDING = "NONE";

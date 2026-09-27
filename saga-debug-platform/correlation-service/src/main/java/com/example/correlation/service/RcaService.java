@@ -256,10 +256,8 @@ public class RcaService {
      * point in the execution where this candidate's story starts, which is what makes
      * "which of these came first" answerable at all.
      *
-     * <p>Anomaly-derived evidence often carries no event ids, in which case the
-     * anomaly's own measurement time still positions it in time even though no step can
-     * be named. Candidates that cannot be placed keep a null anchor and sort last rather
-     * than being given a fabricated position.
+     * <p>Without a cited event carrying a timestamp, a candidate keeps a null anchor and
+     * sorts last. An anomaly's measurement time alone is not used as an execution anchor.
      */
     private void anchorCandidates(List<CandidateAssessment> candidates,
             List<SagaEvent> events,

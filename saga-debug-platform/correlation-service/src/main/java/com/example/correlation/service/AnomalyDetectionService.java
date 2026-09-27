@@ -306,24 +306,50 @@ public class AnomalyDetectionService {
      * round to this event" — which is true of every event read after a completion,
      * including the ones that happened before it. On a partition-shuffled stream that
      * turned ordinary delivery reordering into a finding against the observed system.
+     *
+     * <p>The timeline selects the same pair for the same event set. A later delivery can
+     * reveal an earlier qualifying pair, so revise the standing finding's citation rather
+     * than freezing whichever prefix first proved the occurrence. This does not retract
+     * the occurrence or create another one. Only a changed citation advances detectedAt:
+     * it records detection of the revised evidence and lets the existing RCA sweep notice
+     * that its previous analysis is stale. measuredAt remains the cited business time.
      */
     public void detectForbiddenPostTerminal(String sagaId, SagaStatus endedAs,
             SagaEvent terminalEvent, SagaEvent lateEvent) {
         if (endedAs == null || !endedAs.isTerminal() || terminalEvent == null || lateEvent == null) {
             return;
         }
-        if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL)) return;
-        createAnomaly(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL,
-                String.format("Event '%s' at %s happened after '%s' ended the saga as %s at %s",
-                        lateEvent.getEventType(), lateEvent.getTimestamp(),
-                        terminalEvent.getEventType(), endedAs, terminalEvent.getTimestamp()),
-                details()
-                        .observedValue(String.format("%s after terminal status %s",
-                                lateEvent.getEventType(), endedAs))
-                        .expectedValue("no events after terminal saga status")
-                        .thresholdSource("code:terminal-status-guard")
-                        .evidenceEvents(terminalEvent, lateEvent)
-                        .measuredAt(lateEvent.getTimestamp()));
+        String description = String.format("Event '%s' at %s happened after '%s' ended the saga as %s at %s",
+                lateEvent.getEventType(), lateEvent.getTimestamp(),
+                terminalEvent.getEventType(), endedAs, terminalEvent.getTimestamp());
+        AnomalyDetails evidence = details()
+                .observedValue(String.format("%s after terminal status %s", lateEvent.getEventType(), endedAs))
+                .expectedValue("no events after terminal saga status")
+                .thresholdSource("code:terminal-status-guard")
+                .evidenceEvents(terminalEvent, lateEvent)
+                .measuredAt(lateEvent.getTimestamp());
+        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL)) {
+            createAnomaly(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL, description, evidence);
+            return;
+        }
+        // A late alias merge can leave standing rows from both fragments. Give each the
+        // canonical citation without deleting the previously reported occurrences.
+        for (Anomaly anomaly : anomalyRepository.findStandingBySagaId(sagaId)) {
+            if (anomaly.getAnomalyType() != AnomalyType.FORBIDDEN_POST_TERMINAL) continue;
+            if (Objects.equals(anomaly.getEvidenceEventIds(), evidence.evidenceEventIds)
+                    && Objects.equals(anomaly.getMeasuredAt(), evidence.measuredAt)
+                    && Objects.equals(anomaly.getDescription(), description)) continue;
+            anomaly.setDescription(description);
+            anomaly.setObservedValue(evidence.observedValue);
+            anomaly.setExpectedValue(evidence.expectedValue);
+            anomaly.setThresholdSource(evidence.thresholdSource);
+            anomaly.setEvidenceEventIds(evidence.evidenceEventIds);
+            anomaly.setMeasuredAt(evidence.measuredAt);
+            anomaly.setDetectedAt(Instant.now());
+            anomalyRepository.save(anomaly);
+            log.info("Anomaly evidence revised: [{}] {} - {}",
+                    AnomalyType.FORBIDDEN_POST_TERMINAL, sagaId, description);
+        }
     }
 
     /**
