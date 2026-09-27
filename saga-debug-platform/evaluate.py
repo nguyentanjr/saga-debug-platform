@@ -65,6 +65,11 @@ POLL_TIMEOUT    = 90
 POLL_INTERVAL   = 1
 SAGA_MATCH_WAIT = 30
 
+# One full cycle of the platform's slowest scheduled sweep, plus margin. The sweeps run
+# at correlation.detection fixed rates (30s for the stuck pass); a run read sooner than
+# that records whatever the scheduler happened to have done by then. See trigger_rca.
+DETECTOR_SETTLE_SECONDS = 35
+
 POSTGRES_CONTAINER  = "demo-postgres"
 INVENTORY_CONTAINER = "inventory-service"
 PAYMENT_CONTAINER   = "payment-service"
@@ -182,6 +187,27 @@ def poll_saga_status(saga_id: str, expected_status: str, timeout: int = 30) -> d
 
 
 def trigger_rca(saga_id: str) -> tuple:
+    """Analyse one run, after giving the scheduled detectors a full cycle to have run.
+
+    Why the wait is here and not in the runners: several anomalies are raised by a
+    scheduled sweep, not inline with ingestion, and both the diagnosis and the recorded
+    anomaly list are read right after this call. Without a settle, what a run reports
+    depends on where the request lands inside the sweep interval.
+
+    That is not hypothetical. In the 2026-09-21 full run, SC17 run 2 recorded
+    `anomalies_actual: []` and an RCA computed from no findings at all, while the platform
+    raised SAGA_STUCK and MISSING_TERMINAL_EVENT **1.2 seconds later** -- the harness read
+    the saga at 11:13:55.437 and the sweep fired at 11:13:56.66. Run 1 of the same
+    scenario, identical by construction, landed on the other side of the same interval and
+    recorded SAGA_STUCK. One coin toss, two different rows in the results table.
+
+    The wait is uniform across every scenario on purpose. Settling only where the scenario
+    expects a scheduled anomaly would give those runs more time to produce one than runs
+    where such an anomaly would be a false positive, which biases precision upward. The
+    cost is real -- about DETECTOR_SETTLE_SECONDS per run -- and it buys rows that mean the
+    same thing regardless of when they were taken.
+    """
+    time.sleep(DETECTOR_SETTLE_SECONDS)
     start = time.perf_counter()
     try:
         r = requests.post(f"{PLATFORM_URL}/rca/analyze/{saga_id}", timeout=10)
@@ -551,6 +577,80 @@ def rca_expectation_matches(result: dict, scenario: dict) -> bool:
         return actual_status == expected_status and result.get("rca_root_cause") is None
 
     return actual_status == expected_status
+
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+#
+# Why this is here rather than in a runbook: both failures below were hit on 2026-09-21,
+# and NEITHER raised an exception. Each produced a full report of plausible numbers.
+#
+#   1. A record without Spring type headers sat in `order-created`, left over from the N3
+#      multi-cluster verification. payment-service could not deserialise it and never
+#      advanced past that offset, so no order was ever processed. Every run came out
+#      SAGA_STUCK + INSUFFICIENT_EVIDENCE -- which reads exactly like the platform
+#      correctly declining to guess. Only `bufferedCalls: 0` in source_state showed that
+#      the observed system had never run at all.
+#
+#   2. correlation-service subscribes by topic pattern. On a Kafka with no topics yet it
+#      matched nothing and got `partitions assigned: []`, refreshing only after
+#      metadata.max.age.ms (5 minutes by default). Sagas never appeared; the harness
+#      reported "not found" per run and carried on to print a report.
+#
+# A health check catches neither: every service was UP both times. What separates a working
+# pipeline from those two is whether an order actually flows end to end, so that is what
+# this asserts -- on the warm-up orders, which are healthy by construction. If a healthy
+# order cannot reach a terminal state, nothing measured afterwards means anything.
+
+
+def preflight(warmup_saga_ids: list) -> bool:
+    """Refuse to measure when the pipeline is not actually carrying events."""
+    ok = True
+
+    ids = [sid for sid in warmup_saga_ids if sid]
+    if not ids:
+        print("  [FAIL] no warm-up order was accepted; cannot verify the pipeline")
+        return False
+
+    # 1. The observer received them at all. Catches `partitions assigned: []`.
+    seen = [sid for sid in ids if get_saga_detail(sid) is not None]
+    mark = "[ok]  " if len(seen) == len(ids) else "[FAIL]"
+    print(f"  {mark} observer received warm-up sagas: {len(seen)}/{len(ids)}")
+    if len(seen) != len(ids):
+        print("         -> correlation-service is not receiving. Check 'partitions "
+              "assigned' in its log: an empty list means the topic pattern matched "
+              "nothing when it subscribed.")
+        ok = False
+
+    # 2. The observed system actually processed them. Catches a stalled consumer anywhere
+    #    downstream, including the poison-record case.
+    terminal = {"COMPLETED", "COMPENSATED", "FAILED"}
+    settled, statuses = 0, []
+    for sid in seen:
+        detail, _ = poll_saga_terminal(sid, timeout=45)
+        status = (detail or {}).get("status")
+        statuses.append(status)
+        if status in terminal:
+            settled += 1
+    mark = "[ok]  " if seen and settled == len(seen) else "[FAIL]"
+    print(f"  {mark} warm-up sagas reached a terminal state: {settled}/{len(seen)} {statuses}")
+    if settled != len(seen):
+        print("         -> a healthy order did not complete. A downstream consumer is "
+              "stalled; look for a deserialisation failure pinned at one offset.")
+        ok = False
+
+    # 3. Ground truth is readable. Without it, source_state comes back empty and a run where
+    #    the source never executed cannot be told from one where it did.
+    state = capture_source_state()
+    unavailable = state.get("unavailable") or {}
+    mark = "[ok]  " if not unavailable else "[FAIL]"
+    detail = "all readings" if not unavailable else "missing " + ", ".join(unavailable)
+    print(f"  {mark} source state readable: {detail}")
+    if unavailable:
+        print("         -> true_cause cannot be verified for this run. See "
+              "docs/ORACLE.md 5.0b.")
+        ok = False
+
+    return ok
 
 
 def make_result(scenario: dict, run_index: int) -> dict:
@@ -2316,14 +2416,23 @@ def main():
     time.sleep(1)
 
     print(f"\n[3] Warm-up ({WARMUP_RUNS} requests)")
+    warmup_sagas = []
     for i in range(WARMUP_RUNS):
-        _, ms = create_order({"customerId": "warmup", "productId": "PRODUCT-1",
-                              "quantity": 1, "amount": 10.0})
+        order, ms = create_order({"customerId": "warmup", "productId": "PRODUCT-1",
+                                  "quantity": 1, "amount": 10.0})
+        if order is not None:
+            warmup_sagas.append(order.get("sagaId") or order.get("id"))
         print(f"  warm-up {i+1}: {ms:.0f}ms")
         time.sleep(1)
 
     print("  Settling 5s (let warm-up sagas propagate)...")
     time.sleep(5)
+
+    print("\n[3b] Preflight")
+    if not preflight(warmup_sagas):
+        print("\n❌ Preflight failed. NOT running the suite: the two failures this "
+              "checks for produce wrong numbers that look like right ones.")
+        return
 
     if args.scenario:
         scenarios = []
@@ -2453,28 +2562,34 @@ def captured_candidates(rca: dict | None) -> list:
 
 
 def _selectable(candidates: list) -> list:
+    """Everything a policy could name: the engine's full candidate list, minus exclusions."""
     return [c for c in candidates
             if c.get("status") != "RULED_OUT" and c.get("rootCause")]
 
 
-def baseline_picks(candidates: list) -> dict:
-    """What each baseline would have named as the primary root cause."""
-    pool = _selectable(candidates)
+def _promotable(candidates: list) -> list:
+    """Only what the engine is willing to promote.
+
+    The engine nominates STRONG_EVIDENCE alone. Letting the baselines choose from
+    SUPPORTING and WEAK as well made the comparison answer two questions at once -- who
+    ranks better, and who is willing to name a cause more often -- and report the mixture
+    as a difference in ranking. Scored over this pool instead, every policy faces the same
+    eligibility rule and only the ordering differs.
+    """
+    return [c for c in candidates if c.get("status") == "STRONG_EVIDENCE" and c.get("rootCause")]
+
+
+def _rank(pool: list) -> dict:
+    """What each ordering policy names first, out of one pool."""
     if not pool:
         return {"rule_id_order": None, "severity_only": None, "first_anomaly": None}
-
     by_rule_id = sorted(pool, key=lambda c: c.get("ruleId") or "~")
-
     by_severity = sorted(
         pool,
         key=lambda c: (-SEVERITY_RANK.get(c.get("severity"), 0), c.get("ruleId") or "~"))
-
-    # Candidates the engine could not place in the execution have no anchor; they sort
-    # last rather than being given a fabricated position.
-    by_anchor = sorted(
-        pool,
-        key=lambda c: (c.get("anchorAt") or "9999", c.get("ruleId") or "~"))
-
+    # Candidates the engine could not place in the execution have no anchor; they sort last
+    # rather than being given a fabricated position.
+    by_anchor = sorted(pool, key=lambda c: (c.get("anchorAt") or "9999", c.get("ruleId") or "~"))
     return {
         "rule_id_order": by_rule_id[0]["rootCause"],
         "severity_only": by_severity[0]["rootCause"],
@@ -2482,63 +2597,112 @@ def baseline_picks(candidates: list) -> dict:
     }
 
 
-def compute_baseline_comparison(all_runs):
-    """Accuracy@1 of the engine and of each baseline, over the same runs.
+def baseline_picks(candidates: list) -> dict:
+    """What each baseline would have named, under each eligibility rule.
 
-    Only runs where the scenario expects concrete evidence are counted. Healthy
-    scenarios are excluded because "name a root cause" is not a task there — abstention
-    is, and that is reported separately as rcaStatus accuracy.
+    The flat keys are the open pool and are kept at the top level so earlier reports stay
+    readable. `same_eligibility` is the one to cite when the claim is about ranking.
+    """
+    picks = _rank(_selectable(candidates))
+    picks["same_eligibility"] = _rank(_promotable(candidates))
+    return picks
+
+
+def compute_baseline_comparison(all_runs):
+    """The engine against simpler orderings, on the same runs.
+
+    Reported as two comparisons rather than one, because they answer different questions
+    and a single number hides which is doing the work:
+
+      open_pool        -- each policy with its own eligibility. The engine promotes only
+                          STRONG; the baselines will name a SUPPORTING or WEAK candidate
+                          rather than stay silent. A difference here mixes ranking with
+                          willingness to name a cause.
+      same_eligibility -- every policy restricted to the engine's own promotable pool.
+                          Only the ordering differs, so a difference here is the ranking.
+
+    Alongside them, how often each policy named anything at all. A policy that always names
+    something cannot be told from a good one by accuracy alone on a suite where naming is
+    usually right, and that is exactly the failure this platform argues against.
+
+    Scoring abstention as *correct* is deliberately not done here. That needs a statement
+    of what each run's evidence permits, which is the evidence oracle's job -- see
+    oracle/score.py and docs/ORACLE.md. This function keeps reporting the injected-cause
+    oracle unchanged, so the two remain comparable.
     """
     names = ["engine", "rule_id_order", "severity_only", "first_anomaly"]
-    correct = {name: 0 for name in names}
+    pools = ["open_pool", "same_eligibility"]
+    correct = {pool: {n: 0 for n in names} for pool in pools}
+    nominated = {pool: {n: 0 for n in names} for pool in pools}
     total = 0
     disagreements = []
 
     for r in all_runs:
         if r.get("error"):
             continue
-        expected_status = r.get("rca_expected_status")
-        if expected_status not in ("EVIDENCE_AVAILABLE", "SELECTED"):
+        if r.get("rca_expected_status") not in ("EVIDENCE_AVAILABLE", "SELECTED"):
             continue
-
         expected = r.get("rca_expected")
         if expected is None:
             continue
         wanted = set(expected) if isinstance(expected, list) else {expected}
 
         total += 1
-        picks = dict(r.get("baseline_picks") or {})
-        picks["engine"] = r.get("rca_root_cause")
+        stored = dict(r.get("baseline_picks") or {})
+        same = dict(stored.pop("same_eligibility", None) or {})
 
-        for name in names:
-            if picks.get(name) in wanted:
-                correct[name] += 1
+        picks = {
+            "open_pool": {**stored, "engine": r.get("rca_root_cause")},
+            # The engine already chooses from its promotable pool, so it is the same pick
+            # under both rules; only the baselines move.
+            "same_eligibility": {**same, "engine": r.get("rca_root_cause")},
+        }
 
-        if picks.get("engine") != picks.get("rule_id_order"):
+        for pool in pools:
+            for name in names:
+                pick = picks[pool].get(name)
+                if pick is not None:
+                    nominated[pool][name] += 1
+                if pick in wanted:
+                    correct[pool][name] += 1
+
+        if picks["same_eligibility"].get("engine") != picks["same_eligibility"].get("rule_id_order"):
             disagreements.append({
                 "scenario_id": r.get("scenario_id"),
-                "run_index":   r.get("run_index"),
-                "expected":    expected,
-                "engine":      picks.get("engine"),
-                "rule_id_order": picks.get("rule_id_order"),
+                "run_index": r.get("run_index"),
+                "expected": expected,
+                "engine": picks["same_eligibility"].get("engine"),
+                "rule_id_order": picks["same_eligibility"].get("rule_id_order"),
             })
 
-    report = {"runs_scored": total, "accuracy_pct": {}, "correct": correct}
-    for name in names:
-        report["accuracy_pct"][name] = round(100.0 * correct[name] / total, 1) if total else 0.0
+    def pct(n):
+        return round(100.0 * n / total, 1) if total else 0.0
 
+    report = {
+        "runs_scored": total,
+        "accuracy_pct": {n: pct(correct["open_pool"][n]) for n in names},
+        "correct": correct["open_pool"],
+        "same_eligibility": {
+            "accuracy_pct": {n: pct(correct["same_eligibility"][n]) for n in names},
+            "correct": correct["same_eligibility"],
+        },
+        "nomination_rate_pct": {
+            pool: {n: pct(nominated[pool][n]) for n in names} for pool in pools
+        },
+    }
     report["engine_minus_rule_id_order_pp"] = round(
-        report["accuracy_pct"]["engine"] - report["accuracy_pct"]["rule_id_order"], 1)
+        report["same_eligibility"]["accuracy_pct"]["engine"]
+        - report["same_eligibility"]["accuracy_pct"]["rule_id_order"], 1)
     report["disagreements_with_rule_id_order"] = disagreements
 
-    # A zero gap is a real finding, not a failure — it says the scenario suite contains
-    # no case where the ranking changes the answer, which is a statement about the suite
-    # rather than about the ranking. Saying so beats quietly reporting a tie.
+    # A zero gap is a finding, not a failure: it says the suite holds no case where the
+    # ranking decides, which is a statement about the suite rather than about the ranking.
     report["note"] = (
-        "No scenario in this run distinguishes the engine from rule-id ordering; "
-        "the suite lacks a multi-rule case where ranking decides."
+        "Under equal eligibility no scenario in this run distinguishes the engine from "
+        "rule-id ordering; the suite lacks a multi-rule case where ranking decides."
         if not disagreements else
-        f"{len(disagreements)} run(s) where the ranking changed the primary diagnosis."
+        f"{len(disagreements)} run(s) where the ranking changed the primary diagnosis, "
+        "scored under equal eligibility."
     )
     return report
 
@@ -2773,6 +2937,10 @@ def print_summary(scenarios, all_runs, args):
             "mode": "full" if args.full else "basic",
             "total_runs": len(all_runs),
             "errors": sum(1 for r in all_runs if r.get("error")),
+            # Recorded so a reader can tell whether a row was taken after the scheduled
+            # sweeps had a chance to run. An artifact produced without this settle has
+            # timing-dependent anomaly lists; see trigger_rca.
+            "detector_settle_seconds": DETECTOR_SETTLE_SECONDS,
         },
         "scenarios": [],
         "overall": {},
@@ -2909,27 +3077,39 @@ def print_summary(scenarios, all_runs, args):
               f"({m['correct']}/{m['total']}) actual={m['actual']}")
 
     print(f"\n{'='*60}")
-    print("BASELINE COMPARISON  (accuracy@1, same runs, same candidate set)")
+    print("BASELINE COMPARISON  (accuracy@1, same runs)")
     if not baseline_comparison.get("runs_scored"):
         print("  No run expected a concrete root cause; nothing to compare.")
     else:
         acc = baseline_comparison["accuracy_pct"]
+        same = baseline_comparison["same_eligibility"]["accuracy_pct"]
+        rate = baseline_comparison["nomination_rate_pct"]
         print(f"  Scored on {baseline_comparison['runs_scored']} run(s) "
-              f"expecting a concrete diagnosis.\n")
-        print(f"  {'Selection policy':<34} {'Acc@1':>7}")
-        print(f"  {'-'*42}")
-        print(f"  {'engine (tier -> position -> sev)':<34} {acc['engine']:>6.1f}%")
-        print(f"  {'baseline: rule id order':<34} {acc['rule_id_order']:>6.1f}%")
-        print(f"  {'baseline: severity only':<34} {acc['severity_only']:>6.1f}%")
-        print(f"  {'baseline: first anomaly in time':<34} {acc['first_anomaly']:>6.1f}%")
-        print(f"\n  Engine minus rule-id ordering : "
+              f"expecting a concrete diagnosis.")
+        print("  Two columns, because they answer different questions. Cite the second")
+        print("  one for any claim about ranking.\n")
+        print(f"  {'Selection policy':<34} {'own elig.':>10} {'same elig.':>11} {'names a cause':>15}")
+        print(f"  {'-'*72}")
+        for key, label in (("engine", "engine (tier -> position -> sev)"),
+                           ("rule_id_order", "baseline: rule id order"),
+                           ("severity_only", "baseline: severity only"),
+                           ("first_anomaly", "baseline: first anomaly in time")):
+            print(f"  {label:<34} {acc[key]:>9.1f}% {same[key]:>10.1f}% "
+                  f"{rate['same_eligibility'][key]:>14.1f}%")
+        print("\n  own elig.  - each policy picks from every candidate not ruled out. The")
+        print("               engine promotes STRONG only, so a gap here mixes ranking with")
+        print("               willingness to name a cause at all.")
+        print("  same elig. - every policy restricted to the engine's promotable pool. Only")
+        print("               the ordering differs, so a gap here IS the ranking.")
+        print(f"\n  Engine minus rule-id ordering, same eligibility : "
               f"{baseline_comparison['engine_minus_rule_id_order_pp']:+.1f} pp")
         print(f"  {baseline_comparison['note']}")
         for d in baseline_comparison["disagreements_with_rule_id_order"][:5]:
             print(f"    - {d['scenario_id']} run {d['run_index']}: "
                   f"engine={d['engine']} vs ruleId={d['rule_id_order']} "
                   f"(expected {d['expected']})")
-
+        print("\n  Abstention is not scored as correct here: that needs a statement of what")
+        print("  each run's evidence permits. Run oracle/score.py for it.")
     print(f"\n{'='*60}")
     print("ANOMALY DETECTION METRICS")
     print(f"  Precision : {anomaly_metrics['precision']:.3f}")
