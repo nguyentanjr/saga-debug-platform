@@ -124,7 +124,7 @@ class WorkflowConflictReadTest {
         when(instances.findAllById(any())).thenReturn(List.of(saga));
         when(instances.countUncontestedByStatusSince(eq("IN_PROGRESS"), any())).thenReturn(1L);
         when(instances.countByStatusAndStartTimeAfter(any(), any())).thenReturn(2L);
-        var summary = new DashboardMetricsService(instances, anomalies, results).summarize(24);
+        var summary = new DashboardMetricsService(instances, anomalies, results, events, workflows).summarize(24);
         assertThat(summary.activeSagas()).isEqualTo(1);
         assertThat(summary.totalAnomalies()).isZero();
         assertThat(summary.rcaSelected()).isZero();

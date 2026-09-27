@@ -2,6 +2,7 @@ package com.example.correlation.service;
 
 import com.example.correlation.domain.Anomaly;
 import com.example.correlation.domain.RcaResult;
+import com.example.correlation.domain.SagaEvent;
 import com.example.correlation.domain.SagaInstance;
 import com.example.correlation.domain.SagaStatus;
 import com.example.correlation.domain.rca.CandidateStatus;
@@ -11,7 +12,10 @@ import com.example.correlation.dto.DashboardSummaryResponse;
 import com.example.correlation.dto.MetricItem;
 import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.RcaResultRepository;
+import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
+import com.example.correlation.workflow.WorkflowRegistry;
+import com.example.correlation.workflow.WorkflowSpec;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -23,25 +27,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class DashboardMetricsService {
 
-    private static final Pattern STEP_IN_QUOTES = Pattern.compile("Step '([A-Z0-9_]+)'");
-    private static final Pattern UPPERCASE_STEP = Pattern.compile("\\b([A-Z]+_[A-Z0-9_]+)\\b");
-
     private final SagaInstanceRepository sagaInstanceRepository;
     private final AnomalyRepository anomalyRepository;
     private final RcaResultRepository rcaResultRepository;
+    private final SagaEventRepository sagaEventRepository;
+    private final WorkflowRegistry workflowRegistry;
 
     public DashboardMetricsService(SagaInstanceRepository sagaInstanceRepository,
             AnomalyRepository anomalyRepository,
-            RcaResultRepository rcaResultRepository) {
+            RcaResultRepository rcaResultRepository,
+            SagaEventRepository sagaEventRepository,
+            WorkflowRegistry workflowRegistry) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.anomalyRepository = anomalyRepository;
         this.rcaResultRepository = rcaResultRepository;
+        this.sagaEventRepository = sagaEventRepository;
+        this.workflowRegistry = workflowRegistry;
     }
 
     public DashboardSummaryResponse summarize(int requestedWindowHours) {
@@ -56,7 +62,8 @@ public class DashboardMetricsService {
         anomalies.forEach(a -> ids.add(a.getSagaId()));
         rcaResults.forEach(r -> ids.add(r.getSagaId()));
         Set<String> conflicted = new HashSet<>();
-        sagaInstanceRepository.findAllById(ids).stream()
+        List<SagaInstance> sagas = sagaInstanceRepository.findAllById(ids);
+        sagas.stream()
                 .filter(SagaInstance::hasWorkflowConflict)
                 .forEach(saga -> conflicted.add(saga.getSagaId()));
         anomalies = anomalies.stream().filter(a -> !conflicted.contains(a.getSagaId())).toList();
@@ -80,7 +87,7 @@ public class DashboardMetricsService {
                 countRcaStatus(rcaResults, RcaStatus.NO_DIAGNOSIS_NEEDED),
                 topAnomalyTypes(anomalies),
                 topRootCauses(rcaResults),
-                topAffectedSteps(anomalies));
+                topAffectedSteps(anomalies, sagas));
     }
 
     private long countStatusSince(SagaStatus status, Instant since) {
@@ -144,44 +151,58 @@ public class DashboardMetricsService {
         return roots != null ? roots : List.of();
     }
 
-    private List<MetricItem> topAffectedSteps(List<Anomaly> anomalies) {
+    /**
+     * The step each finding is counted against, when that is established.
+     *
+     * <p>Two sources, both declared: a {@code workflow:<STEP>.timeout} threshold names the
+     * step it measured, and otherwise the events a finding cites belong to steps through the
+     * saga's workflow. A finding whose cited events span several steps, or none, is not
+     * counted rather than guessed at. The previous parse took the token before the first dot
+     * of any {@code workflow:} source — the workflow's own name for INVALID_TRANSITION,
+     * MULTI_TERMINAL_CONFLICT and the compensation findings — and fell back to a regex for
+     * anything upper-case in the text, which found event names (ROADMAP L23).
+     */
+    private List<MetricItem> topAffectedSteps(List<Anomaly> anomalies, List<SagaInstance> sagas) {
+        Map<String, WorkflowSpec> workflowBySaga = new LinkedHashMap<>();
+        for (SagaInstance saga : sagas) {
+            if (saga.hasWorkflowConflict()) continue;
+            workflowRegistry.byType(saga.getWorkflowType())
+                    .ifPresent(spec -> workflowBySaga.put(saga.getSagaId(), spec));
+        }
+        List<String> sagaIds = anomalies.stream().map(Anomaly::getSagaId).distinct()
+                .filter(workflowBySaga::containsKey).toList();
+        Map<String, Map<String, SagaEvent>> eventsBySaga = sagaIds.isEmpty() ? Map.of()
+                : sagaEventRepository.findBySagaIdInOrderBySagaIdAscTimestampAsc(sagaIds).stream()
+                        .filter(e -> e.getEventId() != null)
+                        .collect(Collectors.groupingBy(SagaEvent::getSagaId,
+                                Collectors.toMap(SagaEvent::getEventId, e -> e, (a, b) -> a)));
+
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Anomaly anomaly : anomalies) {
-            inferStep(anomaly).ifPresent(step -> counts.merge(step, 1L, Long::sum));
+            WorkflowSpec workflow = workflowBySaga.get(anomaly.getSagaId());
+            if (workflow == null) continue;
+            affectedStep(anomaly, workflow, eventsBySaga.getOrDefault(anomaly.getSagaId(), Map.of()))
+                    .ifPresent(step -> counts.merge(step, 1L, Long::sum));
         }
         return topItems(counts, 5);
     }
 
-    private Optional<String> inferStep(Anomaly anomaly) {
+    private static Optional<String> affectedStep(Anomaly anomaly, WorkflowSpec workflow,
+            Map<String, SagaEvent> eventsById) {
         String source = anomaly.getThresholdSource();
-        if (source != null && source.startsWith("workflow:")) {
-            String token = source.substring("workflow:".length());
-            int dot = token.indexOf('.');
-            String step = dot >= 0 ? token.substring(0, dot) : token;
-            if (!step.isBlank()) {
-                return Optional.of(step);
-            }
+        if (source != null && source.startsWith("workflow:") && source.endsWith(".timeout")) {
+            String step = source.substring("workflow:".length(), source.length() - ".timeout".length());
+            if (workflow.hasStep(step)) return Optional.of(step);
         }
-
-        String text = String.join(" ",
-                nullToEmpty(anomaly.getObservedValue()),
-                nullToEmpty(anomaly.getDescription()));
-
-        Matcher quoted = STEP_IN_QUOTES.matcher(text);
-        if (quoted.find()) {
-            return Optional.of(quoted.group(1));
-        }
-
-        Matcher uppercase = UPPERCASE_STEP.matcher(text);
-        if (uppercase.find()) {
-            return Optional.of(uppercase.group(1));
-        }
-
-        return Optional.empty();
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
+        List<String> cited = anomaly.getEvidenceEventIds() != null ? anomaly.getEvidenceEventIds() : List.of();
+        Set<String> steps = cited.stream()
+                .map(eventsById::get)
+                .filter(java.util.Objects::nonNull)
+                .map(e -> workflow.classifyEvent(e.getEventType())
+                        .map(WorkflowSpec.EventRole::stepId).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        return steps.size() == 1 ? Optional.of(steps.iterator().next()) : Optional.empty();
     }
 
     private List<MetricItem> topItems(Map<String, Long> counts, int limit) {

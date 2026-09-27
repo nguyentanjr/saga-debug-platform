@@ -762,6 +762,12 @@ trong mot phep tru, lech dong ho nguon di thang vao so giay "stuck". R06 va `Sag
 in khoang thoi gian khong nhan nguon.
 Expected: do khoang im lang tren cung dong ho (receivedAt, nhu SAGA_STUCK da lam); gan nhan cho R06.
 
+**L25 — Dashboard dem ca finding da bi rut lai** · Priority: trung binh
+Problem (phat hien khi sua L23): `DashboardMetricsService.summarize` dung `findByDetectedAtAfter`, khong
+loc `retractedAt`, nen `totalAnomalies`, `topAnomalyTypes`, `topAffectedSteps` dem ca nhung claim chinh
+platform da noi la sai. RCA thi chi doc `findStandingBySagaId`.
+Expected: dashboard chi dem finding con dung; neu can, hien rieng so da rut lai.
+
 **L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc** · Priority: thap
 Problem (sau L21): hai nguon cung noi event thuoc buoc nao; bat dong thi map thang, im lang.
 `WorkflowSpecValidator` chi canh bao buoc khong ton tai va event khong buoc nao khai bao. Hien
@@ -788,7 +794,13 @@ TAKE_PAYMENT duoc coi la hop le du chi co canh SUCCESS; tuong tu PROCESS_PAYMENT
 RESERVE_INVENTORY o ORDER_SAGA.
 Expected: tai hien bang test, sua theo dung comment, chay lai danh gia (co the doi so INVALID_TRANSITION).
 
-**L23 — `topAffectedSteps` cua dashboard doan buoc bang regex** · Priority: thap
+**L23 — `topAffectedSteps` cua dashboard doan buoc bang regex — DA SUA 2026-09-28** · Priority: thap
+Rong hon ghi chu ban dau: voi INVALID_TRANSITION, MULTI_TERMINAL_CONFLICT va cac finding bu tru,
+`thresholdSource` la `workflow:<TEN_WORKFLOW>.<...>`, nen dashboard dem **ten workflow** nhu mot buoc.
+Da sua: buoc chi lay tu `workflow:<BUOC>.timeout` (khi BUOC co that) hoac tu buoc chung cua cac event
+finding trich dan (qua workflow cua saga); trai nhieu buoc hoac khong xac dinh -> khong dem. Bo regex.
+Test: `DashboardMetricsServiceTest`. Full suite: 534/534 (ca ApplicationContextTest). Live hotel:
+`TAKE_PAYMENT` thay cho `TAKE_PAYMENT_REQUESTED`.
 Problem (live F13): `DashboardMetricsService.inferStep` lay ten trong dau nhay cua description khi
 thresholdSource khong phai `workflow:` — OUT_OF_ORDER cho ra "TAKE_PAYMENT_REQUESTED" (ten event).
 Expected: lay buoc tu evidence event qua workflow, hoac khong dem khi khong xac dinh duoc.
