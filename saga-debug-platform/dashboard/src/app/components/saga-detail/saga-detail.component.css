@@ -144,6 +144,9 @@
   align-items: center;
   justify-content: center;
   z-index: 1;
+  /* Any service without its own colour below — every system but the demo — would
+     otherwise get a transparent dot behind a white icon, i.e. no icon at all. */
+  background-color: #607d8b;
 }
 
 .timeline-dot mat-icon {

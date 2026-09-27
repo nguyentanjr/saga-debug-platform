@@ -775,6 +775,13 @@ loc `retractedAt`, nen `totalAnomalies`, `topAnomalyTypes`, `topAffectedSteps` d
 platform da noi la sai. RCA thi chi doc `findStandingBySagaId`.
 Expected: dashboard chi dem finding con dung; neu can, hien rieng so da rut lai.
 
+**L26 — Cham timeline vo hinh voi moi he tru demo — DA SUA 2026-09-28** · Priority: trung binh
+Problem (phat hien khi ra soat CSS L12): `.timeline-dot` khong co mau nen; chi `dot-order/payment/
+inventory-service` (ten service demo) co mau, icon ben trong mau trang. Do tren dashboard that voi saga
+hotel: ca 6 cham `background rgba(0,0,0,0)`, icon `rgb(255,255,255)` — khong thay icon nao.
+Da sua: mau nen trung tinh mac dinh cho `.timeline-dot`; mau demo van de len (khai bao sau). Do lai:
+6/6 cham `rgb(96,125,139)`; badge trang thai (global tu L12) dung mau o ca list va detail.
+
 **L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc — DA SUA 2026-09-28** · Priority: thap
 Da sua: `WorkflowSpecValidator` canh bao khi map dat event vao buoc khac buoc dang khai bao no (ghi ro
 map thang). Canh bao, khong loi: spec van dung duoc. Khong spec nao dang ship bi canh bao. Test:
