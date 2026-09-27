@@ -1020,6 +1020,10 @@ nhưng chỉ vì đọc log bằng mắt trong lúc kiểm chứng live.
 Expected: cân nhắc xem log vận hành có đáng test không. Chưa rõ có đáng.
 
 **L7 — Nhiễu log `rule.yaml has no 'rules' key`** · Priority: thấp
+Kiem tra lai 2026-09-28: khong tai hien duoc. 113 jar tren classpath correlation-service khong jar nao
+ship `rules/`, `workflows/`, `ingestion/` hay `failure-signals/*.yaml`; 0 dong canh bao trong full suite
+va trong log observer live. Rui ro con lai (mot jar sau nay ship `workflows/*.yaml` se duoc nap nhu khai
+bao) la gia dinh — theo AGENTS.md chua lam. Mo lai khi co mot jar that ship cac duong dan do.
 Problem: một jar phụ thuộc ship `rules/rule.yaml`, bị quét trúng. Vô hại hôm nay, nhưng
 một jar ship `rules/*.yaml` có key đúng sẽ nạp rác vào engine.
 Expected: thu hẹp phạm vi quét classpath.
