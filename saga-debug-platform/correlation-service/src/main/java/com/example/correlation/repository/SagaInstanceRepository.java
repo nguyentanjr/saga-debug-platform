@@ -54,6 +54,24 @@ public interface SagaInstanceRepository extends JpaRepository<SagaInstance, Stri
             Collection<SagaStatus> statuses, Instant before, Pageable pageable);
 
     /**
+     * Sagas in any of the given states holding an observation received after their newest
+     * analysis, or never analysed. Compared on received_at, the platform's own clock:
+     * last_updated is the source's clock, and a run read from backlog after the source
+     * stamped it would fall outside any recency window on it.
+     */
+    @Query("""
+            SELECT s.sagaId FROM SagaInstance s
+            WHERE s.status IN :statuses
+              AND NOT EXISTS (
+                  SELECT r.id FROM RcaResult r
+                  WHERE r.sagaId = s.sagaId
+                    AND r.createdAt >= (SELECT MAX(e.receivedAt) FROM SagaEvent e
+                                        WHERE e.sagaId = s.sagaId))
+            ORDER BY s.lastUpdated DESC""")
+    List<String> findSagaIdsAwaitingAnalysis(
+            @Param("statuses") Collection<SagaStatus> statuses, Pageable pageable);
+
+    /**
      * Locks the saga row for the duration of the caller's transaction.
      *
      * <p>RCA analysis deletes the previous result and writes a new one. Two analyses of

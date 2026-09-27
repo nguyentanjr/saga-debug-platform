@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -381,17 +382,39 @@ public class RcaService {
                     || existing.get(0).getCreatedAt().isBefore(latestAnomalyAt);
 
             if (needsAnalysis) {
-                try {
-                    // Through the proxy, so @Transactional applies per saga.
-                    RcaResult result = self.analyze(sagaId);
-                    if (result != null) {
-                        log.info("Auto-RCA triggered for saga {} with rcaStatus={} rootCause={}",
-                                sagaId, result.getRcaStatus(), result.getRootCause());
-                    }
-                } catch (Exception e) {
-                    log.error("Auto-RCA failed for saga {}: {}", sagaId, e.getMessage());
-                }
+                analyzeInOwnTransaction(sagaId);
             }
+        }
+    }
+
+    /**
+     * L17 — runs that ended without success and hold evidence newer than their last
+     * analysis. The pass above is driven by findings, and a run that ended by its step's
+     * own declared failure (R24) or by a completed compensation (R11) usually has none, so
+     * it was analysed only when someone called {@code /rca/analyze}. The analysis itself is
+     * unchanged: a FAILED run with nothing to cite still comes out NO_DIAGNOSIS_NEEDED.
+     * COMPLETED is left out on purpose — a completed run with a finding is the pass above.
+     */
+    public void autoAnalyzeEndedRuns() {
+        List<String> sagaIds = sagaInstanceRepository.findSagaIdsAwaitingAnalysis(
+                ENDED_WITHOUT_SUCCESS,
+                PageRequest.of(0, detectionProperties.getDetectionBatchSize()));
+        sagaIds.forEach(this::analyzeInOwnTransaction);
+    }
+
+    private static final List<SagaStatus> ENDED_WITHOUT_SUCCESS =
+            List.of(SagaStatus.FAILED, SagaStatus.COMPENSATED);
+
+    private void analyzeInOwnTransaction(String sagaId) {
+        try {
+            // Through the proxy, so @Transactional applies per saga.
+            RcaResult result = self.analyze(sagaId);
+            if (result != null) {
+                log.info("Auto-RCA triggered for saga {} with rcaStatus={} rootCause={}",
+                        sagaId, result.getRcaStatus(), result.getRootCause());
+            }
+        } catch (Exception e) {
+            log.error("Auto-RCA failed for saga {}: {}", sagaId, e.getMessage());
         }
     }
 

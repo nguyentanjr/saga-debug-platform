@@ -698,6 +698,26 @@ tu them vao `claims.yaml` vi tu vung da khoa 2026-09-21 — can quyet dinh rieng
 
 ## LATER
 
+**L17 — Auto-RCA bo qua run ket thuc ma khong co anomaly — DA SUA 2026-09-27** · Priority: trung binh-cao
+Da sua: sweep rieng `autoAnalyzeEndedRuns` (lease rieng, cung chu ky 30s) phan tich run
+FAILED/COMPENSATED chua co RCA nao moi hon observation nhan gan nhat. So tren `received_at`
+(dong ho platform), khong phai `last_updated` (dong ho nguon): run doc tu backlog — nhu run
+hotel dau tien, stamp 16:03, nhan 16:05 — se lot mot cua so tren `last_updated`. COMPLETED
+khong nam trong sweep nay; phan tich giu nguyen (FAILED khong bang chung van NO_DIAGNOSIS_NEEDED).
+Test: `SagaIdsAwaitingAnalysisTest` (H2 va Postgres 15 that voi Flyway + validate),
+`EndedRunAutoAnalysisTest`, `ScheduledSweepsTest`. Live: R24 va R11 tu co RCA ~10s sau khi
+run ket thuc, khong goi tay; 3 chu ky sau khong phan tich lai.
+Luu y: query duyet moi run FAILED/COMPENSATED moi chu ky (anti-join theo index co san), chi
+phi tang theo lich su khi retention tat. Lan dau chay tren DB cu se phan tich bu cac run cu
+theo lo 500 — dashboard (dem RCA theo created_at 24h) tang mot lan.
+Van de goc ben duoi giu lai de doi chieu.
+Problem (live F13, 2026-09-27): `autoAnalyzeNewlyDetectedAnomalies` chi quet saga co anomaly moi
+trong 2 phut. Run FAILED/COMPENSATED khong co anomaly (ROOM_REJECTED, SC02-kieu bu tru) khong bao
+gio duoc phan tich tu dong: R24 va R11 chi hien khi goi `POST /rca/analyze`. Da thay tren run
+guest 21: FAILED > 5 phut, khong co RCA nao cho den khi goi tay. Dashboard dem RCA vi vay thieu.
+Expected: xac dinh co can kich hoat RCA khi run dat trang thai ket thuc hay khong; neu co thi xet
+lai quyet dinh "business rejection khong can chan doan" cung luc, khong va rieng mot duong.
+
 **L14 — Payload luu nguyen, khong che truong nhay cam** · Priority: trung binh
 Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
 nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.

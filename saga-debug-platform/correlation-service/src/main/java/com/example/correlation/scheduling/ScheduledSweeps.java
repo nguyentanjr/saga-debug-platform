@@ -110,6 +110,12 @@ public class ScheduledSweeps {
                 rca::autoAnalyzeNewlyDetectedAnomalies);
     }
 
+    @Scheduled(fixedRateString = "${rca.auto-analysis.fixed-rate-ms:30000}")
+    public void autoAnalyzeEndedRuns() {
+        lease.runExclusively("auto-analyze-ended-runs", RCA_LEASE,
+                rca::autoAnalyzeEndedRuns);
+    }
+
     /**
      * Does nothing at all when retention is switched off, including taking a lease: an
      * absent purge is not a purge that lost a race, and the table should not say it was.

@@ -64,7 +64,7 @@ class ScheduledSweepsTest {
     void noSweepRunsWithoutALease() throws Exception {
         grantEveryLease();
         List<Method> scheduled = scheduledMethods();
-        assertThat(scheduled).hasSize(8);
+        assertThat(scheduled).hasSize(9);
 
         for (Method method : scheduled) {
             method.invoke(sweeps);
@@ -101,6 +101,7 @@ class ScheduledSweepsTest {
         sweeps.detectMissingCompensationAck();
         sweeps.detectDelayedCompensation();
         sweeps.autoAnalyzeNewlyDetectedAnomalies();
+        sweeps.autoAnalyzeEndedRuns();
         sweeps.purgeExpiredSagas();
 
         verify(detection).detectStuckSagas();
@@ -110,6 +111,7 @@ class ScheduledSweepsTest {
         verify(detection).detectMissingCompensationAck();
         verify(detection).detectDelayedCompensation();
         verify(rca).autoAnalyzeNewlyDetectedAnomalies();
+        verify(rca).autoAnalyzeEndedRuns();
         verify(retention).purgeExpiredSagas();
     }
 
@@ -119,7 +121,7 @@ class ScheduledSweepsTest {
         assertThat(annotatedMethodsOf(AnomalyDetectionService.class)).isEmpty();
         assertThat(annotatedMethodsOf(RcaService.class)).isEmpty();
         assertThat(annotatedMethodsOf(RetentionService.class)).isEmpty();
-        assertThat(annotatedMethodsOf(ScheduledSweeps.class)).hasSize(8);
+        assertThat(annotatedMethodsOf(ScheduledSweeps.class)).hasSize(9);
     }
 
     @Test
