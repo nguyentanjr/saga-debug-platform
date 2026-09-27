@@ -718,6 +718,29 @@ guest 21: FAILED > 5 phut, khong co RCA nao cho den khi goi tay. Dashboard dem R
 Expected: xac dinh co can kich hoat RCA khi run dat trang thai ket thuc hay khong; neu co thi xet
 lai quyet dinh "business rejection khong can chan doan" cung luc, khong va rieng mot duong.
 
+**L18 — Moi lan tu choi nghiep vu deu sinh alert — DA DIEU TRA 2026-09-27; sua mot loi that, giu nguyen chinh sach** · Priority: trung binh
+Tim thay khi dieu tra (tai hien live, saga hotel `cf99…`): alert noi nhieu hon ket qua no
+thong bao. Ket qua luu `primaryRootCauses=[]` (R14 la OBSERVATION_PROCESS, khong promote),
+nhung alert cung luc ghi `primaryRootCauses=['OUT_OF_ORDER_DELIVERY']` — vi `emitAlert` liet
+ke moi candidate STRONG/SUPPORTING/WEAK, bo qua ClaimSubject. Da sua: alert lay dung
+`primaryRootCauses` cua ket qua; chi phat khi co bang chung STRONG/SUPPORTING ve he duoc quan
+sat (cung nguong EVIDENCE_AVAILABLE cua selector). Run chi co bang chung ve qua trinh quan sat
+khong con alert; run ket SUPPORTING (R05) van alert nhung khong goi SERVICE_CRASH la nguyen
+nhan chinh. Test: `AlertContentTest` (4 ca; go dieu kien moi thi ca live fail). Live sau khi
+build lai: `cf99…` khong alert; R24/R11 alert voi dung nhan da luu.
+Chinh sach "tu choi nghiep vu co alert khong": **co y khong doi.** R24/R11 la claim ve he duoc
+quan sat, da promote; loc chung can mot khai niem "muc claim" trong code (hien chi co trong
+oracle), ma chua co thanh phan nao doc alert trong repo de lam use case — khong dat dieu kien
+tao abstraction cua AGENTS.md. Alert da mang `severity` (R11 LOW, R24 MEDIUM) de ben doc loc.
+Mo lai khi co mot consumer alert that.
+Van de goc ben duoi giu lai de doi chieu.
+Problem (sau L17, live 2026-09-27): `emitAlert` phat voi moi `EVIDENCE_AVAILABLE`. R24 va R11 la
+claim muc execution-state, khong khang dinh loi he thong, nhung nay chay tu dong nen moi phong
+het cho / the bi tu choi deu ghi mot dong vao alerts-realtime.log (da thay: R11 LOW, R24 MEDIUM).
+Truoc L17 dieu nay cung xay ra, nhung chi khi goi tay.
+Expected: quyet dinh chinh sach alert theo muc claim (execution-state vs mechanism/cause), gan
+voi cau hoi "business rejection co can chan doan khong". Khong tu loc trong code.
+
 **L14 — Payload luu nguyen, khong che truong nhay cam** · Priority: trung binh
 Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
 nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.

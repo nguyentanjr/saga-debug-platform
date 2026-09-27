@@ -418,16 +418,24 @@ public class RcaService {
         }
     }
 
+    /**
+     * An alert announces the stored result and says no more than it does.
+     *
+     * <p>It used to list every STRONG, SUPPORTING and WEAK candidate as
+     * {@code primaryRootCauses}. On a live run of the hotel saga the stored result named no
+     * cause — its only strong candidate was R14, a claim about this platform's own reading
+     * order ({@link ClaimSubject#OBSERVATION_PROCESS}) — while the alert for the same result
+     * named {@code OUT_OF_ORDER_DELIVERY} as the primary root cause.
+     *
+     * <p>So the causes are the result's own promoted ones, and an alert is raised only when
+     * there is actionable evidence about the observed system. A run whose only evidence is
+     * about the observation process raises none.
+     */
     private void emitAlert(RcaResult result, List<String> evidenceSummary) {
         if (result.getRcaStatus() != RcaStatus.EVIDENCE_AVAILABLE) {
             return;
         }
-
-        List<String> rootCauses = evidenceRootCauses(result.getCandidates());
-        if (rootCauses.isEmpty() && result.getRootCause() != null && !result.getRootCause().isBlank()) {
-            rootCauses = List.of(result.getRootCause());
-        }
-        if (rootCauses.isEmpty()) {
+        if (!hasActionableEvidenceAboutTheObservedSystem(result.getCandidates())) {
             return;
         }
 
@@ -435,7 +443,7 @@ public class RcaService {
                 Instant.now(),
                 result.getSagaId(),
                 result.getRcaStatus().name(),
-                rootCauses,
+                List.copyOf(result.getPrimaryRootCauses()),
                 result.getSeverity(),
                 evidenceSummary != null ? List.copyOf(evidenceSummary) : List.of());
 
@@ -1158,16 +1166,12 @@ public class RcaService {
                 .collect(Collectors.toList());
     }
 
-    private List<String> evidenceRootCauses(List<RcaCandidate> candidates) {
-        if (candidates == null) {
-            return List.of();
-        }
-        return candidates.stream()
-                .filter(candidate -> isEvidenceStatus(candidate.getStatus()))
-                .map(RcaCandidate::getRootCause)
-                .filter(root -> root != null && !root.isBlank())
-                .distinct()
-                .collect(Collectors.toList());
+    /** Same bar as the selector's EVIDENCE_AVAILABLE, narrowed to claims about the observed system. */
+    private static boolean hasActionableEvidenceAboutTheObservedSystem(List<RcaCandidate> candidates) {
+        return candidates != null && candidates.stream()
+                .anyMatch(candidate -> candidate.getSubject() == ClaimSubject.OBSERVED_SYSTEM
+                        && (candidate.getStatus() == CandidateStatus.STRONG_EVIDENCE
+                                || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE));
     }
 
     private String highestSeverity(List<RcaCandidate> candidates) {
