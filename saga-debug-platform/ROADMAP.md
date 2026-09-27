@@ -738,7 +738,10 @@ phai 10s cua PROCESS_PAYMENT.
 Expected: bo map (hoac chi dung khi buoc khong noi gi) — doi hanh vi ORDER_SAGA, nen phai chay lai
 danh gia va bao ca hai bo so. Khong gop vao L16.
 
-**F14 — INVALID_TRANSITION ghi trung cung mot cap** · Priority: trung binh-cao
+**F14 — INVALID_TRANSITION ghi trung cung mot cap — DA SUA 2026-09-28** · Priority: trung binh-cao
+Da sua: `detectInvalidTransition` khong ghi khi da co finding dung cung observedValue va event trich
+dan. Test: `anInvalidHandoffIsFiledOnceHoweverOftenItIsReJudged` (120 thu tu den; fail truoc khi sua).
+Full suite: 527/527. Bo danh gia khong co run nao co INVALID_TRANSITION (replay F11), nen so khong doi.
 Problem (phat hien khi sua F11): `judgeTransitions` xet lai moi cap lien ke o moi event den, va
 `detectInvalidTransition` khong kiem tra finding da co. Run e1..e5 cua F9 co hai finding
 `RESERVE_INVENTORY -> PROCESS_PAYMENT on SUCCESS` cung trich [e4]. Dem anomaly tren dashboard bi

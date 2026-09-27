@@ -718,6 +718,26 @@ class TransitionEvidenceTest {
         assertThat(diagnoses).hasSize(1);
     }
 
+    /**
+     * F14: every arrival re-judges every adjacent pair, and the same invalid handoff used
+     * to be filed again each time — two identical findings for RESERVE_INVENTORY →
+     * PROCESS_PAYMENT in the run above, counted twice on the dashboard and quoted twice in
+     * the diagnosis. One standing finding per handoff, in every delivery order.
+     */
+    @Test
+    void anInvalidHandoffIsFiledOnceHoweverOftenItIsReJudged() {
+        for (List<String[]> order : permutations(severalQualifyingPairs())) {
+            setUp();
+            order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+            List<String> handoffs = anomalies.stream()
+                    .filter(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION && !a.isRetracted())
+                    .map(a -> a.getObservedValue() + " " + a.getEvidenceEventIds())
+                    .toList();
+            assertThat(handoffs).as("order %s", order.stream().map(e -> e[0]).toList())
+                    .doesNotHaveDuplicates();
+        }
+    }
+
     /** Every delivery order of {@code run}, against what its post-terminal finding cites. */
     private Map<String, List<String>> postTerminalShapesOverEveryOrderOf(List<String[]> run) {
         return shapesOverEveryOrderOf(run, AnomalyType.FORBIDDEN_POST_TERMINAL);

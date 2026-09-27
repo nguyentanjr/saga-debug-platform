@@ -137,6 +137,15 @@ public class AnomalyDetectionService {
         }
 
         {
+            // Every arrival re-judges every adjacent pair, so the same handoff reaches here
+            // again with each later observation. It is one occurrence and stands once (F14).
+            String observed = String.format("%s -> %s on %s", previousStep, currentStep, condition);
+            boolean alreadyStanding = anomalyRepository.findStandingBySagaId(sagaId).stream()
+                    .anyMatch(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION
+                            && observed.equals(a.getObservedValue())
+                            && Objects.equals(a.getEvidenceEventIds(), details().evidenceEventIds(eventId).evidenceEventIds));
+            if (alreadyStanding) return;
+
             String expected = workflow.getTransitions().stream()
                     .filter(t -> t.getFrom().equals(previousStep))
                     .map(t -> t.getTo() + " (on: " + t.getCondition() + ")")
