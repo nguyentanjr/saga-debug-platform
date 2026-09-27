@@ -121,7 +121,7 @@ public class RcaService {
         addIfPresent(candidates, declaredSignal);
         addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
-        addIfPresent(candidates, ruleTransientServiceFailure(saga, anomalies));
+        addIfPresent(candidates, ruleRecoveredAfterSilence(saga, anomalies));
         addIfPresent(candidates, ruleCompensationStepFailure(workflow, saga, events, anomalies));
         addIfPresent(candidates, ruleForwardStepFailure(workflow, saga, events));
         addIfPresent(candidates, ruleOutOfOrderDelivery(saga, anomalies));
@@ -742,7 +742,46 @@ public class RcaService {
     
     
     
-    private CandidateAssessment ruleTransientServiceFailure(SagaInstance saga, List<Anomaly> anomalies) {
+    /**
+     * R06 — a run that went quiet past the threshold and later ended.
+     *
+     * <p>This rule used to answer {@code TRANSIENT_SERVICE_FAILURE} at STRONG, with the
+     * suggestion "Service self-healed". Its whole evidence is {@code SAGA_STUCK}, which is
+     * a statement about <em>silence the observer measured</em> (L-6), plus a terminal
+     * status arriving afterwards. Three different worlds produce exactly that:
+     *
+     * <ul>
+     *   <li>the source failed and recovered by itself;</li>
+     *   <li>the source was fine and the observer received its events late;</li>
+     *   <li>someone restarted it.</li>
+     * </ul>
+     *
+     * <p>The third is what actually happened in the scenarios this rule was written
+     * against: SC04 and SC16 both stop a container and then start it again by hand, so the
+     * conclusion "self-healed" was not merely unproven, it was false — and the platform
+     * stated it at the tier reserved for evidence that settles a question.
+     *
+     * <p>The asymmetry gave it away. {@link #ruleStuckUnknownCause} sees the same silence
+     * on a run that has <em>not</em> ended and correctly answers
+     * {@code STUCK_UNKNOWN_CAUSE} at WEAK. A terminal status arriving later says the run
+     * finished; it says nothing about why the silence happened. One extra observation
+     * should not move a claim from "unknown cause" to a confident diagnosis of the source.
+     *
+     * <p>So the claim is now about the execution, which is what was observed, rather than
+     * about the source's health, which was not. The tier stays STRONG because the narrower
+     * claim really is settled by the evidence: the silence was measured and the ending was
+     * observed. It remains promotable, so the platform still reports something useful — it
+     * just stops naming a cause it cannot see.
+     *
+     * <p>{@code TRANSIENT_SERVICE_FAILURE} is gone rather than demoted. A tier is a
+     * statement about how sure the platform is; the problem here was the <em>claim</em>,
+     * and a hedged version of a claim the evidence cannot reach is still that claim. Should
+     * a source report a transient failure itself, that belongs in a declared
+     * {@link com.example.correlation.service.rca.FailureSignal} category, the same way F4
+     * moved breaker state out of substring guessing — read from what the system says, not
+     * inferred from what it failed to say.
+     */
+    private CandidateAssessment ruleRecoveredAfterSilence(SagaInstance saga, List<Anomaly> anomalies) {
         boolean hasStuck = anomalies.stream()
                 .anyMatch(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK);
         boolean hasMissingTerminal = anomalies.stream()
@@ -752,18 +791,27 @@ public class RcaService {
                 || saga.getStatus() == SagaStatus.FAILED;
         boolean hasStepTimeoutBeforeRecovery = hasStepTimeoutBeforeRecovery(saga, anomalies);
 
-        
-        
         if (hasStuck && !hasMissingTerminal && !hasStepTimeoutBeforeRecovery && isTerminal) {
-            CandidateAssessment rr = candidate("TRANSIENT_SERVICE_FAILURE", "LOW", "R06",
+            CandidateAssessment rr = candidate("RECOVERED_AFTER_SILENCE", "LOW", "R06",
                     CandidateStatus.STRONG_EVIDENCE);
-            rr.getEvidence().add(evidence("Saga was previously stuck (SAGA_STUCK anomaly detected)"));
-            rr.getEvidence().add(evidence("Saga has since recovered → final status: " + saga.getStatus()));
+            rr.getEvidence().add(evidence(
+                    "No observation arrived for this run for longer than the declared "
+                            + "threshold (SAGA_STUCK)"));
+            rr.getEvidence().add(evidence(
+                    "The run was later observed to end → final status: " + saga.getStatus()));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
                 long ms = Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis();
-                rr.getEvidence().add(evidence("Total duration (including stuck period): " + ms + "ms"));
+                rr.getEvidence().add(evidence(
+                        "Total duration including the silent period: " + ms + "ms"));
             }
-            rr.getSuggestions().add("Service self-healed — review uptime to prevent recurrence");
+            // Says plainly what the silence does not settle, so a reader does not supply
+            // the missing half themselves.
+            rr.setStatusReason("Silence was observed and so was the ending. Whether the "
+                    + "source recovered, was restarted, or was reachable all along while "
+                    + "its events arrived late is not established by this evidence.");
+            rr.getSuggestions().add("Check whether the step's service restarted during the gap");
+            rr.getSuggestions().add("Compare event time against receive time to see whether "
+                    + "the delay was in the source or in delivery");
             return rr;
         }
         return null;

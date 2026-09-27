@@ -297,10 +297,15 @@ class RcaPromotionTest {
     }
 
     /**
-     * The other half of the same guarantee: a stuck run that later recovered does have a
-     * strong candidate (R06 reads the recovery as a transient failure), and that one is
-     * promoted. Kept beside the test above so the difference between them stays visible —
-     * it is the saga's own status, not the anomaly, that decides.
+     * The other half of the same guarantee: a stuck run that later ended does have a strong
+     * candidate, and that one is promoted. Kept beside the test above so the difference
+     * stays visible — it is the saga's own status, not the anomaly, that decides.
+     *
+     * <p>The label changed with F5 and the guarantee did not. R06 used to answer
+     * {@code TRANSIENT_SERVICE_FAILURE} here, a claim about the source's health that the
+     * silence could not support; it now answers {@code RECOVERED_AFTER_SILENCE}, a claim
+     * about the execution, which is what was observed. What this test is for — a STRONG
+     * candidate reaches promotion — is unaffected either way.
      */
     @Test
     void aRecoveredStuckRunPromotesTheStrongCandidateItAlreadyHad() {
@@ -308,8 +313,37 @@ class RcaPromotionTest {
 
         RcaResult result = rcaService.analyze("saga-1");
 
-        assertThat(result.getRootCause()).isEqualTo("TRANSIENT_SERVICE_FAILURE");
+        assertThat(result.getRootCause()).isEqualTo("RECOVERED_AFTER_SILENCE");
         assertThat(result.getRuleId()).isEqualTo("R06");
+    }
+
+    /**
+     * F5, stated as the thing that must not come back: silence plus an ending must not
+     * produce a claim about the source.
+     *
+     * <p>The evidence is one measured gap and one terminal status. A source that recovered
+     * on its own, a source someone restarted, and a source that was reachable all along
+     * while its events arrived late are indistinguishable in it — and in SC04 and SC16,
+     * the scenarios this rule was built against, the truth was the second: a hand-typed
+     * {@code docker start}. The old answer was not merely unproven, it was wrong, and it
+     * was given at STRONG.
+     *
+     * <p>Asserted as an absence over the whole result rather than as one label being
+     * replaced by another, so that reintroducing the claim under a new name, or at a lower
+     * tier, fails here too.
+     */
+    @Test
+    void silenceFollowedByAnEndingClaimsNothingAboutTheSourcesHealth() {
+        storedAnomalies.add(anomaly(9L, AnomalyType.SAGA_STUCK));
+
+        RcaResult result = rcaService.analyze("saga-1");
+
+        assertThat(result.getPrimaryRootCauses())
+                .as("no promoted claim may diagnose the source from silence alone")
+                .noneMatch(cause -> cause.contains("SERVICE_FAILURE")
+                        || cause.contains("SELF_HEAL")
+                        || cause.contains("CRASH"));
+        assertThat(result.getRootCause()).isEqualTo("RECOVERED_AFTER_SILENCE");
     }
 
     /** A healthy run still reports nothing, and still needs no diagnosis. */
