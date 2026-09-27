@@ -674,6 +674,20 @@ ung vien STRONG duy nhat dang duoc de cu o SC16.
 Expected: sua lai phan giai thich; neu sua cutoff thi phai xu ly ca muc bang chung cua R05,
 khong chi cutoff.
 
+**F13 — Saga FAILED do buoc tu bao that bai bi ghi la "completed successfully" — DA SUA 2026-09-27** · Priority: **cao**
+Problem (chay live he khach san saga-orchestration, khong sua code nguon, 2026-09-21):
+`ROOM_REJECTED` chi mang `{"status":"REJECTED"}`. R01/R23 khong co truong ly do de doc,
+khong luat nao doc event `failed` da khai bao, va `determineOutcome` doi "FAILED khong
+anomaly khong ung vien" thanh `NORMAL` — ket qua ghi "Saga completed successfully with 2
+events" cho mot run o trang thai FAILED. Tai hien tren 2 run that.
+Da sua: R24 `STEP_REPORTED_FAILURE` (muc execution-state, doi xung R11 cho run FAILED khong
+bu tru) chi chay khi R01/R23 khong doc duoc gi, de khong tranh promotion voi chung tren
+cung mot event; outcome cua run FAILED luon la `FAILED`. Giu nguyen quyet dinh cua selector:
+FAILED khong co bang chung van la `NO_DIAGNOSIS_NEEDED`. Test:
+`DeclaredStepFailureTest` (4 ca). SC06 replay: nhan de cu khong doi (R23, R01, R01).
+Chua lam: oracle chua co claim cho R24 (se ra UNSCORED neu mot ca co nhan gap no); khong
+tu them vao `claims.yaml` vi tu vung da khoa 2026-09-21 — can quyet dinh rieng.
+
 ---
 
 ## NEXT (con lai)
@@ -683,6 +697,17 @@ khong chi cutoff.
 ---
 
 ## LATER
+
+**L14 — Payload luu nguyen, khong che truong nhay cam** · Priority: trung binh
+Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
+nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.
+Expected: co phuong an che truong khai bao theo source truoc khi quan sat he that.
+
+**L15 — Goi y cua R14 trai voi chinh Javadoc cua no** · Priority: thap
+Problem: R14 da danh dau `OBSERVATION_PROCESS` (thu tu la do observer doc nhieu topic), nhung suggestion
+van la "Check Kafka partition key assignment" — huong nguoi doc ve phia he nguon. Tai hien live F13
+khi replay 4 topic tu offset 0.
+Expected: suggestion noi ve qua trinh quan sat, khong ve partition key cua he nguon.
 
 **L12 — Dashboard saga-detail vuot CSS warning budget** · Priority: **thap**
 Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budget

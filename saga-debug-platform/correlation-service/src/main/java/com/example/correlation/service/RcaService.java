@@ -130,6 +130,11 @@ public class RcaService {
         addIfPresent(candidates, ruleRecoveredAfterSilence(saga, anomalies));
         addIfPresent(candidates, ruleCompensationStepFailure(workflow, saga, events, anomalies));
         addIfPresent(candidates, ruleForwardStepFailure(workflow, saga, events));
+        // Only when R01/R23 read nothing: they cite the same failed event more specifically,
+        // and a second claim on it would compete for promotion on severity alone.
+        if (declaredSignal == null) {
+            addIfPresent(candidates, ruleDeclaredStepFailure(workflow, saga, events));
+        }
         addIfPresent(candidates, ruleOutOfOrderDelivery(saga, anomalies));
 
         
@@ -494,7 +499,6 @@ public class RcaService {
         if (saga.getStatus() == SagaStatus.COMPENSATED) return "COMPENSATED";
         
         
-        if (saga.getStatus() == SagaStatus.FAILED && !hasAnomalies && !hasRca) return "NORMAL";
         if (saga.getStatus() == SagaStatus.FAILED) return "FAILED";
         if (saga.getStatus() == SagaStatus.COMPENSATING) return "INCONSISTENT";
         
@@ -882,6 +886,37 @@ public class RcaService {
     
     
     
+    /**
+     * R24 — the step's own declared failure event, when the source gave no reason text.
+     *
+     * <p>{@link #ruleDeclaredFailureSignal} needs a reason field to read, and a business
+     * rejection such as {@code ROOM_REJECTED} carries only a status. Without this rule a
+     * FAILED saga whose failure is a plain rejection produced no candidate at all and was
+     * reported as NORMAL. The claim is kept to what the event establishes: this step
+     * reported failure. Why it did so is not in the evidence and is not asserted.
+     */
+    private CandidateAssessment ruleDeclaredStepFailure(WorkflowSpec workflow, SagaInstance saga,
+            List<SagaEvent> events) {
+        if (workflow == null || saga.getStatus() != SagaStatus.FAILED) return null;
+        for (SagaEvent event : events) {
+            boolean isFailure = workflow.classifyEvent(event.getEventType())
+                    .filter(role -> role.role() == WorkflowSpec.EventRole.Role.FAILED)
+                    .isPresent();
+            if (!isFailure) continue;
+            CandidateAssessment rr = candidate("STEP_REPORTED_FAILURE", "MEDIUM", "R24",
+                    CandidateStatus.STRONG_EVIDENCE);
+            rr.getEvidence().add(Evidence.ofEvent(
+                    event.getEventType() + " is the failure event this workflow declares for its step",
+                    event.getPayload(), "the step reports its declared completion event",
+                    event.getEventId()));
+            rr.setStatusReason("The step reported failure. The event carries no reason, so "
+                    + "why it failed is not established by this evidence.");
+            rr.getSuggestions().add("Check the failing step's own business rule and data");
+            return rr;
+        }
+        return null;
+    }
+
     private CandidateAssessment ruleForwardStepFailure(WorkflowSpec workflow, SagaInstance saga,
             List<SagaEvent> events) {
         List<SagaEvent> started = compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.STARTED);
