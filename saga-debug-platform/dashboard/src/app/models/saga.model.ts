@@ -73,6 +73,7 @@ export interface RcaResult {
 }
 
 export interface SagaDetail {
+  workflowSteps?: Record<string, string>;
   workflowConflicts?: string[];
   sagaId: string;
   workflowType: string;

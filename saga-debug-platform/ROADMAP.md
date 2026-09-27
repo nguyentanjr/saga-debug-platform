@@ -782,6 +782,14 @@ hotel: ca 6 cham `background rgba(0,0,0,0)`, icon `rgb(255,255,255)` — khong t
 Da sua: mau nen trung tinh mac dinh cho `.timeline-dot`; mau demo van de len (khai bao sau). Do lai:
 6/6 cham `rgb(96,125,139)`; badge trang thai (global tu L12) dung mau o ca list va detail.
 
+**L27 — Trang chi tiet ghi "Step: UNKNOWN" du platform biet buoc — DA SUA 2026-09-28** · Priority: trung binh
+Problem (live hotel): moi event hien `Step: UNKNOWN` — placeholder ingestion luu khi nguon khong gui
+stepName — trong khi detector da biet buoc qua workflow (L16).
+Da sua: `SagaDetailResponse.workflowSteps` (id event -> buoc workflow; trong khi workflow xung dot thi
+rong), them truong, khong doi truong cu; ban ghi luu khong bi viet lai. Dashboard uu tien buoc workflow,
+khong co thi hien gia tri nguon gui. Test: `SagaDetailStepsTest` (2). Full suite: 545/545; `ng build` pass.
+Live: 6 event hien BOOK_ROOM/TAKE_PAYMENT/RELEASE_ROOM.
+
 **L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc — DA SUA 2026-09-28** · Priority: thap
 Da sua: `WorkflowSpecValidator` canh bao khi map dat event vao buoc khac buoc dang khai bao no (ghi ro
 map thang). Canh bao, khong loi: spec van dung duoc. Khong spec nao dang ship bi canh bao. Test:

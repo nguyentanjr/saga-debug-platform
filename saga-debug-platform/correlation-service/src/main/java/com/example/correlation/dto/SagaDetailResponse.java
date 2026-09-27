@@ -28,6 +28,14 @@ public class SagaDetailResponse {
     private List<IdentityLink> identities;
     private String workflowType;
     private List<String> workflowConflicts = List.of();
+    /**
+     * Stored event id -> the step its workflow places it in, for events the workflow knows.
+     * Empty while the workflow is disputed. The stored stepName is what the source sent (or
+     * the ingestion placeholder), and is left as it was (L27).
+     */
+    private java.util.Map<String, String> workflowSteps = java.util.Map.of();
+    public java.util.Map<String, String> getWorkflowSteps() { return workflowSteps; }
+    public void setWorkflowSteps(java.util.Map<String, String> steps) { workflowSteps = steps; }
     public List<String> getWorkflowConflicts() { return workflowConflicts; }
     public void setWorkflowConflicts(List<String> conflicts) { workflowConflicts = conflicts; }
     private SagaStatus status;

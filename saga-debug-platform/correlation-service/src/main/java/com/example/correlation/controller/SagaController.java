@@ -36,14 +36,18 @@ public class SagaController {
                           AnomalyRepository anomalyRepository,
                           RcaResultRepository rcaResultRepository,
                           com.example.correlation.repository.ExecutionAliasRepository aliasRepository,
-                          ExecutionLookup executionLookup) {
+                          ExecutionLookup executionLookup,
+                          com.example.correlation.workflow.WorkflowRegistry workflowRegistry) {
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
         this.rcaResultRepository = rcaResultRepository;
         this.aliasRepository = aliasRepository;
         this.executionLookup = executionLookup;
+        this.workflowRegistry = workflowRegistry;
     }
+
+    private final com.example.correlation.workflow.WorkflowRegistry workflowRegistry;
 
     @GetMapping
     public ResponseEntity<Page<SagaListItem>> listSagas(
@@ -140,6 +144,17 @@ public class SagaController {
             response.setDurationMs(Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis());
         }
         response.setEvents(events);
+        if (!saga.hasWorkflowConflict()) {
+            workflowRegistry.byType(saga.getWorkflowType()).ifPresent(workflow -> {
+                java.util.Map<String, String> steps = new java.util.LinkedHashMap<>();
+                for (SagaEvent event : events) {
+                    if (event.getId() == null) continue;
+                    workflow.classifyEvent(event.getEventType()).ifPresent(role ->
+                            steps.put(String.valueOf(event.getId()), role.stepId()));
+                }
+                response.setWorkflowSteps(steps);
+            });
+        }
         if (saga.hasWorkflowConflict()) {
             anomalies.forEach(anomaly -> anomaly.setWorkflowConflicts(saga.getWorkflowConflicts()));
             rcaResults = List.of(RcaResult.workflowConflict(saga));

@@ -83,7 +83,7 @@
               <span class="event-id-tag" *ngIf="event.eventId">ID: {{ event.eventId | slice:0:8 }}</span>
             </div>
             <div class="timeline-meta">
-              <span>Step: {{ event.stepName }}</span>
+              <span>Step: {{ saga.workflowSteps?.[event.id] || event.stepName }}</span>
               <span class="separator">|</span>
               <span>{{ event.timestamp | date:'medium' }}</span>
             </div>

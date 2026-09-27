@@ -74,7 +74,7 @@ class WorkflowConflictReadTest {
         stale.setRootCause("INVALID_TRANSITION");
         when(results.findBySagaIdOrderByCreatedAtDesc(saga.getSagaId())).thenReturn(List.of(stale));
         SagaController controller = new SagaController(instances, events, anomalies, results,
-                mock(ExecutionAliasRepository.class), lookup);
+                mock(ExecutionAliasRepository.class), lookup, workflows);
         var detail = controller.getSagaDetail(saga.getSagaId()).getBody();
         assertThat(detail.getEvents()).containsExactly(observation);
         assertThat(detail.getAnomalies()).containsExactly(old);
