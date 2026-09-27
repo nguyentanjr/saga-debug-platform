@@ -2,6 +2,7 @@ package com.example.correlation.service;
 
 import com.example.correlation.domain.Anomaly;
 import com.example.correlation.domain.AnomalyType;
+import com.example.correlation.domain.EventTimeSource;
 import com.example.correlation.domain.SagaEvent;
 import com.example.correlation.execution.ExecutionProjectionService;
 import com.example.correlation.repository.AnomalyRepository;
@@ -119,6 +120,64 @@ class StepTimeoutDetectionTest {
                 .evaluateStepTimeouts("saga-1", orphan, spec);
 
         verifyNoInteractions(repository);
+    }
+
+    // ── F12: which clocks a duration was measured between ────────────────────
+
+    /**
+     * Both ends declared by the source: the finding says so, and claims no more — two
+     * services' declared times can still disagree, but neither end is transport time.
+     */
+    @Test
+    void aDurationBetweenTwoDeclaredTimesSaysSo() {
+        List<SagaEvent> declared = withSources(EventTimeSource.DECLARED, EventTimeSource.DECLARED);
+
+        for (DetectionProperties.StepTimeoutMode mode : List.of(
+                DetectionProperties.StepTimeoutMode.LEGACY, DetectionProperties.StepTimeoutMode.PROJECTION)) {
+            assertThat(capture(mode, declared).getObservedValue()).as(mode.name())
+                    .contains("clocks=DECLARED->DECLARED");
+        }
+    }
+
+    /**
+     * One end declared and one taken from the transport: the interval spans two different
+     * clocks and includes whatever separates them. Before F12 it read exactly like the
+     * case above.
+     */
+    @Test
+    void aDurationAcrossADeclaredAndATransportTimeIsMarkedMixed() {
+        List<SagaEvent> mixed = withSources(EventTimeSource.DECLARED, EventTimeSource.TRANSPORT);
+
+        for (DetectionProperties.StepTimeoutMode mode : List.of(
+                DetectionProperties.StepTimeoutMode.LEGACY, DetectionProperties.StepTimeoutMode.PROJECTION)) {
+            Anomaly anomaly = capture(mode, mixed);
+            assertThat(anomaly.getObservedValue()).as(mode.name())
+                    .contains("clocks=DECLARED->TRANSPORT (mixed)");
+            assertThat(anomaly.getDescription()).as(mode.name()).contains("different clocks");
+        }
+    }
+
+    /** Rows written before V17 carry no origin, and the finding does not invent one. */
+    @Test
+    void aDurationOverTimesOfUnrecordedOriginSaysSo() {
+        List<SagaEvent> legacy = withSources(null, EventTimeSource.DECLARED);
+
+        for (DetectionProperties.StepTimeoutMode mode : List.of(
+                DetectionProperties.StepTimeoutMode.LEGACY, DetectionProperties.StepTimeoutMode.PROJECTION)) {
+            assertThat(capture(mode, legacy).getObservedValue()).as(mode.name())
+                    .contains("clocks=unrecorded");
+        }
+    }
+
+    /** slowPayment, with the origin of the two timestamps a PROCESS_PAYMENT duration spans. */
+    private List<SagaEvent> withSources(EventTimeSource start, EventTimeSource end) {
+        SagaEvent created = event("e1", "ORDER_CREATED", T0);
+        created.setEventTimeSource(start);
+        SagaEvent paid = event("e2", "PAYMENT_COMPLETED", T0.plusSeconds(12));
+        paid.setEventTimeSource(end);
+        SagaEvent reserved = event("e3", "INVENTORY_RESERVED", T0.plusSeconds(13));
+        reserved.setEventTimeSource(EventTimeSource.DECLARED);
+        return List.of(created, paid, reserved);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

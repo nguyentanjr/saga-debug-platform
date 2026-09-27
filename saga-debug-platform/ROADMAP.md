@@ -748,6 +748,13 @@ Problem (phat hien khi sua F11): `judgeTransitions` xet lai moi cap lien ke o mo
 thoi phong; evidence RCA lap lai.
 Expected: moi cap (buoc truoc, buoc sau, dieu kien, event) chi mot finding dung; lap lai la khong ghi.
 
+**F15 — R05 tru dong ho platform cho timestamp nguon; R06/durationMs khong kem nguon dong ho** · Priority: trung binh
+Problem (phat hien khi sua F12): `ruleServiceCrash` tinh `stuckSeconds` = `detectedAt` (Instant.now()
+cua platform luc detector chay) tru timestamp event lon nhat (dong ho nguon) — hai dong ho khac nhau
+trong mot phep tru, lech dong ho nguon di thang vao so giay "stuck". R06 va `SagaInstance.durationMs`
+in khoang thoi gian khong nhan nguon.
+Expected: do khoang im lang tren cung dong ho (receivedAt, nhu SAGA_STUCK da lam); gan nhan cho R06.
+
 **L24 — Validator khong bao khi `validEventTypes` bat dong voi `events` cua buoc** · Priority: thap
 Problem (sau L21): hai nguon cung noi event thuoc buoc nao; bat dong thi map thang, im lang.
 `WorkflowSpecValidator` chi canh bao buoc khong ton tai va event khong buoc nao khai bao. Hien
@@ -875,7 +882,16 @@ Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budg
 Expected: ra soat CSS lap/khong dung khi lam task dashboard; khong tang budget chi
 de tat canh bao. Chi ghi nhan, khong implement trong task workflow conflict.
 
-**F12 — Phep do duration chua dung nguon timestamp da luu** · Priority: **cao**
+**F12 — Phep do duration chua dung nguon timestamp da luu — DA SUA 2026-09-28** · Priority: **cao**
+Da sua: ca hai duong STEP_TIMEOUT (adjacency va projection) gan nhan nguon cua hai dau khoang do:
+`clocks=DECLARED->DECLARED`, `clocks=A->B (mixed)` kem cau "different clocks ... includes whatever
+separates them", hoac `clocks=unrecorded` voi du lieu truoc V17. Tach rieng voi `start=` (StartProvenance:
+observation nao lam ranh gioi buoc). Chi la nhan: tier, nguong, oracle khong doi. Test: 3 test
+`StepTimeoutDetectionTest` (moi test chay ca LEGACY lan PROJECTION; fail truoc khi sua). Full suite: 530/530.
+Replay 27 run settled: chan doan (root, candidate, anchor) giong het; 10 run co STEP_TIMEOUT nay ghi
+"Where the two timestamps came from was not recorded" — bo du lieu do co truoc F6 nen dung la khong biet.
+Chua lam: R05/R06 va `durationMs` cua saga van do khoang thoi gian khong kem nhan; R05 con tru
+`detectedAt` (dong ho platform) cho timestamp nguon — ghi F15.
 Problem (ra soat code khi dong F6): `ExecutionProjection.Operation.duration()` va
 duong STEP_TIMEOUT van tinh khoang giua timestamp ma chua xet `eventTimeSource`.
 F6 lam nguon nay ton tai tren event, nhung hai dau co the la DECLARED/TRANSPORT hoac

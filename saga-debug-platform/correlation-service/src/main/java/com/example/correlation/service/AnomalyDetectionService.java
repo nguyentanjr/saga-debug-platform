@@ -774,11 +774,12 @@ public class AnomalyDetectionService {
 
             if (stepDurationMs > expectedTimeoutMs) {
                 return new StepTimeoutFinding(stepName, stepDurationMs, expectedTimeoutMs,
-                        String.format("Step '%s' took %dms (timeout: %dms). Previous event: %s",
+                        String.format("Step '%s' took %dms (timeout: %dms). Previous event: %s%s",
                                 stepName, stepDurationMs, expectedTimeoutMs,
-                                previousEvent.getEventType()),
+                                previousEvent.getEventType(), clockCaveat(previousEvent, currentEvent)),
                         details()
-                                .observedValue(String.format("%s took %dms", stepName, stepDurationMs))
+                                .observedValue(String.format("%s took %dms; %s",
+                                        stepName, stepDurationMs, clocks(previousEvent, currentEvent)))
                                 .expectedValue(String.format("<= %dms", expectedTimeoutMs))
                                 .thresholdSource("workflow:" + stepName + ".timeout")
                                 .evidenceEvents(previousEvent, currentEvent)
@@ -805,14 +806,20 @@ public class AnomalyDetectionService {
             int expectedTimeoutMs = workflow.getStepTimeoutSeconds(op.stepId()) * 1000;
             if (durationMs <= expectedTimeoutMs) continue;
 
+            // Two provenances, kept apart: startProvenance says which observation bounds the
+            // step, the clocks say where each bound's timestamp came from (F12).
             String provenance = op.startProvenance().name();
+            SagaEvent start = byId(events, op.startEventId());
+            SagaEvent end = byId(events, op.endEventId());
             return new StepTimeoutFinding(op.stepId(), durationMs, expectedTimeoutMs,
                     String.format("Operation '%s' took %dms across %d attempt(s) (timeout: %dms), "
-                                    + "measured from %s",
-                            op.stepId(), durationMs, op.attemptCount(), expectedTimeoutMs, provenance),
+                                    + "measured from %s%s",
+                            op.stepId(), durationMs, op.attemptCount(), expectedTimeoutMs, provenance,
+                            clockCaveat(start, end)),
                     details()
-                            .observedValue(String.format("%s took %dms over %d attempt(s); start=%s",
-                                    op.stepId(), durationMs, op.attemptCount(), provenance))
+                            .observedValue(String.format("%s took %dms over %d attempt(s); start=%s; %s",
+                                    op.stepId(), durationMs, op.attemptCount(), provenance,
+                                    clocks(start, end)))
                             .expectedValue(String.format("<= %dms", expectedTimeoutMs))
                             .thresholdSource("workflow:" + op.stepId() + ".timeout")
                             .evidenceEventIds(op.evidenceEventIds().toArray(new String[0]))
@@ -839,6 +846,35 @@ public class AnomalyDetectionService {
         } else {
             log.debug("STEP_TIMEOUT shadow agreement saga={}: {}", sagaId, legacy.summary());
         }
+    }
+
+    /**
+     * Where the two timestamps a duration spans came from (F6 records it per event).
+     *
+     * <p>A label, not a verdict: DECLARED→DECLARED is still two services' own clocks, and a
+     * mixed or unrecorded pair can still be right. What changes is that the reader is not
+     * left to assume one clock when there may be two. Tier and threshold are untouched.
+     */
+    static String clocks(SagaEvent from, SagaEvent to) {
+        EventTimeSource a = from != null ? from.getEventTimeSource() : null;
+        EventTimeSource b = to != null ? to.getEventTimeSource() : null;
+        if (a == null || b == null) return "clocks=unrecorded";
+        return "clocks=" + a + "->" + b + (a == b ? "" : " (mixed)");
+    }
+
+    private static String clockCaveat(SagaEvent from, SagaEvent to) {
+        EventTimeSource a = from != null ? from.getEventTimeSource() : null;
+        EventTimeSource b = to != null ? to.getEventTimeSource() : null;
+        if (a == null || b == null) {
+            return ". Where the two timestamps came from was not recorded";
+        }
+        return a == b ? "" : String.format(". The two ends were taken from different clocks (%s, %s), "
+                + "so the interval includes whatever separates them", a, b);
+    }
+
+    private static SagaEvent byId(List<SagaEvent> events, String eventId) {
+        if (eventId == null) return null;
+        return events.stream().filter(e -> eventId.equals(e.getEventId())).findFirst().orElse(null);
     }
 
     private record StepTimeoutFinding(String stepId, long durationMs, int thresholdMs,
