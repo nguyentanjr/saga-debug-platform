@@ -808,7 +808,13 @@ Problem (live F13): `DashboardMetricsService.inferStep` lay ten trong dau nhay c
 thresholdSource khong phai `workflow:` — OUT_OF_ORDER cho ra "TAKE_PAYMENT_REQUESTED" (ten event).
 Expected: lay buoc tu evidence event qua workflow, hoac khong dem khi khong xac dinh duoc.
 
-**L19 — Khai bao cua cac he khac chua co test doi chieu mapping <-> workflow** · Priority: trung binh
+**L19 — Khai bao cua cac he khac chua co test doi chieu mapping <-> workflow — DA SUA 2026-09-28** · Priority: trung binh
+Da sua: `DeclaredVocabularyTest` doc moi file `declarations/ingestion`, xac dinh workflow qua
+`workflow:` cua mapping hoac `sources:` cua workflow, va doi moi ten event mapping sinh ra phai duoc
+workflow do nhan. Doc file truc tiep, khong them API cho `SourceMappingRegistry`. Hien kms va spm deu
+khop (test giu nguyen trang thai dung); mutation doi ten mot event spm -> test chi dung ten va file.
+Ngoai pham vi: probe khong co workflow, va hotel (workflow khong khai `sources`, da co L13).
+Full suite: 536/536.
 Problem (phat hien khi sua L13): `declarations/` con kms-order-saga, saga-pattern-order,
 partner-order, second-estate. Khong test nao nap cac file nay va kiem tra ten event ma mapping
 sinh ra co nam trong workflow cua he do; doi ten o mot ben chi lo ra khi chay live.
