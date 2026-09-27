@@ -922,7 +922,15 @@ khai bao 30s. **Chua kiem chung** hai viec co cung nguyen nhan.
 Expected: xac dinh nguong SAGA_STUCK lay tu dau; neu phai lay timeout cua buoc thi doc qua workflow,
 khong doi he nguon them stepName.
 
-**L12 — Dashboard saga-detail vuot CSS warning budget** · Priority: **thap**
+**L12 — Dashboard saga-detail vuot CSS warning budget — DA RA SOAT 2026-09-28, con vuot 0.68 kB** · Priority: **thap**
+Da lam: bo 14 rule khong dung (status ung vien khong con trong `CandidateStatus`: SELECTED,
+POSSIBLE_BUT_UNSUPPORTED, CONTRIBUTING; `rca-status-selected` tu truoc V6; primary-cause/cause-name/
+multi-cause-note/status-detail/candidate-suggestions/candidate-missing khong con trong HTML); dua badge
+trang thai saga (dinh nghia trung o saga-list va saga-detail, cung mau) len `styles.css`; bo selector
+`.cstatus-strong_evidence` lap. Kiem cac class ghep dong (`status-*`, `cstatus-*`, `candidate-*`, `dot-*`,
+`rca-status-*`) truoc khi bo. 7.67 kB -> 6.68 kB; `ng build` pass. Phan con lai la style dang dung;
+khong nang budget chi de tat canh bao (dung Expected). Cac mau `dot-order/payment/inventory-service`
+gan cung ten service demo — he khac khong co mau rieng; chua doi vi la doi giao dien.
 Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budget
 6 kB; production build van pass, chua vuot error budget 10 kB. CSS khong doi trong F7.
 Expected: ra soat CSS lap/khong dung khi lam task dashboard; khong tang budget chi

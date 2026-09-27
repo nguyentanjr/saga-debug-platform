@@ -225,21 +225,6 @@
   overflow-y: auto;
 }
 
-/* Status Badges */
-.status-badge {
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.status-completed { background: #e8f5e9; color: #2e7d32; }
-.status-failed { background: #ffebee; color: #c62828; }
-.status-compensating { background: #fff3e0; color: #e65100; }
-.status-compensated { background: #fff8e1; color: #f57f17; }
-.status-in_progress { background: #e3f2fd; color: #1565c0; }
-.status-started { background: #f3e5f5; color: #6a1b9a; }
-
 /* RCA */
 .rca-result {
   padding: 16px;
@@ -312,8 +297,7 @@
   font-size: 16px;
 }
 
-.rca-status-evidence,
-.rca-status-selected {
+.rca-status-evidence {
   background: #e8f5e9;
   color: #2e7d32;
   border-left: 4px solid #4caf50;
@@ -341,42 +325,14 @@
   font-weight: 600;
 }
 
-.status-detail {
-  font-size: 13px;
-  opacity: 0.85;
-}
-
-.primary-causes,
-.missing-evidence,
-.no-diagnosis,
-.legacy-rca {
+.missing-evidence, .no-diagnosis, .legacy-rca {
   margin-bottom: 16px;
 }
 
-.primary-causes h3,
 .missing-evidence h3 {
   margin: 0 0 8px;
   font-size: 16px;
   color: #424242;
-}
-
-.primary-cause-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  flex-wrap: wrap;
-}
-
-.cause-name {
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.multi-cause-note {
-  margin: 4px 0 0;
-  color: #616161;
-  font-size: 13px;
 }
 
 .no-diagnosis {
@@ -414,14 +370,12 @@
   padding-top: 8px;
 }
 
-.candidate-strong_evidence,
-.candidate-selected {
+.candidate-strong_evidence {
   background: #e8f5e9;
   border-left: 4px solid #4caf50;
 }
 
-.candidate-supporting_evidence,
-.candidate-contributing {
+.candidate-supporting_evidence {
   background: #f3e5f5;
   border-left: 4px solid #9c27b0;
 }
@@ -435,11 +389,6 @@
   background: #f5f5f5;
   opacity: 0.72;
   border-left: 4px solid #bdbdbd;
-}
-
-.candidate-possible_but_unsupported {
-  background: #fff8e1;
-  border-left: 4px solid #ff9800;
 }
 
 .candidate-cause {
@@ -463,28 +412,15 @@
   margin-top: 8px;
 }
 
-.candidate-reason,
-.candidate-missing {
+.candidate-reason {
   margin-top: 10px;
   font-size: 13px;
 }
 
-.candidate-evidence h4,
-.candidate-suggestions h4 {
+.candidate-evidence h4 {
   margin: 12px 0 4px;
 }
 
-.candidate-suggestions ul {
-  margin: 4px 0 0;
-  padding-left: 20px;
-}
-
-.candidate-suggestions li {
-  margin: 4px 0;
-  font-size: 13px;
-}
-
-.cstatus-strong_evidence,
 .cstatus-strong_evidence { background: #c8e6c9; color: #2e7d32; }
 .cstatus-supporting_evidence { background: #e1bee7; color: #6a1b9a; }
 .cstatus-weak_evidence { background: #fff3cd; color: #8a5a00; }
