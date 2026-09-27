@@ -89,6 +89,26 @@ class RedactionTest {
         assertThat(ingested.sagaId()).isEqualTo("hotel-saga::SAGA-1");
     }
 
+    /**
+     * A payload that cannot be parsed cannot be redacted by path either, and the parser's
+     * own message used to quote it: Jackson 2.15 includes the source in error locations
+     * by default, and that message is both logged and returned as the rejection reason.
+     */
+    @Test
+    void anUnreadablePayloadIsNotQuotedInTheRejection() {
+        EventIngestionService ingestion = new EventIngestionService(mock(CorrelationService.class), JSON,
+                new SourceCompletenessCheck(), new DeduplicationCache(), new EventTimeResolver(),
+                OutboxPatternIngestionTest.declaredMappings(), new PassthroughAliasResolver(),
+                new InlineTransactionManager());
+
+        IngestionResult result = ingestion.ingest(new RawObservation("payment.inbox.events",
+                "{\"type\":\"REQUEST\",\"creditCardNo\":\"4111111111111111\",",
+                Instant.parse("2026-01-01T00:00:00Z"), null, "SAGA-1", Map.of("id", "cmd-2")));
+
+        assertThat(result.outcome()).isEqualTo(IngestionResult.Outcome.UNREADABLE);
+        assertThat(result.reason()).doesNotContain("4111111111111111");
+    }
+
     private static SourceMapping parse(String yaml) {
         try {
             return new ObjectMapper(new YAMLFactory()).readValue(yaml, SourceMapping.class);

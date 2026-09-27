@@ -906,9 +906,10 @@ duoc viet lai (khong sua DB truc tiep) — can mot migration/job rieng neu muon 
 Bo sung 2026-09-28: log ERROR khi bo cuoc mot record (`KafkaErrorHandlingConfig`) in nguyen `record.value()`
 — so the vao log. Nay che theo mapping cua topic truoc khi in; replay tay khong mat gi vi observer cung
 khong luu gia tri do. Test: `KafkaErrorHandlingConfigTest`.
-Con lai (chua lam, thap): `EventIngestionService` ghi `e.getMessage()` khi payload khong doc duoc; voi
-Jackson 2.15 thong bao nay mac dinh kem mot doan trich noi dung nguon. Payload hong khong che duoc theo
-duong dan; neu can thi tat `INCLUDE_SOURCE_IN_LOCATION` cho mapper ingestion.
+Da sua 2026-09-28: `EventIngestionService` ghi `e.getMessage()` khi payload khong doc duoc, va Jackson 2.15
+mac dinh trich noi dung nguon vao thong bao (tai hien: so the nam trong ly do tu choi). Nay lan parse do
+tat `INCLUDE_SOURCE_IN_LOCATION` (chi lan parse nay, khong doi mapper toan cuc). Test:
+`anUnreadablePayloadIsNotQuotedInTheRejection` (fail truoc khi sua). Full suite: 547/547.
 Problem (chay live F13): `TAKE_PAYMENT_REQUESTED` cua he khach san mang `creditCardNo`; observer luu
 nguyen vao `saga_events.payload` va tra ra qua `/api/sagas/{id}`. O day la so the test cua upstream.
 Expected: co phuong an che truong khai bao theo source truoc khi quan sat he that.

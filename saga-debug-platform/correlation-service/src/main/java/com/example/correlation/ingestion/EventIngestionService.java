@@ -100,7 +100,12 @@ public class EventIngestionService {
 
         JsonNode payload;
         try {
-            payload = objectMapper.readTree(raw.payload());
+            // Without the source in error locations: a payload that fails to parse cannot be
+            // redacted by path, and Jackson's default would quote it into the log and the
+            // rejection reason (L14).
+            payload = objectMapper.reader()
+                    .without(com.fasterxml.jackson.core.JsonParser.Feature.INCLUDE_SOURCE_IN_LOCATION)
+                    .readTree(raw.payload());
         } catch (Exception e) {
             log.error("Discarding unreadable observation from {}: {}",
                     raw.sourceRef(), e.getMessage());
