@@ -67,4 +67,23 @@ class WorkflowSpecTest {
         assertThat(spec.getStepTimeoutSeconds("RESERVE_INVENTORY")).isEqualTo(5);
         assertThat(spec.getStepTimeoutSeconds("REFUND_PAYMENT")).isEqualTo(10);
     }
+
+    /** L16: a workflow that never wrote validEventTypes still places its events in steps. */
+    @Test
+    void withoutADeclaredMapTheStepComesFromTheStepsOwnEvents() {
+        WorkflowSpec undeclared = WorkflowSpecTestFixture.orderSaga();
+        undeclared.setValidEventTypes(null);
+
+        assertThat(undeclared.getExpectedStepForEvent("PAYMENT_COMPLETED")).isEqualTo("PROCESS_PAYMENT");
+        assertThat(undeclared.getExpectedStepForEvent("PAYMENT_STARTED")).isEqualTo("PROCESS_PAYMENT");
+        assertThat(undeclared.getExpectedStepForEvent("PAYMENT_REFUNDED")).isEqualTo("REFUND_PAYMENT");
+        assertThat(undeclared.getExpectedStepForEvent("AUDIT_PING")).isNull();
+    }
+
+    /** Where the map is declared it decides, including where it is silent (ROADMAP L21). */
+    @Test
+    void aDeclaredMapStaysAuthoritativeEvenWhereItIsSilent() {
+        assertThat(spec.getExpectedStepForEvent("PAYMENT_COMPLETED")).isEqualTo("PROCESS_PAYMENT");
+        assertThat(spec.getExpectedStepForEvent("PAYMENT_STARTED")).isNull();
+    }
 }

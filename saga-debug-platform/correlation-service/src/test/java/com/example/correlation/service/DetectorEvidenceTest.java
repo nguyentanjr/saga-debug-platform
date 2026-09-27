@@ -16,7 +16,10 @@ import com.example.correlation.workflow.WorkflowRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -56,6 +59,7 @@ class DetectorEvidenceTest {
 
     private SagaInstanceRepository sagaInstanceRepository;
     private SagaEventRepository sagaEventRepository;
+    private AnomalyRepository anomalyRepository;
     private AnomalyDetectionService anomalyDetectionService;
     private CorrelationService correlationService;
 
@@ -125,9 +129,13 @@ class DetectorEvidenceTest {
                     return withdrawn;
                 });
 
+        this.anomalyRepository = anomalyRepository;
         WorkflowRegistry registry = new WorkflowRegistry();
         registry.load();
+        wire(registry);
+    }
 
+    private void wire(WorkflowRegistry registry) {
         anomalyDetectionService = new AnomalyDetectionService(
                 sagaInstanceRepository, sagaEventRepository, anomalyRepository,
                 registry, new ObjectMapper(), new DetectionProperties(),
@@ -315,6 +323,77 @@ class DetectorEvidenceTest {
                 .filter(e -> e.getSagaId().equals(sagaId))
                 .sorted(Comparator.comparing(SagaEvent::getTimestamp))
                 .toList();
+    }
+
+    // ── L16: a workflow that never wrote validEventTypes ──────────────────────
+
+    /**
+     * ROOM_RESERVATION as the observer runs it, from {@code declarations/}. It has no
+     * validEventTypes map, and every step lookup used to come back empty: the live hotel run
+     * that went quiet after TAKE_PAYMENT_REQUESTED was reported stuck at the 60s default,
+     * not at TAKE_PAYMENT's declared 30s. Forty-five seconds separates the two.
+     */
+    @Test
+    void aWorkflowWithoutAStepMapIsHeldToItsDeclaredStepTimeout() {
+        wire(declaredRegistry());
+        Instant heard = Instant.now().minusSeconds(45);
+        observeAt("e1", "BOOK_ROOM_REQUESTED", heard.minusSeconds(2), heard.minusSeconds(2));
+        observeAt("e2", "ROOM_BOOKED", heard.minusSeconds(1), heard.minusSeconds(1));
+        observeAt("e3", "TAKE_PAYMENT_REQUESTED", heard, heard);
+
+        anomalyDetectionService.detectStuckSagas();
+
+        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.SAGA_STUCK)
+                .singleElement()
+                .satisfies(a -> assertThat(a.getThresholdSource()).isEqualTo("workflow:TAKE_PAYMENT.timeout"));
+    }
+
+    /**
+     * And its transitions are judged: a room outcome after payment completed the run.
+     * (Payment requested after a room rejection would be the more natural case, but a FAILED
+     * outcome is currently accepted towards any declared target — ROADMAP L22.)
+     */
+    @Test
+    void aWorkflowWithoutAStepMapHasItsTransitionsJudged() {
+        wire(declaredRegistry());
+        observe("e1", "BOOK_ROOM_REQUESTED", 0);
+        observe("e2", "ROOM_BOOKED", 1);
+        observe("e3", "TAKE_PAYMENT_REQUESTED", 2);
+        observe("e4", "PAYMENT_ACCEPTED", 3);
+        observe("e5", "ROOM_REJECTED", 4);
+
+        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
+                .singleElement()
+                .satisfies(a -> assertThat(a.getObservedValue()).isEqualTo("TAKE_PAYMENT -> BOOK_ROOM on SUCCESS"));
+    }
+
+    /** Judging them costs nothing on the paths the system really takes. */
+    @Test
+    void theRealPathsOfThatWorkflowRaiseNoTransitionFinding() {
+        wire(declaredRegistry());
+        observe("e1", "BOOK_ROOM_REQUESTED", 0);
+        observe("e2", "ROOM_BOOKED", 1);
+        observe("e3", "TAKE_PAYMENT_REQUESTED", 2);
+        observe("e4", "PAYMENT_ACCEPTED", 3);
+        ExecutionKey compensated = ExecutionKey.of(SOURCE, "run-2");
+        observeIn(compensated, "c1", "BOOK_ROOM_REQUESTED", 0);
+        observeIn(compensated, "c2", "ROOM_BOOKED", 1);
+        observeIn(compensated, "c3", "TAKE_PAYMENT_REQUESTED", 2);
+        observeIn(compensated, "c4", "PAYMENT_REJECTED", 3);
+        observeIn(compensated, "c5", "RELEASE_ROOM_REQUESTED", 4);
+        observeIn(compensated, "c6", "ROOM_CANCELLED", 5);
+
+        assertThat(standingTypes()).doesNotContain(AnomalyType.INVALID_TRANSITION);
+        assertThat(instances.get(compensated.canonical()).getStatus()).isEqualTo(SagaStatus.COMPENSATED);
+    }
+
+    private static WorkflowRegistry declaredRegistry() {
+        Path here = Path.of("").toAbsolutePath();
+        Path root = Files.exists(here.resolve("declarations")) ? here : here.getParent();
+        WorkflowRegistry registry = new WorkflowRegistry();
+        ReflectionTestUtils.setField(registry, "declarationsDirectory", root.resolve("declarations").toString());
+        registry.load();
+        return registry;
     }
 
     private List<Anomaly> standing() {

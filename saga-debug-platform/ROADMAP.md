@@ -718,6 +718,28 @@ guest 21: FAILED > 5 phut, khong co RCA nao cho den khi goi tay. Dashboard dem R
 Expected: xac dinh co can kich hoat RCA khi run dat trang thai ket thuc hay khong; neu co thi xet
 lai quyet dinh "business rejection khong can chan doan" cung luc, khong va rieng mot duong.
 
+**L21 — Workflow co `validEventTypes` im lang voi event started/retry/mot so failed** · Priority: trung binh-cao
+Problem (phat hien khi sua L16): map la tap con cua `events:`. ORDER_SAGA thieu PAYMENT_STARTED,
+INVENTORY_STARTED, PAYMENT_RETRY, ORDER_FAILED, REFUND_FAILED; FULFILLMENT/LOAN/PARALLEL_CHECKOUT
+tuong tu. Voi cac event do: SAGA_STUCK dung nguong mac dinh thay vi nguong buoc, adjacency
+STEP_TIMEOUT va judgeTransitions bo qua. Vi du: run im sau PAYMENT_STARTED bi do bang 60s, khong
+phai 10s cua PROCESS_PAYMENT.
+Expected: bo map (hoac chi dung khi buoc khong noi gi) — doi hanh vi ORDER_SAGA, nen phai chay lai
+danh gia va bao ca hai bo so. Khong gop vao L16.
+
+**L22 — Outcome FAILED duoc chap nhan toi moi dich co canh khai bao, ke ca canh chi cho SUCCESS** · Priority: trung binh-cao
+Problem (phat hien khi viet test L16): `WorkflowSpec.explainTransition`, nhanh
+`FAILED_OUTCOME.equals(condition)`, tra VALID neu co bat ky canh `from -> to`, khong xet
+`t.getCondition() == null` du comment noi "declared without a condition". Nen BOOK_ROOM (FAILED) ->
+TAKE_PAYMENT duoc coi la hop le du chi co canh SUCCESS; tuong tu PROCESS_PAYMENT (FAILED) ->
+RESERVE_INVENTORY o ORDER_SAGA.
+Expected: tai hien bang test, sua theo dung comment, chay lai danh gia (co the doi so INVALID_TRANSITION).
+
+**L23 — `topAffectedSteps` cua dashboard doan buoc bang regex** · Priority: thap
+Problem (live F13): `DashboardMetricsService.inferStep` lay ten trong dau nhay cua description khi
+thresholdSource khong phai `workflow:` — OUT_OF_ORDER cho ra "TAKE_PAYMENT_REQUESTED" (ten event).
+Expected: lay buoc tu evidence event qua workflow, hoac khong dem khi khong xac dinh duoc.
+
 **L19 — Khai bao cua cac he khac chua co test doi chieu mapping <-> workflow** · Priority: trung binh
 Problem (phat hien khi sua L13): `declarations/` con kms-order-saga, saga-pattern-order,
 partner-order, second-estate. Khong test nao nap cac file nay va kiem tra ten event ma mapping
@@ -783,6 +805,30 @@ Problem: R14 da danh dau `OBSERVATION_PROCESS` (thu tu la do observer doc nhieu 
 van la "Check Kafka partition key assignment" — huong nguoi doc ve phia he nguon. Tai hien live F13
 khi replay 4 topic tu offset 0.
 Expected: suggestion noi ve qua trinh quan sat, khong ve partition key cua he nguon.
+
+**L16 — Event he khach san vao voi step=UNKNOWN; SAGA_STUCK dung nguong 60s — DA SUA 2026-09-27** · Priority: trung binh
+Nguyen nhan goc (khong phai stepName): `WorkflowSpec.getExpectedStepForEvent` chi tra map
+`validEventTypes` — mot khai bao thu hai lap lai `events:` cua cac buoc. ROOM_RESERVATION va
+PARTNER_ORDER_SAGA khong viet map nay, nen voi chung: SAGA_STUCK dung nguong mac dinh 60s,
+STEP_TIMEOUT kieu adjacency (authoritative o SHADOW) khong bao gio fire, `judgeTransitions` bo qua
+moi transition, `thresholdSource` ghi nguong mac dinh.
+Da sua: khong co map -> suy buoc tu `events`/`outcomes` cua buoc (`classifyEvent`); co map -> map
+van quyet dinh (khong doi hanh vi ORDER_SAGA va cac workflow co map; da doi chieu: khong cho nao
+map va buoc mau thuan). Test: `WorkflowSpecTest` (2), `DetectorEvidenceTest` (3, tren ROOM_RESERVATION
+doc tu declarations/); mutation tra ve ham cu -> dung 3 test fail. Full suite sach: 516/516.
+Live: SAGA_STUCK `timeout: 30s`, `workflow:TAKE_PAYMENT.timeout`, phat hien sau 45s (truoc ~75s);
+sau khi bat lai payment, STEP_TIMEOUT fire (TAKE_PAYMENT 69613ms > 30000ms) va RCA promote R07
+DOWNSTREAM_TIMEOUT thay cho R06 — cung dang voi SC27/28 cua ORDER_SAGA; ten R07 noi qua bang chung
+o ca nay (payment bi dung, khong cham) la F10, khong phai L16.
+Giu nguyen: `stepName="UNKNOWN"`/`serviceName="unknown"` ma ingestion dien khi nguon khong gui —
+khong detector nao doc chung (buoc lay qua workflow), va SagaEventConsumerTest ghim hop dong nay.
+Mot he qua nho: `ExecutionProjectionService.serviceOf` khong roi ve service khai bao vi "unknown"
+khac null; `Operation.serviceName` hien khong co ai doc.
+Problem (live F13): moi event ingest cua `hotel-saga` co `stepName=UNKNOWN`, `serviceName=unknown`;
+RCA van dat anchor dung buoc nho workflow. SAGA_STUCK bao `timeout: 60s` (mac dinh) trong khi buoc
+khai bao 30s. **Chua kiem chung** hai viec co cung nguyen nhan.
+Expected: xac dinh nguong SAGA_STUCK lay tu dau; neu phai lay timeout cua buoc thi doc qua workflow,
+khong doi he nguon them stepName.
 
 **L12 — Dashboard saga-detail vuot CSS warning budget** · Priority: **thap**
 Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budget

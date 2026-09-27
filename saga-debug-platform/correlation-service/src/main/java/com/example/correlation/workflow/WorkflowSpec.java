@@ -85,8 +85,20 @@ public class WorkflowSpec {
     public void setValidEventTypes(Map<String, String> validEventTypes) { this.validEventTypes = validEventTypes; }
 
 
+    /**
+     * The step an event belongs to: from {@code validEventTypes} when the workflow declares
+     * that map, and otherwise from the steps' own {@code events} and {@code outcomes}.
+     *
+     * <p>The map repeats what the steps already say. A workflow written without it —
+     * ROOM_RESERVATION and PARTNER_ORDER_SAGA in {@code declarations/} — used to get null
+     * for every event, so SAGA_STUCK fell back to the default timeout instead of the
+     * declared one, the adjacency STEP_TIMEOUT never fired, and no transition was judged.
+     * Where the map is declared it stays authoritative, including for the events it leaves
+     * out; that gap is ROADMAP L21.
+     */
     public String getExpectedStepForEvent(String eventType) {
-        return validEventTypes != null ? validEventTypes.get(eventType) : null;
+        if (validEventTypes != null) return validEventTypes.get(eventType);
+        return classifyEvent(eventType).map(EventRole::stepId).orElse(null);
     }
 
 
