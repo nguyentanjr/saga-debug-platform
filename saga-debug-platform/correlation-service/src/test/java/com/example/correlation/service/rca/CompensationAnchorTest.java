@@ -75,6 +75,22 @@ class CompensationAnchorTest {
                 .singleElement().satisfies(c -> assertThat(c.getAnchorAt()).isEqualTo(failed.getTimestamp()));
     }
 
+    /** SC21: completed, then a failure for an earlier step. The failure did not end the run. */
+    @Test
+    void aFailureReportedAfterTheRunEndedIsNotTheStepsFailureClaim() {
+        SagaEvent ended = event("e3", "INVENTORY_RESERVED", "{}", 2);
+        SagaEvent late = event("e4", "PAYMENT_FAILED", "{}", 3);
+        RcaResult result = analyze(SagaStatus.FAILED,
+                List.of(anomaly(1, AnomalyType.MULTI_TERMINAL_CONFLICT, ended, late),
+                        anomaly(2, AnomalyType.FORBIDDEN_POST_TERMINAL, ended, late)),
+                event("e1", "ORDER_CREATED", "{}", 0),
+                event("e2", "PAYMENT_COMPLETED", "{}", 1),
+                ended, late);
+
+        assertThat(result.getCandidates()).extracting(RcaCandidate::getRuleId).doesNotContain("R24");
+        assertThat(result.getRuleId()).isEqualTo("R03");
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static RcaResult analyze(SagaStatus status, List<Anomaly> standing, SagaEvent... events) {

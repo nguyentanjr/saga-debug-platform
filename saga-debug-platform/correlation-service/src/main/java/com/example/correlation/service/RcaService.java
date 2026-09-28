@@ -16,6 +16,7 @@ import com.example.correlation.repository.SagaInstanceRepository;
 import com.example.correlation.service.alert.AlertEvent;
 import com.example.correlation.service.alert.AlertSink;
 import com.example.correlation.service.rca.AnomalySignatureRule;
+import com.example.correlation.execution.EvidenceTimeline;
 import com.example.correlation.service.rca.FailureSignal;
 import com.example.correlation.service.rca.FailureSignalDeclaration;
 import com.example.correlation.service.rca.FailureSignalRegistry;
@@ -577,7 +578,9 @@ public class RcaService {
      */
     private CandidateAssessment ruleDeclaredFailureSignal(WorkflowSpec workflow, List<SagaEvent> events) {
         if (workflow == null) return null;
+        EvidenceTimeline timeline = EvidenceTimeline.of(workflow, events);
         for (SagaEvent event : events) {
+            if (timeline.isAfterEnding(event)) continue;   // see ruleDeclaredStepFailure
             boolean isFailure = workflow.classifyEvent(event.getEventType())
                     .filter(role -> role.role() == WorkflowSpec.EventRole.Role.FAILED)
                     .isPresent();
@@ -960,7 +963,12 @@ public class RcaService {
     private CandidateAssessment ruleDeclaredStepFailure(WorkflowSpec workflow, SagaInstance saga,
             List<SagaEvent> events) {
         if (workflow == null || saga.getStatus() != SagaStatus.FAILED) return null;
+        EvidenceTimeline timeline = EvidenceTimeline.of(workflow, events);
         for (SagaEvent event : events) {
+            // A failure reported after the run had already ended did not end it: that is a
+            // write after the ending (R03/R04's evidence), and citing it here put a second
+            // claim on the same event that won on step position (SC21, 2026-09-29).
+            if (timeline.isAfterEnding(event)) continue;
             boolean isFailure = workflow.classifyEvent(event.getEventType())
                     .filter(role -> role.role() == WorkflowSpec.EventRole.Role.FAILED)
                     .isPresent();
