@@ -26,12 +26,14 @@ public class AdminEventController {
     private final CorrelationService correlationService;
     private final RcaService rcaService;
     private final ExecutionLookup executionLookup;
+    private final IngestAuthorization authorization;
 
     public AdminEventController(CorrelationService correlationService, RcaService rcaService,
-            ExecutionLookup executionLookup) {
+            ExecutionLookup executionLookup, IngestAuthorization authorization) {
         this.correlationService = correlationService;
         this.rcaService = rcaService;
         this.executionLookup = executionLookup;
+        this.authorization = authorization;
     }
 
     
@@ -39,7 +41,11 @@ public class AdminEventController {
 
 
     @PostMapping("/inject-event")
-    public ResponseEntity<Map<String, String>> injectEvent(@RequestBody Map<String, String> body) {
+    public ResponseEntity<Map<String, String>> injectEvent(@RequestBody Map<String, String> body,
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        ResponseEntity<Map<String, String>> refused = authorization.refusal(authorizationHeader);
+        if (refused != null) return refused;
+
         String sagaId = body.getOrDefault("sagaId", UUID.randomUUID().toString());
         String eventType = body.get("eventType");
         String stepName = body.getOrDefault("stepName", "UNKNOWN");

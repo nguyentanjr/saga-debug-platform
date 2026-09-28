@@ -1059,7 +1059,19 @@ core" và "luật khai báo".
 Problem: loại bất thường mới của một hệ cần sửa enum + migration.
 Expected: đánh giá xem có use case thật không trước khi đổi. Chưa có → chưa làm.
 
-**L5 — Xác thực cho endpoint ingest** · Priority: trung bình
+**L5 — Xác thực cho endpoint ingest — DA SUA 2026-09-28** · Priority: trung bình
+Da sua: `IngestAuthorization` (bearer token `correlation.ingest.token` / env `CORRELATION_INGEST_TOKEN`,
+so sanh constant-time) chan ca hai duong GHI quan sat qua HTTP: `/api/ingest/**` (ke ca `/infer`, vi
+no doc va tra lai payload) va `/api/admin/inject-event` — khoa mot ma de ngo cai kia thi vo nghia.
+Khong dat token -> 503 (dong), khong phai mo. Header `Authorization` bi loai khoi header chuyen cho
+mapping, de token khong thanh du lieu quan sat. Kafka khong doi (ACL la viec cua cluster). Khong them
+Spring Security. `evaluate.py` gui token tu cung bien env; docker-compose truyen bien vao.
+Test: `IngestControllerTest` (+4), `AdminEventTimeSourceTest` sua. Full reactor 557/557.
+Live: khong cau hinh -> 503; co token: khong header 401, sai 401, dung 202, inject khong header 401,
+GET /api/sagas 200.
+Luu y tai lap: chay lai bo thuc nghiem (evaluate.py, che do INJECT) nay can dat CORRELATION_INGEST_TOKEN
+cho ca observer va script; khong dat thi inject tra 503 va script bao loi ro.
+Con mo (chua lam): API doc, `/rca/**` (ghi ket qua RCA, khong ghi evidence) va dashboard van khong xac thuc.
 Problem: `/api/ingest/**` không xác thực; sự kiện gửi vào trở thành bằng chứng chẩn đoán.
 Expected: có phương án trước khi chạy ở môi trường thật.
 

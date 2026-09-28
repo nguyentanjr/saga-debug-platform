@@ -48,6 +48,12 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 correlation:
+  # Bearer token required to write observations over HTTP (/api/ingest/**,
+  # /api/admin/inject-event). Empty closes those writes (503) instead of leaving them open:
+  # an observation is diagnostic evidence, so whoever can post can author a diagnosis.
+  ingest:
+    token: ${CORRELATION_INGEST_TOKEN:}
+
   # Where an operator keeps the YAML describing a system this build was never told about:
   # <dir>/ingestion/*.yaml for how to read its events, <dir>/workflows/*.yaml for what its
   # saga is supposed to do, <dir>/rules/*.yaml for what a symptom means there. Empty means

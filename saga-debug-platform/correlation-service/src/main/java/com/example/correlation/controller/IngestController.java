@@ -35,9 +35,9 @@ import java.util.Map;
  * rather than failing the batch: one unreadable record among fifty should not cost the
  * caller the other forty-nine.
  *
- * <p>Unauthenticated, like every endpoint here. That is a real exposure — an event posted
- * to this endpoint becomes diagnostic evidence — and it needs an answer before this runs
- * anywhere that matters.
+ * <p>Authenticated (L5), unlike the read-only endpoints: an event posted here becomes
+ * diagnostic evidence, so whoever can post can write the observer's conclusions. A caller
+ * presents a bearer token; see {@link IngestAuthorization}.
  */
 @RestController
 @RequestMapping("/api/ingest")
@@ -50,10 +50,13 @@ public class IngestController {
 
     private final EventIngestionService ingestionService;
     private final SourceMappingInferrer inferrer;
+    private final IngestAuthorization authorization;
 
-    public IngestController(EventIngestionService ingestionService, SourceMappingInferrer inferrer) {
+    public IngestController(EventIngestionService ingestionService, SourceMappingInferrer inferrer,
+                            IngestAuthorization authorization) {
         this.ingestionService = ingestionService;
         this.inferrer = inferrer;
+        this.authorization = authorization;
     }
 
     /**
@@ -70,7 +73,12 @@ public class IngestController {
      */
     @PostMapping("/{source}/infer")
     public ResponseEntity<Map<String, Object>> infer(@PathVariable("source") String source,
-            @RequestBody JsonNode body) {
+            @RequestBody JsonNode body,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+
+        // Stores nothing, but it reads and echoes back another system's payloads.
+        ResponseEntity<Map<String, Object>> refused = this.authorization.refusal(authorization);
+        if (refused != null) return refused;
 
         List<JsonNode> sample = body.isArray() ? toList(body) : List.of(body);
         if (sample.isEmpty()) {
@@ -121,6 +129,9 @@ public class IngestController {
     public ResponseEntity<Map<String, Object>> ingest(@PathVariable("source") String source,
             @RequestBody JsonNode body,
             @RequestHeader Map<String, String> headers) {
+
+        ResponseEntity<Map<String, Object>> refused = authorization.refusal(headerIgnoringCase(headers, "Authorization"));
+        if (refused != null) return refused;
 
         List<JsonNode> events = body.isArray()
                 ? toList(body)
@@ -193,17 +204,27 @@ public class IngestController {
      * capitalised it. Kafka's are case-sensitive, so this is the one place the two
      * transports genuinely differ and it is handled here rather than in the mapping.
      */
-    private static Map<String, String> normalise(Map<String, String> headers) {
+    static Map<String, String> normalise(Map<String, String> headers) {
         if (headers == null || headers.isEmpty()) {
             return Map.of();
         }
         Map<String, String> normalised = new LinkedHashMap<>();
         headers.forEach((name, value) -> {
-            if (name != null && value != null) {
+            // The credential is not part of the observation: offered to a mapping, it could
+            // be read into a stored field.
+            if (name != null && value != null && !name.equalsIgnoreCase("Authorization")) {
                 normalised.put(name.toLowerCase(Locale.ROOT), value);
             }
         });
         return normalised;
+    }
+
+    private static String headerIgnoringCase(Map<String, String> headers, String name) {
+        if (headers == null) return null;
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (name.equalsIgnoreCase(entry.getKey())) return entry.getValue();
+        }
+        return null;
     }
 
     private static List<JsonNode> toList(JsonNode array) {

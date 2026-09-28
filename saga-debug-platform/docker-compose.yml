@@ -105,6 +105,10 @@ services:
       CORRELATION_DB_PASSWORD: demo
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+      # Bearer token for writing observations over HTTP (/api/ingest, /api/admin/inject-event).
+      # Unset = those writes are closed (503); Kafka ingestion is unaffected. evaluate.py
+      # reads the same variable.
+      CORRELATION_INGEST_TOKEN: ${CORRELATION_INGEST_TOKEN:-}
 
       # Declarations about an observed system -- how to read its events, what its saga is
       # supposed to do, what a symptom means there -- read from a mounted directory rather

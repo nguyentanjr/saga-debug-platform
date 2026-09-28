@@ -11,6 +11,7 @@
 # are matched against:
 #
 #   curl -X POST http://localhost:8084/api/ingest/legacy.orders.events \
+#        -H "Authorization: Bearer $CORRELATION_INGEST_TOKEN" \
 #        -H 'Content-Type: application/json' \
 #        -d '{"id":"evt-8891",
 #             "type":"order.payment.captured",

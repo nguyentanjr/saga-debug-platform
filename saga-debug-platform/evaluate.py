@@ -56,6 +56,10 @@ from datetime import datetime, timedelta, timezone
 ORDER_URL       = "http://localhost:8081"
 PAYMENT_URL     = "http://localhost:8082"
 PLATFORM_URL    = "http://localhost:8084"
+# Writing observations over HTTP needs the observer's bearer token (L5); same variable the
+# observer's container reads. Unset -> inject-event answers 503.
+INGEST_HEADERS  = ({"Authorization": f"Bearer {os.environ['CORRELATION_INGEST_TOKEN']}"}
+                   if os.environ.get("CORRELATION_INGEST_TOKEN") else {})
 INVENTORY_URL   = "http://localhost:8083"
 
 RESULTS_DIR     = "results"
@@ -440,7 +444,8 @@ def admin_inject(saga_id, event_type, step_name="UNKNOWN", service_name="test",
     if timestamp:
         body["timestamp"] = timestamp if isinstance(timestamp, str) else timestamp.isoformat()
     try:
-        r = requests.post(f"{PLATFORM_URL}/api/admin/inject-event", json=body, timeout=10)
+        r = requests.post(f"{PLATFORM_URL}/api/admin/inject-event", json=body,
+                          headers=INGEST_HEADERS, timeout=10)
         if r.status_code != 200:
             print(f"\n    [inject error] {r.status_code}: {r.text[:200]}", end="")
         return r.status_code == 200

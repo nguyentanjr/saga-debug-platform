@@ -26,7 +26,7 @@ class AdminEventTimeSourceTest {
 
     private IngestedEvent injected(Map<String, String> body) {
         CorrelationService correlation = mock(CorrelationService.class);
-        new AdminEventController(correlation, null, null).injectEvent(body);
+        new AdminEventController(correlation, null, null, new IngestAuthorization("t")).injectEvent(body, "Bearer t");
         ArgumentCaptor<IngestedEvent> captor = ArgumentCaptor.forClass(IngestedEvent.class);
         verify(correlation).processEvent(captor.capture());
         return captor.getValue();

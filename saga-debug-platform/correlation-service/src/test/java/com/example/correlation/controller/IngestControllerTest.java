@@ -26,6 +26,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Observing a system that publishes over something other than Kafka.
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.verify;
 class IngestControllerTest {
 
     private static final String SOURCE = "legacy.orders.events";
+    private static final String TOKEN = "test-ingest-token";
 
     private final ObjectMapper mapper = new ObjectMapper();
     private CorrelationService correlationService;
@@ -59,7 +61,7 @@ class IngestControllerTest {
                 mappings,
                 new com.example.correlation.ingestion.PassthroughAliasResolver(),
                 new com.example.correlation.ingestion.InlineTransactionManager()),
-                new SourceMappingInferrer());
+                new SourceMappingInferrer(), new IngestAuthorization(TOKEN));
     }
 
     @Test
@@ -169,6 +171,54 @@ class IngestControllerTest {
                 .isInstanceOf(DataAccessResourceFailureException.class);
     }
 
+    // ── L5: whoever can post writes evidence ──
+
+    private static final String EVENT = """
+            {"id":"http-auth","type":"order.payment.captured","occurredAt":"2026-01-01T00:00:04Z",
+             "emittedBy":{"service":"billing-api"},"context":{"orderNumber":"ORD-77"}}
+            """;
+
+    @Test
+    void anEventWithoutTheTokenIsNotStored() throws Exception {
+        JsonNode body = mapper.readTree(EVENT);
+
+        assertThat(controller.ingest(SOURCE, body, Map.of()).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(controller.ingest(SOURCE, body, Map.of("authorization", "Bearer wrong")).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(controller.infer(SOURCE, body, null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(correlationService);
+
+        // Header names are case-insensitive, and so is the scheme.
+        assertThat(controller.ingest(SOURCE, body, Map.of("authorization", "bearer " + TOKEN)).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+    }
+
+    @Test
+    void withNoTokenConfiguredTheEndpointIsClosedNotOpen() throws Exception {
+        IngestController unconfigured = new IngestController(null, new SourceMappingInferrer(), new IngestAuthorization(""));
+
+        assertThat(unconfigured.ingest(SOURCE, mapper.readTree(EVENT), Map.of("Authorization", "Bearer "))
+                .getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void handInjectionIsGuardedByTheSameToken() {
+        CorrelationService correlation = mock(CorrelationService.class);
+        AdminEventController admin = new AdminEventController(correlation, null, null, new IngestAuthorization(TOKEN));
+        Map<String, String> body = Map.of("sagaId", "S-1", "eventType", "ORDER_CREATED");
+
+        assertThat(admin.injectEvent(body, null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(correlation);
+        assertThat(admin.injectEvent(body, "Bearer " + TOKEN).getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void theCredentialIsNotOfferedToTheMappingAsATransportHeader() {
+        assertThat(IngestController.normalise(Map.of("Authorization", "Bearer x", "X-Observation-Key", "S-1")))
+                .containsOnlyKeys("x-observation-key");
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private ResponseEntity<Map<String, Object>> post(String json) {
@@ -176,7 +226,7 @@ class IngestControllerTest {
             JsonNode body = mapper.readTree(json);
             // No transport headers: these tests are about the body and the batch reply.
             // TransportPortabilityTest is where the envelope itself is covered.
-            return controller.ingest(SOURCE, body, Map.of());
+            return controller.ingest(SOURCE, body, Map.of("Authorization", "Bearer " + TOKEN));
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalArgumentException("test payload is not JSON", e);
         }

@@ -191,7 +191,7 @@ Kết quả lần chạy 2026-05-23 (`results/evaluation_report.json`) — **tr�
 | Hạn chế | Chi tiết |
 |---|---|
 | 9/18 luật RCA còn trong code | R03, R04, R07, R09, R12, R13, R15, R19, R22 đã khai báo trong `rules/anomaly-signature-rules.yaml`. Chín luật còn lại cần nội dung payload, trạng thái saga, tính toán thời gian hoặc sự vắng mặt của sự kiện — không ép ra YAML được |
-| Chưa có xác thực trên API | Kể cả `/api/ingest` và `/api/admin/inject-event` |
+| Chỉ đường ghi quan sát qua HTTP có xác thực | `/api/ingest/**` và `/api/admin/inject-event` cần `Authorization: Bearer $CORRELATION_INGEST_TOKEN` (không đặt → 503); các API đọc và `/rca/**` vẫn mở |
 | Baseline chưa có số | `evaluate.py` đã tính `baseline_comparison` (3 chính sách chọn đối chứng) nhưng chưa chạy lại để lấy kết quả |
 | Danh mục kịch bản tự tham chiếu | Kịch bản được suy ra từ chính bộ luật đã cài, nên độ phủ nội tại gần như không thể thấp |
 
