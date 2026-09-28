@@ -407,6 +407,17 @@ public final class EvidenceTimeline {
      * Callers must refresh an existing citation when the fuller reconstruction selects a
      * different pair (F9).
      */
+    /**
+     * Whether {@code event} is provably after an observation that ended the run — by the same
+     * proof {@link #postTerminal()} uses. Such an observation is not a handoff: the graph has
+     * no step after an ending, and the observation is already that finding's evidence.
+     */
+    public boolean isAfterEnding(SagaEvent event) {
+        return bearings.stream()
+                .filter(bearing -> bearing.status().isTerminal())
+                .anyMatch(ended -> relate(spec, ended.event(), event) == Relation.BEFORE);
+    }
+
     public Optional<PostTerminal> postTerminal() {
         return bearings.stream()
                 .filter(bearing -> bearing.status().isTerminal())

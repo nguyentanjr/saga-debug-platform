@@ -211,7 +211,7 @@ public class CorrelationService {
         // absent, which is what withdraws it.
         anomalyDetectionService.detectOrphanEvent(workflow, sagaId, sagaEvents);
 
-        judgeTransitions(workflow, sagaId, sagaEvents);
+        judgeTransitions(workflow, sagaId, timeline);
     }
 
     /**
@@ -228,13 +228,18 @@ public class CorrelationService {
      * <p>Cheap: the sequence is already sorted for everything else on this path, and an
      * execution holds a handful of events.
      */
-    private void judgeTransitions(WorkflowSpec workflow, String sagaId, List<SagaEvent> inOrder) {
+    private void judgeTransitions(WorkflowSpec workflow, String sagaId, EvidenceTimeline timeline) {
         if (workflow == null) return;
 
+        List<SagaEvent> inOrder = timeline.inBusinessOrder();
         for (int i = 1; i < inOrder.size(); i++) {
             SagaEvent previous = inOrder.get(i - 1);
             SagaEvent current = inOrder.get(i);
             if (isCompensationStepEvent(workflow, current.getEventType())) continue;
+            // An observation after the run's ending is FORBIDDEN_POST_TERMINAL's evidence, not
+            // a handoff. Judging it here filed the same event twice under two claims, and RCA
+            // ranked the routing reading first (SC13, SC21).
+            if (timeline.isAfterEnding(current)) continue;
 
             String previousStepName = workflow.getExpectedStepForEvent(previous.getEventType());
             String currentStepName = workflow.getExpectedStepForEvent(current.getEventType());

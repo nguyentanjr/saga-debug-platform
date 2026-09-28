@@ -467,6 +467,32 @@ class TransitionEvidenceTest {
     }
 
     /**
+     * SC13's shape: the run ended at INVENTORY_RESERVED, then PAYMENT_COMPLETED arrived again.
+     * That is one fact, an observation after the ending, and FORBIDDEN_POST_TERMINAL is its
+     * claim. It was also filed as INVALID_TRANSITION RESERVE_INVENTORY -> PROCESS_PAYMENT, and
+     * RCA ranked that second reading of the same event first (by step position), so the run
+     * was diagnosed as a routing fault instead of a write after the end. After an ending there
+     * is no handoff left in the graph to judge.
+     */
+    @Test
+    void anObservationAfterTheEndingIsNotAlsoJudgedAsAHandoff() {
+        List<String[]> run = List.of(
+                new String[]{"e1", "ORDER_CREATED", "0"},
+                new String[]{"e2", "PAYMENT_COMPLETED", "1"},
+                new String[]{"e3", "INVENTORY_RESERVED", "2"},
+                new String[]{"e4", "PAYMENT_COMPLETED", "3"});
+
+        for (List<String[]> order : permutations(run)) {
+            setUp();
+            order.forEach(e -> observe(e[0], e[1], Long.parseLong(e[2])));
+            assertThat(raised())
+                    .as("delivery order %s", order.stream().map(e -> e[0]).toList())
+                    .contains(AnomalyType.FORBIDDEN_POST_TERMINAL)
+                    .doesNotContain(AnomalyType.INVALID_TRANSITION);
+        }
+    }
+
+    /**
      * And the other half of the same invariant: asking the question of the whole run must
      * not make it easier to answer yes. A run where nothing happened after the ending stays
      * silent in all six orders — including the three where the ending is read before the

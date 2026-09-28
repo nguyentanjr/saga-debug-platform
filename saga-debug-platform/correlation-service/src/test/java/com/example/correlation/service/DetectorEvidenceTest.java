@@ -362,9 +362,10 @@ class DetectorEvidenceTest {
         observe("e4", "PAYMENT_ACCEPTED", 3);
         observe("e5", "ROOM_REJECTED", 4);
 
-        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
-                .singleElement()
-                .satisfies(a -> assertThat(a.getObservedValue()).isEqualTo("TAKE_PAYMENT -> BOOK_ROOM on SUCCESS"));
+        // PAYMENT_ACCEPTED ended the run, so the rejection after it is judged as what it is --
+        // an observation after the ending -- and not a second time as a handoff.
+        assertThat(standingTypes()).contains(AnomalyType.FORBIDDEN_POST_TERMINAL)
+                .doesNotContain(AnomalyType.INVALID_TRANSITION);
     }
 
     /**
@@ -378,9 +379,10 @@ class DetectorEvidenceTest {
         observe("e2", "ROOM_REJECTED", 1);
         observe("e3", "TAKE_PAYMENT_REQUESTED", 2);
 
-        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
-                .singleElement()
-                .satisfies(a -> assertThat(a.getObservedValue()).isEqualTo("BOOK_ROOM -> TAKE_PAYMENT on FAILED"));
+        // The rejection ended the run; the payment request is the observation after it. The
+        // graph verdict (BOOK_ROOM -> TAKE_PAYMENT on FAILED is INVALID) is WorkflowSpecTest's.
+        assertThat(standingTypes()).contains(AnomalyType.FORBIDDEN_POST_TERMINAL)
+                .doesNotContain(AnomalyType.INVALID_TRANSITION);
     }
 
     /** Judging them costs nothing on the paths the system really takes. */
@@ -429,10 +431,10 @@ class DetectorEvidenceTest {
         observe("e2", "PAYMENT_FAILED", 1);
         observe("e3", "INVENTORY_STARTED", 2);
 
-        assertThat(standing()).filteredOn(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION)
-                .singleElement()
-                .satisfies(a -> assertThat(a.getObservedValue())
-                        .isEqualTo("PROCESS_PAYMENT -> RESERVE_INVENTORY on FAILED"));
+        // Judged at all -- it used to be skipped as an event outside the map -- and judged as
+        // work begun after the run had failed.
+        assertThat(standingTypes()).contains(AnomalyType.FORBIDDEN_POST_TERMINAL)
+                .doesNotContain(AnomalyType.INVALID_TRANSITION);
     }
 
     private static WorkflowRegistry declaredRegistry() {

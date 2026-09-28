@@ -294,12 +294,23 @@ class ParallelTransitionSemanticsTest {
         observe("e1", "CART_OPENED", 0);
         observe("e2", "FRAUD_CHECK_PASSED", 1);
         observe("e3", "SEATS_RESERVED", 2);
-        observe("e4", "ORDER_SETTLED", 3);
-        // The join has already ended the run; an arm reporting again after it is the
-        // execution going backwards through its own graph.
-        observe("e5", "SEATS_RESERVED", 4);
+        // Before the join: the run is still open, so this is a handoff back to its start.
+        observe("e4", "CART_OPENED", 3);
 
         assertThat(raised()).contains(AnomalyType.INVALID_TRANSITION);
+    }
+
+    /** An arm reporting again after the join ended the run is an observation after the ending. */
+    @Test
+    void anArmReportingAfterTheJoinIsAPostTerminalObservation() {
+        observe("e1", "CART_OPENED", 0);
+        observe("e2", "FRAUD_CHECK_PASSED", 1);
+        observe("e3", "SEATS_RESERVED", 2);
+        observe("e4", "ORDER_SETTLED", 3);
+        observe("e5", "SEATS_RESERVED", 4);
+
+        assertThat(raised()).contains(AnomalyType.FORBIDDEN_POST_TERMINAL)
+                .doesNotContain(AnomalyType.INVALID_TRANSITION);
     }
 
     // ══ the compensating run: R10 must survive, R12 must not appear ═══════════
