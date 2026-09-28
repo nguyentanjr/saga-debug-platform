@@ -654,20 +654,26 @@ public class RcaService {
         Set<String> retryEventTypes = workflow != null ? workflow.retryEventTypes() : Set.of();
         for (Anomaly a : anomalies) {
             if (a.getAnomalyType() == AnomalyType.RETRY_BURST) {
-                List<SagaEvent> timeoutRetryEvents = events.stream()
-                        .filter(e -> retryEventTypes.contains(e.getEventType()))
-                        .filter(e -> payloadIndicatesTimeout(e.getPayload()))
-                        .collect(Collectors.toList());
+                // The source's own words for a timeout, read through its declaration (L3). A
+                // source that declares none yields WEAK: the burst is observed, its cause is not.
+                Map<SagaEvent, String> timeoutReasons = new LinkedHashMap<>();
+                for (SagaEvent e : events) {
+                    if (!retryEventTypes.contains(e.getEventType())) continue;
+                    failureSignalRegistry.forSource(e.getSourceName()).ifPresent(declaration ->
+                            declaration.readReason(e.getPayload())
+                                    .filter(reason -> declaration
+                                            .matchedPattern(FailureSignal.CALL_TIMED_OUT, reason).isPresent())
+                                    .ifPresent(reason -> timeoutReasons.put(e, reason)));
+                }
+                List<SagaEvent> timeoutRetryEvents = new ArrayList<>(timeoutReasons.keySet());
                 boolean hasTimeoutEvidence = !timeoutRetryEvents.isEmpty();
                 CandidateAssessment rr = candidate("TIMEOUT_RETRY_STORM", "CRITICAL", "R02",
                         hasTimeoutEvidence ? CandidateStatus.STRONG_EVIDENCE : CandidateStatus.WEAK_EVIDENCE);
                 rr.getEvidence().add(evidence(a));
                 if (hasTimeoutEvidence) {
                     rr.getEvidence().add(Evidence.of(
-                            "Retry payloads report timeout exceptions",
-                            timeoutRetryEvents.stream()
-                                    .map(SagaEvent::getPayload)
-                                    .filter(Objects::nonNull)
+                            "Retry events carry the source's declared timeout wording",
+                            timeoutReasons.values().stream()
                                     .limit(3)
                                     .collect(Collectors.joining("; ")),
                             "retry burst should not be caused by timeout exceptions",
@@ -677,7 +683,7 @@ public class RcaService {
                                     .filter(Objects::nonNull)
                                     .collect(Collectors.toList())));
                 } else {
-                    rr.setStatusReason("Retry events do not record timeout exception class.");
+                    rr.setStatusReason("No retry event carries a reason this source declares as a timeout.");
                 }
                 rr.getSuggestions().add("Reduce retry count or increase backoff");
                 rr.getSuggestions().add("Check service logs for timeout root cause");
@@ -685,14 +691,6 @@ public class RcaService {
             }
         }
         return null;
-    }
-
-    private boolean payloadIndicatesTimeout(String payload) {
-        if (payload == null) return false;
-        String normalized = payload.toLowerCase(Locale.ROOT);
-        return normalized.contains("timeout")
-                || normalized.contains("timed out")
-                || normalized.contains("timeoutexception");
     }
 
     

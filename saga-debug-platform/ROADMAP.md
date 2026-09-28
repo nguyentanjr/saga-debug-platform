@@ -1049,7 +1049,20 @@ Test: `IngestionBacklogTest` (3, ca "giu o 29, end 49" lay tu lan do live). Full
 Nguong 10000 la gia tri chon, chua do tren tai that. Partition chua tung commit khong duoc tinh.
 HTTP ingest van chi co `MAX_BATCH=1000`.
 
-**L3 — Luật RCA còn một nửa nằm trong Java** · Priority: trung bình
+**L3 — Luật RCA còn một nửa nằm trong Java — DA CHOT RANH GIOI 2026-09-28; sua R02** · Priority: trung bình
+Chon nhanh "ranh gioi ro", khong chuyen het sang YAML: 9 luat YAML la luat ma tap anomaly la TOAN BO dieu
+kien; luat Java can dieu ma format do khong noi duoc (trang thai run, so hoc thoi gian theo nguong
+workflow, vang mat event spec doi hoi, bang chung tinh tu tap anomaly). Tieu chi kiem: khong luat Java nao
+duoc chua tu vung cua mot he nguon — tu ngu cua nguon phai qua khai bao (I7).
+Ra soat theo tieu chi do tim ra MOT vi pham: R02 nang TIMEOUT_RETRY_STORM len STRONG khi payload retry
+(ca payload, ha chu thuong) chua "timeout"/"timed out" — cung loi F4 da go khoi R01. Da sua: them
+`FailureSignal.CALL_TIMED_OUT`; R02 doc ly do qua `failure-signals` cua nguon, khong khai bao -> WEAK.
+Khai bao demo them `lastException` vao reasonFields va `CALL_TIMED_OUT: [TimeoutException, timed out]`,
+nen SC12 (lastException "TimeoutException: read timed out") van STRONG; SC06 (RuntimeException gateway)
+van WEAK. Bang chung R02 gio trich ly do da doc, khong trich ca payload.
+Test: `TimeoutRetryStormTest` (3; 2 fail tren code cu, ca SC12 pass ca hai). Full reactor 560/560.
+Chua do lai bo danh gia; ket luan "SC12/SC06 khong doi" suy tu payload trong evaluate.py va replay SC06.
+Van de goc giu lai:
 Problem: 9 luật YAML, 9 luật hard-code trong `RcaService` (986 dòng). Thêm luật cho hệ
 mới có khi phải sửa Java.
 Expected: mọi luật khai báo được, hoặc ranh giới rõ giữa "luật domain-independent trong

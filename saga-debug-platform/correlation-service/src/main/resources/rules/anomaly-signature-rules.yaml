@@ -6,7 +6,8 @@
 #
 # A rule belongs here when a set of anomaly types is its ENTIRE condition. The other nine
 # rules stay as methods in RcaService because they need something this format cannot say:
-# the content of a payload (R01), the saga's current status (R06, R14, R21), arithmetic
+# the source's failure text read through its failure-signals declaration (R01, R23, and
+# R02's evidence tier), the saga's current status (R06, R14, R21), arithmetic
 # over timestamps against a workflow threshold (R05), the absence of an event the spec
 # requires (R10, R11), or evidence computed from the anomaly set (R20). See the class
 # comment on AnomalySignatureRule.

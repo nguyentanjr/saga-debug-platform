@@ -25,7 +25,9 @@ failureSignals:
 
   # PaymentFailedEvent carries it as `reason`. Listed rather than fixed so a version that
   # renames the field is a declaration change, not a code change.
-  reasonFields: [reason, failureReason, errorMessage]
+  # PaymentRetryEvent carries the retried exception as `lastException`
+  # ("<ExceptionClass>: <message>", Resilience4jRetryListenerConfig), read by R02.
+  reasonFields: [reason, failureReason, errorMessage, lastException]
 
   signals:
     # Resilience4j's CallNotPermittedException message. This is the source reporting
@@ -38,3 +40,10 @@ failureSignals:
     # says nothing about a breaker should still yield the conclusion its evidence supports.
     RETRY_EXHAUSTED:
       - "retry exhausted"
+
+    # Read from retry events by R02. Java's own exception class names as this system
+    # reports them; a source in another language declares its own. Before L3 the core
+    # searched every retry payload for "timeout" itself.
+    CALL_TIMED_OUT:
+      - "TimeoutException"
+      - "timed out"

@@ -36,5 +36,15 @@ public enum FailureSignal {
      * such a run yields the conclusion its evidence supports rather than no conclusion
      * at all.
      */
-    RETRY_EXHAUSTED
+    RETRY_EXHAUSTED,
+
+    /**
+     * The failing call timed out, as the source words it.
+     *
+     * <p>Read from retry events by R02, which used to scan the whole retry payload for the
+     * substring {@code "timeout"} and promote a retry storm to STRONG on a hit — the same
+     * compiled-in reading of one library's phrasing that F4 removed from R01, and blind to a
+     * field name or an unrelated value that merely contains the word (L3).
+     */
+    CALL_TIMED_OUT
 }
