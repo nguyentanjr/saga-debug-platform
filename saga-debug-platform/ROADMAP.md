@@ -694,6 +694,34 @@ tu them vao `claims.yaml` vi tu vung da khoa 2026-09-21 — can quyet dinh rieng
 
 ---
 
+**S1 — Do lai tap `synthetic` (17 kich ban inject) tren build hien tai — 2026-09-28/29** · Priority: cao
+Lan dau do lai ca tap tu L-10 (KLTN_STATUS). A/B voi build `93ac939` (truoc L1-L3/L5): **17/17 giong het**,
+10/17 dung (58.8 %) — thay doi L1/L2/L3/L5 khong doi ket qua. 7 kich ban sai la co tu truoc; da truy tung ca:
+- **F16 — SC13**: event sau terminal bi ghi hai claim (FORBIDDEN_POST_TERMINAL va INVALID_TRANSITION), R12
+  thang nho vi tri buoc. Da sua `judgeTransitions` bo cap co event sau ket thuc (`EvidenceTimeline.isAfterEnding`,
+  cung chung minh voi `postTerminal()`). Test 24 hoan vi + sua 4 test cu (L21/L22: ket luan do thi giu o
+  `WorkflowSpecTest`, tang run gio la FORBIDDEN_POST_TERMINAL). Do live: SC13 0/2 -> 2/2, 16 kich ban khac khong doi.
+- **F18 — SC21**: sau F16, R24 lai trich PAYMENT_FAILED xay ra sau khi run da COMPLETED va thang cung cach.
+  R24 va R01/R23 bo qua event FAILED sau ket thuc. Test `CompensationAnchorTest` (fail tren code cu).
+- **F17 — SC23, SC24**: R10/R11 khong trich event nao -> khong co anchor -> thua moi ung vien co anchor bat ke
+  severity. R10 trich yeu cau bu tru chua duoc xac nhan; R11 trich event FAILED cua buoc thuan. Test 2 (fail
+  tren code cu). Tap 27 luot chinh thuc: R10/R11/R12 chi xuat hien o SC02 va la ung vien duy nhat -> suy ra
+  headline khong doi (tu tap ung vien da ghi, chua do live).
+- **Harness — SC14, SC26**: `evaluate.py` dat traceId trong payload; tu ed06917 detector khong mo payload nua,
+  `inject-event` doc truong `traceId` rieng -> khong event nao co trace, MISSING_TRACE_CONTEXT khong the bat.
+  Da sua harness gui traceId o truong rieng (loi do luong, khong phai loi platform).
+- **SC10 — nhan loi thoi, khong sua platform**: ORDER_CREATED -> INVENTORY_RESERVED (thieu payment) theo thiet
+  ke hien tai la THIEU QUAN SAT, khong phai chuyen buoc sai (`aMissingIntermediateObservationRaisesNoInvalidTransition`).
+  Ky vong INVALID_TRANSITION cua kich ban mau thuan voi quyet dinh do. Can quyet dinh rieng: doi kich ban (vd.
+  mot buoc di lui that) hay giu va ghi ro. Khong tu doi nhan (khong lam dep so).
+- **SC24 — du lieu kich ban tu chua mot STEP_TIMEOUT that, khong sua platform**: sau F17, R11 neo dung o
+  INVENTORY_FAILED, nhung ORDER_CREATED (T-80s) -> PAYMENT_COMPLETED (T-60s) la 20s > 10s timeout cua
+  PROCESS_PAYMENT, nen R07 neo som hon va thang. Platform bao dung su that co trong du lieu; khoang tre do
+  khong phai y do cua D5. Can quyet dinh rieng co sua timestamp kich ban hay khong (khong tu sua).
+Ket qua sau F16-F18 + sua harness: **15/17 (88.2 %)**, con SC10 va SC24 (ca hai la van de kich ban o tren).
+Artefact: `results/evaluation_report_synthetic_{baseline_93ac939_20260928,post_l3_20260928,post_f16_20260929,post_f18_20260929}.json`.
+Tap synthetic van KHONG gop vao headline (chi kiem ngu nghia luat).
+
 ## NEXT (con lai)
 
 *(trong — N1 va N3 da xong; nhung muc khac nam o LATER)*
