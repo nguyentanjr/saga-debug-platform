@@ -130,12 +130,12 @@ status/startTime/endTime.
 | Tập | Nội dung | Dùng để làm gì |
 |---|---|---|
 | **Chính thức** | 10 kịch bản `real`, 27 lượt, live ingestion | **Con số headline của luận văn** |
-| **Bổ sung `synthetic`** | SC09 (2/2), SC20 (2/2), SC05 (1/2 ở lượt gần nhất) | Kiểm ngữ nghĩa, **không** phải phép đo độ chính xác |
+| **Bổ sung `synthetic`** | 17 kịch bản inject, đo lại cả tập 2026-09-29: **15/17** (SC10, SC24 sai do chính kịch bản — xem L-10) | Kiểm ngữ nghĩa luật, **không** phải phép đo độ chính xác |
 | **Liên hệ thống** | 3 repo Saga ngoài; trên `kafka-microservices-with-saga`: 11 execution live, 2 lượt backlog, 3 lượt replay reset offset | Bằng chứng **tổng quát** và **độc lập thứ tự**; **không** gộp vào con số chính thức |
 
-Phương pháp luận KLTN định nghĩa dataset chính thức là `--repro real`. 18 kịch bản
-`synthetic` **chưa được đo lại như một tập** trên build hiện tại (chỉ 3 kịch bản kiểm
-riêng). Không được trích số của cả nhóm `synthetic`.
+Phương pháp luận KLTN định nghĩa dataset chính thức là `--repro real`. Tập `synthetic` đã
+được đo lại như một tập (L-10), nhưng vẫn là kiểm ngữ nghĩa luật trên event bơm tay, **không**
+được trích như độ chính xác của hệ.
 
 ---
 
@@ -369,10 +369,14 @@ live. **Chưa sửa.**
 
 **L-9 · Compensation retry mới phủ ở mức `DUPLICATE_COMPENSATION`.**
 
-**L-10 · 18 kịch bản `synthetic` chưa đo lại như một tập.**
-Chỉ 3 kịch bản được kiểm riêng (SC09, SC20, SC05). Nhiều kịch bản còn lại bơm event với
-timestamp lùi quá khứ (`ts_ago`), mà `SAGA_STUCK` nay đo từ `receivedAt` — kỳ vọng của
-chúng có thể đã lỗi thời. **Không được trích số của cả nhóm `synthetic`.**
+**L-10 · Tập `synthetic` — ĐÃ ĐO LẠI 2026-09-28/29 (ROADMAP S1).**
+17 kịch bản chạy được với `--no-toxiproxy`. Lần đo đầu: 10/17, **giống hệt** build trước
+L1–L5 (A/B). Truy từng ca sai tìm ra ba lỗi platform thật (F16 event hậu-terminal bị phán
+thêm là chuyển bước sai; F17 R10/R11 không có anchor; F18 R24 trích event FAILED sau khi run
+kết thúc) và một lỗi harness (traceId đặt sai chỗ). Sau sửa: **15/17**. Còn SC10 (kỳ vọng
+mâu thuẫn quyết định "thiếu quan sát ≠ chuyển bước sai") và SC24 (timestamp kịch bản tự tạo
+một STEP_TIMEOUT thật) — cả hai là vấn đề kịch bản, chưa quyết định sửa. Tập `real` đo lại
+sau các sửa: 74.1 %, trùng khớp từng kịch bản với lượt settled.
 
 **L-11 · FP-2 `STATE_REGRESSION` — ĐÃ SỬA (commit `90e55e1`).**
 Triệu chứng cũ: `STATE_REGRESSION` là claim loại `OCCURRENCE` nên **không thu hồi được**,
