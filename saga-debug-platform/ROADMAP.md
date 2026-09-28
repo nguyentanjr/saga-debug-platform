@@ -1027,22 +1027,27 @@ Khong lam DLQ topic: Kafka duy nhat observer doc la cua he nguon, tao topic/prod
 cua ho (ADR 0001). Bang dead-letter trong DB observer hong dung luc can (DB sap).
 Test: `KafkaErrorHandlingConfigTest` (+3): phan loai loi; backoff store khong dung sau ~55h mo phong,
 loi record dung trong 30-80s (fail tren code cu); handler seek lai offset khi store sap, bo qua record
-loi. Full reactor 550/550. Chua kiem chung live (tat Postgres > 1 phut roi bat lai).
+loi. Full reactor 550/550.
+Live 2026-09-28 (demo-postgres + demo-kafka): tat Postgres ~4 phut, 20 ORDER_CREATED vao order-created;
+observer log "holding ... offset=29", 0 dong "Giving up"; bat lai -> 20/20 vao saga_events. Lan hai
+(sau sua L2) them 20 nua, tong 40/40. Du lieu thu L1LIVE-1..40 con trong correlation_db demo.
 Con lai: record loi khong phai store van chi con trong log (kem redaction L14).
 Problem: hết retry (backoff ~60s) thì log ERROR và bỏ qua; mất sự kiện khi DB xuống lâu.
 Expected: dead-letter topic, replay được.
 
 **L2 — Consumer lag / backpressure — DA SUA 2026-09-28 (phan lag; backpressure HTTP chua)** · Priority: trung bình
-Da sua: `KafkaClusterListeners.backlog()` cong metric `records-lag` theo tung partition cua Kafka client
-(bo `records-lag-max` vi la max theo cua so; NaN = chua fetch, khong tinh la 0). Gauge
+Da sua: `KafkaClusterListeners.backlog()` = log-end offset - offset DA COMMIT, doc bang admin client
+(chi describe, khong ghi len cluster nguon), cong tren moi partition cua moi cluster. Gauge
 `correlation.kafka.backlog` (/actuator/metrics) va health component `ingestionBacklog`: UNKNOWN khi chua
-do duoc, LAGGING khi vuot `correlation.kafka.backlog-warning-threshold` (mac dinh 10000) — khong keo
-service DOWN, vi dung doc moi la cach duy nhat giam lag. Lien quan L1: khi giu offset luc DB sap, day la
-tin hieu cho thay ingestion dang dung.
-Test: `IngestionBacklogTest` (3). Full reactor 553/553. Chua kiem chung live. Nguong 10000 la gia tri chon,
-chua do tren tai that. HTTP ingest van chi co `MAX_BATCH=1000`.
-Problem: không đo lag, không có giới hạn ngoài `MAX_BATCH=1000` của HTTP.
-Expected: metric lag và ngưỡng cảnh báo.
+doc duoc offset commit, LAGGING khi vuot `correlation.kafka.backlog-warning-threshold` (mac dinh 10000)
+— khong keo service DOWN, vi dung doc moi la cach duy nhat giam lag.
+Ban dau (80e5dd8) dung metric `records-lag` cua Kafka client — SAI, phat hien khi kiem chung live: metric
+do theo vi tri fetch, nen partition bi giu o offset 29 voi 20 record phia sau (lag commit that = 20, xac
+nhan bang kafka-consumer-groups) van bao 0 — dung ca ma no ton tai de bat.
+Live sau sua (nguong 5): DB sap -> backlog 20, LAGGING o 20s/60s/100s; DB len -> 0, UP.
+Test: `IngestionBacklogTest` (3, ca "giu o 29, end 49" lay tu lan do live). Full reactor 553/553.
+Nguong 10000 la gia tri chon, chua do tren tai that. Partition chua tung commit khong duoc tinh.
+HTTP ingest van chi co `MAX_BATCH=1000`.
 
 **L3 — Luật RCA còn một nửa nằm trong Java** · Priority: trung bình
 Problem: 9 luật YAML, 9 luật hard-code trong `RcaService` (986 dòng). Thêm luật cho hệ

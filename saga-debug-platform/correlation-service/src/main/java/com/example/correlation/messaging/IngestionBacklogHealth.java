@@ -53,7 +53,7 @@ public class IngestionBacklogHealth implements HealthIndicator {
     public Health health() {
         Long value = backlog.get();
         if (value == null) {
-            return Health.unknown().withDetail("reason", "no consumer has fetched yet").build();
+            return Health.unknown().withDetail("reason", "no committed offsets could be read").build();
         }
         return Health.status(value > threshold ? LAGGING : Status.UP)
                 .withDetail("backlog", value)

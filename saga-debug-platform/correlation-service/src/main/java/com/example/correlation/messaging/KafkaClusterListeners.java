@@ -1,11 +1,19 @@
 package com.example.correlation.messaging;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.OffsetSpec;
+import org.apache.kafka.common.TopicPartition;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -57,6 +65,7 @@ public class KafkaClusterListeners implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(KafkaClusterListeners.class);
 
     private final List<ConcurrentMessageListenerContainer<String, String>> containers = new ArrayList<>();
+    private final List<ConsumerGroup> groups = new ArrayList<>();
     private volatile boolean running;
 
     public KafkaClusterListeners(KafkaProperties kafkaProperties,
@@ -65,6 +74,7 @@ public class KafkaClusterListeners implements SmartLifecycle {
                                  CommonErrorHandler errorHandler) {
         for (KafkaSourceProperties.Cluster cluster : declaredClusters(kafkaProperties, sourceProperties)) {
             containers.add(containerFor(kafkaProperties, cluster, consumer, errorHandler));
+            groups.add(groupFor(kafkaProperties, cluster));
         }
     }
 
@@ -116,6 +126,14 @@ public class KafkaClusterListeners implements SmartLifecycle {
         return usable;
     }
 
+    private static ConsumerGroup groupFor(KafkaProperties kafkaProperties, KafkaSourceProperties.Cluster cluster) {
+        Map<String, Object> admin = kafkaProperties.buildAdminProperties(null);
+        admin.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapServers());
+        String groupId = cluster.getGroupId() != null && !cluster.getGroupId().isBlank()
+                ? cluster.getGroupId() : kafkaProperties.getConsumer().getGroupId();
+        return new ConsumerGroup(admin, groupId);
+    }
+
     private static ConcurrentMessageListenerContainer<String, String> containerFor(
             KafkaProperties kafkaProperties, KafkaSourceProperties.Cluster cluster,
             SagaEventConsumer consumer, CommonErrorHandler errorHandler) {
@@ -154,37 +172,78 @@ public class KafkaClusterListeners implements SmartLifecycle {
     }
 
     /**
-     * Records published but not yet read, summed over every partition of every cluster —
-     * how far ingestion is behind the systems it observes. Taken from the Kafka client's
-     * own per-partition {@code records-lag} metric; null while no consumer has fetched yet,
-     * because "not measured" is not the same as "caught up".
+     * Records published but not yet processed, summed over every partition the observer's
+     * groups have committed on — how far ingestion is behind the systems it observes.
+     *
+     * <p>Log-end offset minus <em>committed</em> offset, read with an admin client (describe
+     * only; nothing is written to the observed cluster). Not the consumer's own
+     * {@code records-lag} metric: that is measured against the fetch position, which moves
+     * as soon as records are handed to the listener. Measured live during a store outage,
+     * a partition held at offset 29 with 20 records behind it reported {@code records-lag}
+     * 0 — the one situation this number exists to reveal.
+     *
+     * @return null when no cluster could be measured, because "not measured" is not
+     *         "caught up"
      */
     public Long backlog() {
         Long total = null;
-        for (ConcurrentMessageListenerContainer<String, String> container : containers) {
-            Long lag = backlogOf(container.metrics());
+        for (ConsumerGroup group : groups) {
+            Long lag = group.backlog();
             if (lag != null) total = (total == null ? 0 : total) + lag;
         }
         return total;
     }
 
-    static Long backlogOf(Map<String, ? extends Map<org.apache.kafka.common.MetricName,
-            ? extends org.apache.kafka.common.Metric>> metricsByClient) {
-        Long total = null;
-        for (Map<org.apache.kafka.common.MetricName, ? extends org.apache.kafka.common.Metric> metrics
-                : metricsByClient.values()) {
-            for (var entry : metrics.entrySet()) {
-                org.apache.kafka.common.MetricName name = entry.getKey();
-                // records-lag carries a partition tag; the client-wide records-lag-max does not
-                // and is a windowed maximum, not a backlog.
-                if (!"records-lag".equals(name.name()) || !name.tags().containsKey("partition")) continue;
-                if (!(entry.getValue().metricValue() instanceof Number n)) continue;
-                double value = n.doubleValue();
-                if (Double.isNaN(value) || value < 0) continue;
-                total = (total == null ? 0 : total) + (long) value;
-            }
+    /** Sum of end minus committed over the partitions that have both; a partition never committed on is not counted. */
+    static Long backlogOf(Map<TopicPartition, Long> committed, Map<TopicPartition, Long> ends) {
+        if (committed.isEmpty()) return null;
+        long total = 0;
+        for (Map.Entry<TopicPartition, Long> entry : committed.entrySet()) {
+            Long end = ends.get(entry.getKey());
+            if (end != null) total += Math.max(0, end - entry.getValue());
         }
         return total;
+    }
+
+    /** One cluster's consumer group, measured on demand with a lazily created admin client. */
+    private static final class ConsumerGroup {
+        private final Map<String, Object> adminProperties;
+        private final String groupId;
+        private Admin admin;
+
+        ConsumerGroup(Map<String, Object> adminProperties, String groupId) {
+            this.adminProperties = adminProperties;
+            this.groupId = groupId;
+        }
+
+        synchronized Long backlog() {
+            if (groupId == null) return null;
+            try {
+                if (admin == null) admin = Admin.create(adminProperties);
+                Map<TopicPartition, Long> committed = new HashMap<>();
+                admin.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata()
+                        .get(5, TimeUnit.SECONDS)
+                        .forEach((tp, om) -> { if (om != null) committed.put(tp, om.offset()); });
+                if (committed.isEmpty()) return null;
+                Map<TopicPartition, OffsetSpec> latest = new HashMap<>();
+                committed.keySet().forEach(tp -> latest.put(tp, OffsetSpec.latest()));
+                Map<TopicPartition, Long> ends = new HashMap<>();
+                admin.listOffsets(latest).all().get(5, TimeUnit.SECONDS)
+                        .forEach((tp, info) -> ends.put(tp, info.offset()));
+                return backlogOf(committed, ends);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } catch (Exception e) {
+                log.debug("Could not measure backlog of group {}: {}", groupId, e.toString());
+                return null;
+            }
+        }
+
+        synchronized void close() {
+            if (admin != null) admin.close(Duration.ofSeconds(5));
+            admin = null;
+        }
     }
 
     /** How many containers are live; the count a deployment can check against what it declared. */
@@ -201,6 +260,7 @@ public class KafkaClusterListeners implements SmartLifecycle {
     @Override
     public void stop() {
         containers.forEach(ConcurrentMessageListenerContainer::stop);
+        groups.forEach(ConsumerGroup::close);
         running = false;
     }
 
