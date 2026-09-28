@@ -988,6 +988,9 @@ trang thai saga (dinh nghia trung o saga-list va saga-detail, cung mau) len `sty
 `rca-status-*`) truoc khi bo. 7.67 kB -> 6.68 kB; `ng build` pass. Phan con lai la style dang dung;
 khong nang budget chi de tat canh bao (dung Expected). Cac mau `dot-order/payment/inventory-service`
 gan cung ten service demo — he khac khong co mau rieng; chua doi vi la doi giao dien.
+2026-09-29: da doi — mau cham timeline suy tu ten service (bam vao bang 8 mau, `serviceColor()`), bo 3 rule
+gan ten service demo. Kiem tren trinh duyet (run SC02 that): order/payment/inventory ba mau khac nhau,
+cung service cung mau. 6.68 kB -> 6.57 kB, con vuot 585 B; `ng build` pass. Dashboard khong co spec nao.
 Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budget
 6 kB; production build van pass, chua vuot error budget 10 kB. CSS khong doi trong F7.
 Expected: ra soat CSS lap/khong dung khi lam task dashboard; khong tang budget chi

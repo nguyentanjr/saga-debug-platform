@@ -4,6 +4,9 @@ import { Subscription, interval } from 'rxjs';
 import { SagaService } from '../../services/saga.service';
 import { Evidence, RcaCandidate, RcaResult, SagaDetail } from '../../models/saga.model';
 
+/** Mid-tone colours that all keep a white icon legible. */
+const SERVICE_PALETTE = ['#3f51b5', '#4caf50', '#ff9800', '#9c27b0', '#00897b', '#e91e63', '#5d4037', '#1e88e5'];
+
 @Component({
   selector: 'app-saga-detail',
   templateUrl: './saga-detail.component.html',
@@ -133,6 +136,20 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   extractLink(text: string): string {
     const match = text.match(/https?:\/\/[^\s,]+/);
     return match ? match[0] : '';
+  }
+
+  /**
+   * A colour per service, derived from its name, so the timeline tells services apart for any
+   * observed system. It used to be three CSS rules named after the demo's services; every other
+   * system's events all shared one default colour.
+   */
+  serviceColor(serviceName?: string | null): string | null {
+    if (!serviceName) return null;
+    let hash = 0;
+    for (let i = 0; i < serviceName.length; i++) {
+      hash = (hash * 31 + serviceName.charCodeAt(i)) | 0;
+    }
+    return SERVICE_PALETTE[Math.abs(hash) % SERVICE_PALETTE.length];
   }
 
   getStatusClass(status: string): string {

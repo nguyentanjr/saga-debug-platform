@@ -73,7 +73,7 @@
     <mat-card-content>
       <div class="timeline">
         <div class="timeline-item" *ngFor="let event of saga.events; let i = index">
-          <div class="timeline-dot" [ngClass]="'dot-' + event.serviceName">
+          <div class="timeline-dot" [style.background-color]="serviceColor(event.serviceName)">
             <mat-icon>{{ getEventIcon(event.eventType) }}</mat-icon>
           </div>
           <div class="timeline-content">

@@ -144,8 +144,7 @@
   align-items: center;
   justify-content: center;
   z-index: 1;
-  /* Any service without its own colour below — every system but the demo — would
-     otherwise get a transparent dot behind a white icon, i.e. no icon at all. */
+  /* Overridden per service by serviceColor(); this is for an event with no service name. */
   background-color: #607d8b;
 }
 
@@ -156,9 +155,6 @@
   color: white;
 }
 
-.dot-order-service { background-color: #3f51b5; }
-.dot-payment-service { background-color: #4caf50; }
-.dot-inventory-service { background-color: #ff9800; }
 
 .timeline-content {
   flex: 1;
