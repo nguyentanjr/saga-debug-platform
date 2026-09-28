@@ -921,8 +921,13 @@ public class RcaService {
             CandidateAssessment rr = candidate("COMPENSATION_STEP_FAILURE", "HIGH", "R10",
                     CandidateStatus.STRONG_EVIDENCE);
             String startedTypes = eventTypes(started);
-            rr.getEvidence().add(evidence(
-                    "Compensation started (" + startedTypes + ") but never acknowledged"));
+            // Cites the requests that went unanswered. Without event ids this candidate had
+            // no anchor and ranked below any anchored one whatever its severity -- SC23 lost
+            // to the duplicate delivery of the very request it is about.
+            rr.getEvidence().add(Evidence.of(
+                    "Compensation started (" + startedTypes + ") but never acknowledged",
+                    null, "the compensation reports its declared completion event", null,
+                    eventIds(started)));
             rr.getEvidence().add(evidence("Saga status: " + saga.getStatus()));
             // Fires as soon as the saga enters COMPENSATING, which is the same event that
             // starts the compensation, so a compensation still within its budget looks
@@ -982,8 +987,17 @@ public class RcaService {
         if (saga.getStatus() == SagaStatus.COMPENSATED && !started.isEmpty() && !completed.isEmpty()) {
             CandidateAssessment rr = candidate("FORWARD_STEP_FAILURE", "LOW", "R11",
                     CandidateStatus.STRONG_EVIDENCE);
-            rr.getEvidence().add(evidence("Compensation completed: "
-                    + eventTypes(started) + " -> " + eventTypes(completed)));
+            // The forward failure the compensation answered is this claim's subject, so it is
+            // what the candidate is anchored at; unanchored, R11 ranked below every anchored
+            // symptom of the rollback itself (SC24).
+            forwardFailures(workflow, events).stream().findFirst().ifPresent(failed ->
+                    rr.getEvidence().add(Evidence.ofEvent(
+                            failed.getEventType() + " is the forward step's declared failure",
+                            null, "the step reports its declared completion event",
+                            failed.getEventId())));
+            rr.getEvidence().add(Evidence.of("Compensation completed: "
+                    + eventTypes(started) + " -> " + eventTypes(completed), null, null, null,
+                    eventIds(completed)));
             rr.getEvidence().add(evidence("Saga status: COMPENSATED"));
             if (saga.getStartTime() != null && saga.getEndTime() != null) {
                 rr.getEvidence().add(evidence(
@@ -1124,6 +1138,21 @@ public class RcaService {
                     "Weak evidence only; treat " + rootCause + " as a fallback hypothesis.");
         }
         return candidate;
+    }
+
+    private static List<String> eventIds(List<SagaEvent> events) {
+        return events.stream().map(SagaEvent::getEventId).filter(Objects::nonNull).toList();
+    }
+
+    /** Declared FAILED events of forward (non-compensation) steps. */
+    private static List<SagaEvent> forwardFailures(WorkflowSpec workflow, List<SagaEvent> events) {
+        if (workflow == null) return List.of();
+        return events.stream()
+                .filter(e -> workflow.classifyEvent(e.getEventType())
+                        .filter(role -> role.role() == WorkflowSpec.EventRole.Role.FAILED
+                                && !workflow.isCompensationStep(role.stepId()))
+                        .isPresent())
+                .toList();
     }
 
     private Evidence evidence(String fact) {
