@@ -721,6 +721,9 @@ Lan dau do lai ca tap tu L-10 (KLTN_STATUS). A/B voi build `93ac939` (truoc L1-L
 Ket qua sau F16-F18 + sua harness: **15/17 (88.2 %)**, con SC10 va SC24 (ca hai la van de kich ban o tren).
 Artefact: `results/evaluation_report_synthetic_{baseline_93ac939_20260928,post_l3_20260928,post_f16_20260929,post_f18_20260929}.json`.
 Tap synthetic van KHONG gop vao headline (chi kiem ngu nghia luat).
+Tap `real` do live sau F16-F18 (2026-09-29, `results/evaluation_report_real_post_f18_20260929.json`): **74.1 %
+lenient / 74.1 % strict, tung kich ban trung khop** `evaluation_report_settled_20260921.json` (SC04/16/17 0 %,
+SC06 66.7 %, con lai 100 %). Du doan "headline khong doi" da duoc do, khong con la suy luan.
 
 ## NEXT (con lai)
 
