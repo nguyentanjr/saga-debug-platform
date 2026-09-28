@@ -1017,7 +1017,18 @@ Phan oracle da dinh chinh trong 963d4b6: B duoc ghi la dien giai da khai bao,
 khong phai phep do. Phan doi ten/suggestion R07 van LATER, chua implement;
 khong la dieu kien dong task oracle L10/L11.
 
-**L1 — DLQ cho Kafka** · Priority: trung bình
+**L1 — DLQ cho Kafka — DA SUA 2026-09-28 (khong DLQ; giu offset khi store sap)** · Priority: trung bình
+Da sua goc: su kien mat vi loi cua CHINH observer (DB khong vao duoc) bi doi xu nhu loi cua record.
+`KafkaErrorHandlingConfig.backOffFor`: loi store (TransientDataAccess, DataAccessResourceFailure,
+CannotCreateTransaction, SQLTransient/SQLRecoverable trong chuoi cause) thu lai khong gioi han, backoff
+tran 20s — offset khong commit, Kafka giu record, tu chay tiep khi DB ve. Loi khac giu ~60s roi log
+va bo qua nhu cu, de mot record hong khong chan ca partition.
+Khong lam DLQ topic: Kafka duy nhat observer doc la cua he nguon, tao topic/produce la ghi len ha tang
+cua ho (ADR 0001). Bang dead-letter trong DB observer hong dung luc can (DB sap).
+Test: `KafkaErrorHandlingConfigTest` (+3): phan loai loi; backoff store khong dung sau ~55h mo phong,
+loi record dung trong 30-80s (fail tren code cu); handler seek lai offset khi store sap, bo qua record
+loi. Full reactor 550/550. Chua kiem chung live (tat Postgres > 1 phut roi bat lai).
+Con lai: record loi khong phai store van chi con trong log (kem redaction L14).
 Problem: hết retry (backoff ~60s) thì log ERROR và bỏ qua; mất sự kiện khi DB xuống lâu.
 Expected: dead-letter topic, replay được.
 

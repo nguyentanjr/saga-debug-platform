@@ -18,11 +18,24 @@ import org.springframework.util.backoff.ExponentialBackOff;
  * brief connection-pool exhaustion burns every attempt in well under a second and the
  * event is dropped anyway.
  *
- * <p>The backoff below spans roughly a minute, which covers the outages that actually
- * occur here. Beyond that the record is logged in full at ERROR and the offset moves
- * on: without a dead-letter topic there is nowhere else to put it, and blocking the
- * partition forever would stall every other saga on it. The log line carries topic,
- * partition and offset so the record can be replayed by hand.
+ * <p>Two kinds of failure get two policies (L1):
+ * <ul>
+ *   <li><b>The observer's own store is unreachable</b> ({@link #storeUnavailable}). Nothing
+ *   about the record is wrong, and every other record on the partition would fail the
+ *   same way, so skipping it buys no progress and loses the event. Those are retried
+ *   without an end, backoff capped at 20s: the offset is not committed, Kafka keeps the
+ *   record, and ingestion resumes by itself when the database returns. This used to give
+ *   up after a minute, which turned any outage longer than that into silent data loss.</li>
+ *   <li><b>Anything else</b> is a fault in this record's processing and may recur forever.
+ *   It keeps the bounded backoff (~1 min), then is logged in full at ERROR with topic,
+ *   partition and offset so it can be replayed by hand, and the offset moves on so one
+ *   record cannot stall every other saga on its partition.</li>
+ * </ul>
+ *
+ * <p>No dead-letter topic: the only Kafka the observer reads is the observed system's,
+ * and creating topics or producing there is a write to their infrastructure (ADR 0001).
+ * A dead-letter table in the observer's own database fails precisely in the outage that
+ * matters, which the unbounded retry above already covers.
  */
 @Configuration
 public class KafkaErrorHandlingConfig {
@@ -31,24 +44,61 @@ public class KafkaErrorHandlingConfig {
 
     @Bean
     public DefaultErrorHandler kafkaErrorHandler(SourceMappingRegistry mappings) {
-        ExponentialBackOff backOff = new ExponentialBackOff(500L, 2.0);
-        backOff.setMaxInterval(20_000L);
-        backOff.setMaxElapsedTime(60_000L);
-
         DefaultErrorHandler handler = new DefaultErrorHandler((record, exception) ->
                 log.error("Giving up on record after retries — topic={} partition={} offset={} "
                                 + "key={} value={}. This event is NOT stored; replay it manually "
                                 + "if the saga matters.",
                         record.topic(), record.partition(), record.offset(),
                         record.key(), valueForLog(record, mappings), exception),
-                backOff);
+                bounded());
 
         // A record that cannot be deserialized will fail identically on every attempt.
         handler.addNotRetryableExceptions(
                 com.fasterxml.jackson.core.JsonProcessingException.class,
                 IllegalArgumentException.class);
 
+        handler.setBackOffFunction((record, exception) -> {
+            if (storeUnavailable(exception)) {
+                log.warn("Observer store unavailable; holding topic={} partition={} offset={} "
+                                + "until it returns: {}",
+                        record.topic(), record.partition(), record.offset(), exception.toString());
+            }
+            return backOffFor(exception);
+        });
+
         return handler;
+    }
+
+    private static final long MAX_INTERVAL_MS = 20_000L;
+
+    /** How long a record that failed this way is retried before it is given up. */
+    static ExponentialBackOff backOffFor(Exception exception) {
+        ExponentialBackOff backOff = new ExponentialBackOff(500L, 2.0);
+        backOff.setMaxInterval(MAX_INTERVAL_MS);
+        if (!storeUnavailable(exception)) backOff.setMaxElapsedTime(60_000L);
+        return backOff;
+    }
+
+    private static ExponentialBackOff bounded() {
+        return backOffFor(new RuntimeException());
+    }
+
+    /**
+     * Whether the failure says the observer's database could not be reached or could not
+     * take the write right now, as opposed to something about this record. Walks the cause
+     * chain because the container wraps what the listener threw.
+     */
+    static boolean storeUnavailable(Throwable exception) {
+        for (Throwable t = exception; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof org.springframework.dao.TransientDataAccessException
+                    || t instanceof org.springframework.dao.DataAccessResourceFailureException
+                    || t instanceof org.springframework.transaction.CannotCreateTransactionException
+                    || t instanceof java.sql.SQLTransientException
+                    || t instanceof java.sql.SQLRecoverableException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
