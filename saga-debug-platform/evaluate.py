@@ -439,6 +439,12 @@ def admin_inject(saga_id, event_type, step_name="UNKNOWN", service_name="test",
         "serviceName": service_name,
         "payload": json.dumps(payload or {}),
     }
+    # The trace id travels in inject-event's own field, which is what the observer reads.
+    # It used to ride only inside the payload; since ed06917 the detector no longer scans
+    # payloads for a field it was never told about, so SC14/SC26 carried no trace at all
+    # and MISSING_TRACE_CONTEXT could not fire (measured 2026-09-28, 0/4).
+    if isinstance(payload, dict) and payload.get("traceId"):
+        body["traceId"] = payload["traceId"]
     if event_id:
         body["eventId"] = event_id
     if timestamp:
