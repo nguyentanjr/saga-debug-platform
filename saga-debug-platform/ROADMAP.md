@@ -1031,6 +1031,12 @@ loi. Full reactor 550/550.
 Live 2026-09-28 (demo-postgres + demo-kafka): tat Postgres ~4 phut, 20 ORDER_CREATED vao order-created;
 observer log "holding ... offset=29", 0 dong "Giving up"; bat lai -> 20/20 vao saga_events. Lan hai
 (sau sua L2) them 20 nua, tong 40/40. Du lieu thu L1LIVE-1..40 con trong correlation_db demo.
+Su co do chinh lan kiem chung nay gay ra (2026-09-28): 40 event L1LIVE duoc ban thang vao `order-created`,
+topic payment-service cung tieu thu. Deserializer co kieu cua payment-service kep vinh vien o offset 29
+(poison pill), moi saga demo sau do dung o IN_PROGRESS; preflight cua evaluate.py bat duoc. Da go bang
+reset offset group `payment-service-group` qua dung cac record L1LIVE (p0 -> 49, p2 -> 51), khong dong
+record that. Lan sau: event thu cho observer phai vao topic khop `topic-pattern` nhung khong he nao tieu
+thu (vd. `order-observer-probe`).
 Con lai: record loi khong phai store van chi con trong log (kem redaction L14).
 Problem: hết retry (backoff ~60s) thì log ERROR và bỏ qua; mất sự kiện khi DB xuống lâu.
 Expected: dead-letter topic, replay được.

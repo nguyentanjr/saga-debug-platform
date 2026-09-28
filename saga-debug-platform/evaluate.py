@@ -60,7 +60,7 @@ PLATFORM_URL    = "http://localhost:8084"
 # observer's container reads. Unset -> inject-event answers 503.
 INGEST_HEADERS  = ({"Authorization": f"Bearer {os.environ['CORRELATION_INGEST_TOKEN']}"}
                    if os.environ.get("CORRELATION_INGEST_TOKEN") else {})
-INVENTORY_URL   = "http://localhost:8083"
+INVENTORY_URL   = os.environ.get("INVENTORY_URL", "http://localhost:8083")
 
 RESULTS_DIR     = "results"
 N_RUNS          = 5
