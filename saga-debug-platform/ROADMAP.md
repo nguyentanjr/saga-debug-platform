@@ -1032,7 +1032,15 @@ Con lai: record loi khong phai store van chi con trong log (kem redaction L14).
 Problem: hết retry (backoff ~60s) thì log ERROR và bỏ qua; mất sự kiện khi DB xuống lâu.
 Expected: dead-letter topic, replay được.
 
-**L2 — Consumer lag / backpressure** · Priority: trung bình
+**L2 — Consumer lag / backpressure — DA SUA 2026-09-28 (phan lag; backpressure HTTP chua)** · Priority: trung bình
+Da sua: `KafkaClusterListeners.backlog()` cong metric `records-lag` theo tung partition cua Kafka client
+(bo `records-lag-max` vi la max theo cua so; NaN = chua fetch, khong tinh la 0). Gauge
+`correlation.kafka.backlog` (/actuator/metrics) va health component `ingestionBacklog`: UNKNOWN khi chua
+do duoc, LAGGING khi vuot `correlation.kafka.backlog-warning-threshold` (mac dinh 10000) — khong keo
+service DOWN, vi dung doc moi la cach duy nhat giam lag. Lien quan L1: khi giu offset luc DB sap, day la
+tin hieu cho thay ingestion dang dung.
+Test: `IngestionBacklogTest` (3). Full reactor 553/553. Chua kiem chung live. Nguong 10000 la gia tri chon,
+chua do tren tai that. HTTP ingest van chi co `MAX_BATCH=1000`.
 Problem: không đo lag, không có giới hạn ngoài `MAX_BATCH=1000` của HTTP.
 Expected: metric lag và ngưỡng cảnh báo.
 

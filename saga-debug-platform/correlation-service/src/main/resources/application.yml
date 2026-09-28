@@ -83,12 +83,20 @@ correlation:
     # both carry `order-created`, and a mapping that did not say which one it meant would
     # file two systems' runs under one identity.
     topic-pattern: "order-.*|payment-.*|inventory-.*|refund-.*"
+    # Unread records, summed over every observed partition, past which /actuator/health
+    # reports the ingestionBacklog component as LAGGING. Findings about recent runs are
+    # then suspect: their later events may simply not have been read yet.
+    backlog-warning-threshold: 10000
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
+  endpoint:
+    health:
+      # Shows the ingestionBacklog component (L2); the observer holds no secrets there.
+      show-details: always
 
 anomaly:
   detection:

@@ -153,6 +153,40 @@ public class KafkaClusterListeners implements SmartLifecycle {
         return container;
     }
 
+    /**
+     * Records published but not yet read, summed over every partition of every cluster —
+     * how far ingestion is behind the systems it observes. Taken from the Kafka client's
+     * own per-partition {@code records-lag} metric; null while no consumer has fetched yet,
+     * because "not measured" is not the same as "caught up".
+     */
+    public Long backlog() {
+        Long total = null;
+        for (ConcurrentMessageListenerContainer<String, String> container : containers) {
+            Long lag = backlogOf(container.metrics());
+            if (lag != null) total = (total == null ? 0 : total) + lag;
+        }
+        return total;
+    }
+
+    static Long backlogOf(Map<String, ? extends Map<org.apache.kafka.common.MetricName,
+            ? extends org.apache.kafka.common.Metric>> metricsByClient) {
+        Long total = null;
+        for (Map<org.apache.kafka.common.MetricName, ? extends org.apache.kafka.common.Metric> metrics
+                : metricsByClient.values()) {
+            for (var entry : metrics.entrySet()) {
+                org.apache.kafka.common.MetricName name = entry.getKey();
+                // records-lag carries a partition tag; the client-wide records-lag-max does not
+                // and is a windowed maximum, not a backlog.
+                if (!"records-lag".equals(name.name()) || !name.tags().containsKey("partition")) continue;
+                if (!(entry.getValue().metricValue() instanceof Number n)) continue;
+                double value = n.doubleValue();
+                if (Double.isNaN(value) || value < 0) continue;
+                total = (total == null ? 0 : total) + (long) value;
+            }
+        }
+        return total;
+    }
+
     /** How many containers are live; the count a deployment can check against what it declared. */
     public int containerCount() {
         return containers.size();
