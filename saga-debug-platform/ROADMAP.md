@@ -991,6 +991,9 @@ gan cung ten service demo — he khac khong co mau rieng; chua doi vi la doi gia
 2026-09-29: da doi — mau cham timeline suy tu ten service (bam vao bang 8 mau, `serviceColor()`), bo 3 rule
 gan ten service demo. Kiem tren trinh duyet (run SC02 that): order/payment/inventory ba mau khac nhau,
 cung service cung mau. 6.68 kB -> 6.57 kB, con vuot 585 B; `ng build` pass. Dashboard khong co spec nao.
+Con lai (thap, chua lam): `getEventIcon` gan icon theo 7 ten event demo; he khac deu la icon `event`. Chi la
+hien thi, khong sai thong tin. Lam tong quat can API tra vai tro event (STARTED/COMPLETED/FAILED/bu tru) ma
+`WorkflowSpec.classifyEvent` da biet — khong doan tu ten event.
 Problem (build F7, 2026-09-23): stylesheet saga-detail 7.67 kB vuot warning budget
 6 kB; production build van pass, chua vuot error budget 10 kB. CSS khong doi trong F7.
 Expected: ra soat CSS lap/khong dung khi lam task dashboard; khong tang budget chi
