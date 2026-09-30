@@ -106,9 +106,10 @@ class PromotionAttributionTest {
     }
 
     /**
-     * Evidence is still available — this is not a retraction and not a downgrade. The run
-     * has a strongly-evidenced finding and no cause that can be attributed to the observed
-     * system, and the platform is allowed to say exactly that.
+     * Not a retraction and not a downgrade: R14 keeps STRONG_EVIDENCE and its place in the
+     * candidates. But it is not evidence about the observed system, so the status says
+     * there is none (F19). It used to say EVIDENCE_AVAILABLE, which made the status of a
+     * run depend on whether the platform happened to read its events out of order (I9).
      */
     @Test
     void aRunWhoseOnlyStrongCandidateIsAboutTheObserverNamesNoCause() {
@@ -116,7 +117,7 @@ class PromotionAttributionTest {
                 List.of(outOfOrder()), List.of(anomaly(1L, AnomalyType.OUT_OF_ORDER)),
                 saga(SagaStatus.COMPENSATING), order);
 
-        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.EVIDENCE_AVAILABLE);
+        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.INSUFFICIENT_EVIDENCE);
         assertThat(find(result, "R14").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
         assertThat(result.getPrimary()).isNull();
     }

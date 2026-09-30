@@ -763,7 +763,18 @@ Gioi han: khong chay sweep theo dong ho (R07/SAGA_STUCK tu timeout khong co tron
 COMPLETED/null, khac live); kich ban A va C dung dung, khong lay tu luot live; thang correlation
 (TRACE_CONTEXT/ALIAS_LINK) chua ablate — con lai la E3. Full suite **568 pass**.
 
-**F19 — `rcaStatus` phu thuoc thu tu giao khi chi co ung vien OBSERVATION_PROCESS** · Priority: trung binh-cao
+**F19 — `rcaStatus` phu thuoc thu tu giao khi chi co ung vien OBSERVATION_PROCESS — DA SUA 2026-09-30** · Priority: trung binh-cao
+Da sua: `RcaSelector.resolveStatus` hoi cung cau voi `promote` — chi ung vien STRONG/SUPPORTING co subject
+OBSERVED_SYSTEM la bang chung; anomaly chi duoc gat ra khi MOI ung vien trich no deu la OBSERVATION_PROCESS
+(anomaly khong ai trich, hoac duoc ung vien ve he nguon trich, van tinh). R14 giu STRONG va vi tri trong
+candidates. Run ket thuc chi co R14 -> NO_DIAGNOSIS_NEEDED; run dang chay -> INSUFFICIENT_EVIDENCE.
+Theo I9 (ngoai le cho `OUT_OF_ORDER` chi ap cho chinh finding, khong cho trang thai chan doan).
+Test: `RcaSelectorTest` +4 (fail tren code cu), `CorrectnessAblationTest` B them assert rcaStatus bat bien
+(252 thu tu: 0 kich ban lech). Doi ky vong co chu dich cua N10/L18 trong `PromotionAttributionTest` va
+`AlertContentTest` (EVIDENCE_AVAILABLE -> INSUFFICIENT/NO_DIAGNOSIS), ghi ly do trong Javadoc test.
+Anh huong so lieu: tap real khong co luot nao co R14; synthetic chi SC09 va co R12 STRONG -> headline va
+15/17 khong doi (suy tu tap ung vien da ghi, chua do live). Doi trang thai tren cac run he ngoai kieu N10.
+Full suite **572 pass**.
 Problem (E2-B, SC27): cung tap event, 4/6 thu tu giao cho EVIDENCE_AVAILABLE, 2/6 cho NO_DIAGNOSIS_NEEDED;
 nguyen nhan cong bo null o ca hai. `RcaSelector.resolveStatus` dem R14 STRONG la "actionable evidence" du
 `promote` bo qua no vi subject. Ket qua: run COMPLETED khong loi bi bao "co bang chung" nhung khong ten

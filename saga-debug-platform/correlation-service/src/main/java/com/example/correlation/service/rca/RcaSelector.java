@@ -54,7 +54,7 @@ public class RcaSelector {
                 .collect(Collectors.toList());
 
         SelectionResult result = new SelectionResult();
-        result.setRcaStatus(resolveStatus(evidenceCandidates, anomalyList, saga));
+        result.setRcaStatus(resolveStatus(evidenceCandidates, candidates, anomalyList, saga));
         result.setCandidates(ranked);
         result.setPrimary(promote(ranked));
         result.setMissingEvidence(buildMissingEvidence(candidates, result.getRcaStatus()));
@@ -221,21 +221,52 @@ public class RcaSelector {
         }
     }
 
+    /**
+     * Whether this selection has evidence about the observed system, and if not, whether
+     * there is anything left that would call for a diagnosis.
+     *
+     * <p>Asks the same question as {@link #promote}. It used to count any STRONG or
+     * SUPPORTING candidate, including one whose subject is the observation process, and
+     * any standing anomaly, including one only such a candidate reports. So a completed
+     * run whose events happened to be read out of order came out EVIDENCE_AVAILABLE with
+     * no cause promoted, while the same events read in order came out NO_DIAGNOSIS_NEEDED:
+     * the status depended on delivery order although the diagnosis did not (ROADMAP F19).
+     *
+     * <p>An anomaly is set aside only when every candidate citing it is about the
+     * observation process. Anything an observed-system candidate also cites, and anything
+     * no candidate cites, still counts: nothing here decides that an unexplained finding is
+     * harmless.
+     */
     private RcaStatus resolveStatus(List<CandidateAssessment> evidenceCandidates,
+            List<CandidateAssessment> allCandidates,
             List<Anomaly> anomalies,
             SagaInstance saga) {
         boolean hasActionableEvidence = evidenceCandidates.stream()
+                .filter(candidate -> candidate.getSubject() == ClaimSubject.OBSERVED_SYSTEM)
                 .anyMatch(candidate -> candidate.getStatus() == CandidateStatus.STRONG_EVIDENCE
                         || candidate.getStatus() == CandidateStatus.SUPPORTING_EVIDENCE);
         if (hasActionableEvidence) {
             return RcaStatus.EVIDENCE_AVAILABLE;
         }
-        boolean hasAnomalies = anomalies != null && !anomalies.isEmpty();
+        Set<Long> onlyAboutObservation = citedAnomalies(allCandidates, ClaimSubject.OBSERVATION_PROCESS);
+        onlyAboutObservation.removeAll(citedAnomalies(allCandidates, ClaimSubject.OBSERVED_SYSTEM));
+        boolean hasAnomalies = anomalies != null && anomalies.stream()
+                .anyMatch(anomaly -> anomaly.getId() == null || !onlyAboutObservation.contains(anomaly.getId()));
         if (!hasAnomalies && saga != null
                 && (saga.getStatus() == SagaStatus.COMPLETED || saga.getStatus() == SagaStatus.FAILED)) {
             return RcaStatus.NO_DIAGNOSIS_NEEDED;
         }
         return RcaStatus.INSUFFICIENT_EVIDENCE;
+    }
+
+    private static Set<Long> citedAnomalies(List<CandidateAssessment> candidates, ClaimSubject subject) {
+        return candidates.stream()
+                .filter(candidate -> candidate.getSubject() == subject)
+                .flatMap(candidate -> candidate.getEvidence().stream())
+                .filter(Objects::nonNull)
+                .map(evidence -> evidence.anomalyId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(java.util.HashSet::new));
     }
 
     private List<String> buildMissingEvidence(List<CandidateAssessment> candidates, RcaStatus status) {

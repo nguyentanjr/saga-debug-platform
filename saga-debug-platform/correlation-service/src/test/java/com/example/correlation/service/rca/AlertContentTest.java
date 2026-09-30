@@ -44,7 +44,11 @@ class AlertContentTest {
     private final List<AlertEvent> alerts = new ArrayList<>();
     private final List<Anomaly> anomalies = new ArrayList<>();
 
-    /** The live case: nothing about the observed system, so nothing to announce. */
+    /**
+     * The live case: nothing about the observed system, so nothing to announce. The status
+     * is NO_DIAGNOSIS_NEEDED since F19 -- the same run read in order has no R14 at all, and
+     * the status may not depend on which order the platform read it in (I9).
+     */
     @Test
     void aRunWhoseOnlyEvidenceIsAboutTheObservationProcessRaisesNoAlert() {
         anomalies.add(anomaly(1L, AnomalyType.OUT_OF_ORDER));
@@ -52,7 +56,7 @@ class AlertContentTest {
         RcaResult result = analyze(SagaStatus.COMPLETED,
                 event("e-1", "ORDER_CREATED", 0), event("e-2", "INVENTORY_RESERVED", 1));
 
-        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.EVIDENCE_AVAILABLE);
+        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.NO_DIAGNOSIS_NEEDED);
         assertThat(result.getPrimaryRootCauses()).isEmpty();
         assertThat(alerts).isEmpty();
     }

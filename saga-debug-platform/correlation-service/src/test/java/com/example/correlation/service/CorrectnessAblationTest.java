@@ -119,7 +119,7 @@ class CorrectnessAblationTest {
                 }
                 Outcome o = p.outcome(id);
                 // The diagnosis: execution outcome and the published cause. rcaStatus is tracked
-                // apart because it is known to vary (ROADMAP F19), which is a finding, not the claim.
+                // apart so a regression of F19 is reported on its own line.
                 String conclusion = o.sagaStatus + " / " + o.primary;
                 statuses.add(o.rcaStatus);
                 conclusions.add(conclusion);
@@ -150,6 +150,7 @@ class CorrectnessAblationTest {
                 totalOrders, divergent, statusDivergent, r14Raised, guardAblatedWrong);
 
         assertThat(divergent).as("scenarios whose diagnosis depends on delivery order").isZero();
+        assertThat(statusDivergent).as("F19: scenarios whose rcaStatus depends on delivery order").isZero();
         assertThat(r14Raised).as("out-of-order deliveries are reported, as observation-process findings")
                 .isPositive();
         assertThat(guardAblatedWrong).as("without the subject guard, reordering alone changes the diagnosis")
