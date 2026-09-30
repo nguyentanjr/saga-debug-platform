@@ -742,7 +742,16 @@ Artefact: `results/evaluation_report_synthetic_sc10_rewritten_20260930.json`,
 inventory-service chay o cong host 18083 (8083 bi container khac chiem), token ingest cuc bo.
 Tap synthetic du kien 16/17 sau S2 (SC10 da do, 15 kich ban con lai chua do lai tren build nay).
 
-**F20 — STEP_TIMEOUT (legacy adjacency) do mot buoc tu event TRUOC no toi event BAT DAU cua chinh no** · Priority: **cao**
+**F20 — STEP_TIMEOUT (legacy adjacency) do mot buoc tu event TRUOC no toi event BAT DAU cua chinh no — DA SUA 2026-09-30** · Priority: **cao**
+Da sua (cau hinh, khong them abstraction): `step-timeout-mode` mac dinh SHADOW -> **PROJECTION** (application.yml +
+DetectionProperties). Projection do buoc tu event bat dau da quan sat; khong co thi suy tu buoc truoc va ghi
+nhan nguon (INFERRED_FROM_PREDECESSOR). SHADOW/LEGACY van con de doi chieu.
+Bang chung truoc khi doi: `StepTimeoutModeOnRecordedRunsTest` chay hai cach do tren **27/27 luot real** da ghi
+(oracle/evidence): 10 luot co timeout, **0 luot lech** (khong luot nao quan sat event started) -> headline khong
+doi theo phep do nay. Test: `StepTimeoutDetectionTest` +3 (ca SC24: legacy bao REFUND_PAYMENT, projection
+khong; buoc bu tru cham that van bao voi start=OBSERVED_START; mac dinh la PROJECTION). Full suite **578 pass**.
+Live SC24 sau sua: khong con STEP_TIMEOUT; nguyen nhan cong bo doi sang DELAYED_COMPENSATION (xem F21).
+Artefact `results/evaluation_report_synthetic_sc24_post_f20_20260930.json`.
 Problem (SC24 live 2026-09-30, sau S2): "Step 'REFUND_PAYMENT' took 35529ms. Previous event: INVENTORY_FAILED".
 REFUND_PAYMENT la event `started` da khai bao cua buoc; buoc thuc chay REFUND_PAYMENT -> PAYMENT_REFUNDED =
 5.5s. Khoang 35s la thoi gian TRUOC khi buoc bat dau — dung la cai DELAYED_COMPENSATION do — nen cung mot
@@ -751,6 +760,15 @@ khoang bi dem hai lan, va R07 (HIGH) thang R11 cung anchor nho severity. Log SHA
 Expected: mot buoc khong the qua han truoc khi bat dau khi event started cua no DA duoc quan sat. Huong sua
 can quyet dinh: chuyen authoritative sang PROJECTION (anh huong R07 o SC27/28/29 tap real — phai do lai
 headline) hoac sua adjacency. Khong tu sua trong S2.
+
+**F21 — Nhan dinh ve khoang thoi gian hoa anchor voi event mo khoang; severity quyet dinh** · Priority: trung binh
+Problem (SC24 live sau F20): R22 DELAYED_COMPENSATION trich khoang INVENTORY_FAILED -> REFUND_PAYMENT; anchor =
+event som nhat da trich = INVENTORY_FAILED, trung anchor voi R11 FORWARD_STEP_FAILURE. Vi tri va anchorAt hoa,
+severity MEDIUM (R22) > LOW (R11) -> cong bo DELAYED_COMPENSATION. Nhan kich ban la FORWARD_STEP_FAILURE (theo ghi
+chu taxonomy: R11 la nguyen nhan, R22 la dac trung do tre). Ca hai nhan dinh deu dung voi du lieu.
+Cau hoi thiet ke can quyet dinh (khong tu doi): (a) anchor cua nhan dinh khoang la dau khoang (nhu R07 hien nay)
+hay diem vuot nguong / buoc bi tre; (b) mot nhan dinh ma bang chung bao trum bang chung cua nhan dinh khac co nen
+xep sau khong. Khong doi nhan cho khop. SC24 van 0/2 strict.
 
 **E1 — Ablation tang chon nguyen nhan (RcaSelector), offline — 2026-09-30** · Priority: cao
 Muc dich: tra loi "bo quyet dinh X cua selector thi ket luan nao sai". `ablate_selection.py`
