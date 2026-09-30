@@ -69,10 +69,16 @@ POLL_TIMEOUT    = 90
 POLL_INTERVAL   = 1
 SAGA_MATCH_WAIT = 30
 
-# One full cycle of the platform's slowest scheduled sweep, plus margin. The sweeps run
-# at correlation.detection fixed rates (30s for the stuck pass); a run read sooner than
-# that records whatever the scheduler happened to have done by then. See trigger_rca.
-DETECTOR_SETTLE_SECONDS = 35
+# Long enough that every deadline-based sweep a scenario can cross has had a pass after
+# its deadline: the longest such deadline (30s -- compensation-ack-cutoff and
+# compensation-missing-cutoff) plus one sweep period (anomaly.detection.schedule-rate-ms,
+# 15s) plus margin. It used to be 35s, "one cycle of the slowest sweep", which covers the
+# period but not the deadline in front of it: on 2026-09-30 SC23 was read 42.2s after its
+# last event and MISSING_COMPENSATION_ACK fired at 43.0s, so the row recorded R10 as WEAK
+# and a different primary than the platform settled on one second later (S3 in ROADMAP).
+# MISSING_TERMINAL_EVENT (10x the step timeout) is deliberately not covered; the
+# scenarios about it wait for it explicitly. Uniform across scenarios; see trigger_rca.
+DETECTOR_SETTLE_SECONDS = 50
 
 POSTGRES_CONTAINER  = "demo-postgres"
 INVENTORY_CONTAINER = "inventory-service"
