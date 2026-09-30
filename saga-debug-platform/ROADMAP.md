@@ -776,6 +776,11 @@ trung lan 2026-09-21 va 2026-09-29 (SC04/16/17 0 %, SC06 2/3, con lai 100 %). Ba
 engine 65 % = rule_id_order 65 % = severity_only 65 % (20 luot co nhan cu the). E1 chay lai tren bao cao nay
 cho cung bang. -> F19, F20 va settle 50s khong doi headline, da do chu khong con suy luan.
 Artefact: `results/evaluation_report_real_post_f20_settle50_20260930.json`. README da cap nhat theo so nay.
+**Tap synthetic do lai voi settle 50s**: **34/36 (94.4 %) lenient = strict**, 17/18 kich ban dung; SC23 2/2 (xac nhan
+sua settle), chi con SC24 0/2 (F21). Artefact `results/evaluation_report_synthetic_post_f20_settle50_20260930.json`.
+E1 tren bao cao nay: go guard ClaimSubject -2 (SC09), cong bo moi STRONG strict -6; xep theo ma luat **+2** (36/36)
+vi tinh co dat R11 truoc R22 o SC24 — trung hop thu tu chu cai, khong phai bang chung cho cach xep do (ly do engine
+da bo tieu chi nay); xep theo anchorAt doi 4 luot, rong 0 (sua SC24, lam sai SC20). E4 khong doi (0.051 / 3.55).
 
 **E4 — Bien quyet dinh cua cac hang so nguong (offline) — 2026-09-30** · Priority: trung binh-cao
 Muc dich: tra loi "vi sao 1.5 / 3 / 10 / 500ms" — tieu chi KLTN "cong thuc khong giai thich duoc".

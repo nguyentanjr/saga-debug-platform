@@ -185,7 +185,9 @@ Kết quả đo lại 2026-09-30 trên build hiện tại (sau F19/F20, harness 
 > nhất một ứng viên mạnh đúng. Đóng góp đo được nằm ở chỗ khác: guard "chỉ công bố bằng chứng mạnh"
 > (bỏ đi mất 2 lượt) và các cơ chế correctness (namespace, bất biến thứ tự, rút lại nhận định, thang
 > correlation) — xem ablation E1–E3 trong `ROADMAP.md`. Nhãn chưa được review mù (`reviewed_by` = null).
-> Tập `synthetic` (nhóm C/E và một phần D) chỉ kiểm ngữ nghĩa luật, không gộp vào con số trên.
+> Tập `synthetic` (nhóm C/E và một phần D, 18 kịch bản, 36 lượt) chỉ kiểm ngữ nghĩa luật, không gộp
+> vào con số trên: 94.4 % (34/36), chỉ SC24 sai — hai nhận định đúng cùng anchor, severity quyết định
+> (F21 trong `ROADMAP.md`).
 
 ---|---|
 | Độ chính xác RCA | 100.0 % |
