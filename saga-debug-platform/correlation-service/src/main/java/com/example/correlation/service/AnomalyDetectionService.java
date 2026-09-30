@@ -491,6 +491,25 @@ public class AnomalyDetectionService {
      *
      * @param events every observation of this run, the newest included
      */
+    /**
+     * Withdraws MISSING_TERMINAL_EVENT once the run is observed to end.
+     *
+     * <p>The finding says no terminal event was seen; the ending falsifies it, and leaving
+     * it standing made a recovered run read as never having finished (SC16 lost R06, whose
+     * guard is the absence of this finding). SAGA_STUCK is not withdrawn: the silence it
+     * reports did happen, and R06 is built on it.
+     */
+    public void withdrawMissingTerminal(String sagaId, SagaStatus endedAs) {
+        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_TERMINAL_EVENT)) return;
+        int withdrawn = anomalyRepository.retractClaims(sagaId,
+                Set.of(AnomalyType.MISSING_TERMINAL_EVENT), Instant.now(),
+                "the run was observed to end as " + endedAs + " after this finding was made");
+        if (withdrawn > 0) {
+            log.info("Withdrew MISSING_TERMINAL_EVENT against execution {}: it ended as {}",
+                    sagaId, endedAs);
+        }
+    }
+
     public void detectOrphanEvent(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
         Set<String> startEventTypes = workflow != null ? workflow.startEventTypes() : Set.of();
 

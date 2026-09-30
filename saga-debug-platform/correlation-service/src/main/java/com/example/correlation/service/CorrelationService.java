@@ -187,6 +187,9 @@ public class CorrelationService {
 
         // Claims about how this run behaved, each read off the reconstruction rather than
         // off whatever difference this one arrival happened to make to what was stored.
+        if (timeline.endedAt().isPresent()) {
+            anomalyDetectionService.withdrawMissingTerminal(sagaId, newStatus);
+        }
         timeline.postTerminal().ifPresent(pair ->
                 anomalyDetectionService.detectForbiddenPostTerminal(sagaId,
                         pair.endedAs(), pair.terminal(), pair.late()));
