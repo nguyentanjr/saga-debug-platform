@@ -782,8 +782,20 @@ nguyen nhan; scorer strict se cham sai tuy thu tu. Cung thay o E2-C (doi chung).
 Expected: `resolveStatus` va `promote` dung chung dinh nghia ve dieu gi la bang chung ve he duoc quan sat;
 co regression test hoan vi. Chua sua (ngoai scope E2).
 
-**E3 — Ablation thang correlation (TRACE_CONTEXT / ALIAS_LINK)** · Priority: trung binh · NEXT
-Problem: E2 chua cham. Can hai hop dong: event khong co khoa khai bao duoc noi bang trace/alias vs bo bac do.
+**E3 — Ablation thang correlation (PROPAGATED_CONTEXT / ALIAS_LINK) — 2026-09-30** · Priority: trung binh
+`CorrelationLadderAblationTest`: raw observation qua `EventIngestionService` that (source mapping, ladder,
+alias resolver) roi `ReplayPipeline` (correlation + detector + RCA that; harness tach tu E2 de dung chung).
+Bac bi go dung nhu mot he dang onboard thieu no: khong truyen trace, hoac mapping khong khai bao id thu hai.
+- **A. PROPAGATED_CONTEXT.** He khong co business id, chi truyen W3C trace: doi chung 3/3 observation
+  ACCEPTED, 1 execution COMPLETED, NO_DIAGNOSIS_NEEDED. Bo trace -> **3/3 NOT_CORRELATABLE, 0 execution**:
+  platform tu choi thay vi doan. Bac nay quyet dinh he do quan sat duoc hay khong.
+- **B. ALIAS_LINK.** Order/inventory khoa theo `orderNo`, payment theo `paymentRef`, event payment mang ca
+  hai: doi chung 1 execution COMPLETED, khong chan doan. Bo khai bao `aliasKey` -> 2 manh; manh payment
+  IN_PROGRESS voi ORPHAN_EVENT, cong bo **WRONG_SAGA_CORRELATION_KEY**; manh order COMPLETED khong finding
+  (buoc payment vang mat duoc doc la thieu quan sat, khong phai loi — dung I10, nhung la mot run "healthy"
+  co mot buoc khong ai thay).
+Gioi han: kich ban dung, khong lay tu luot live; khong co fold (alias toi truoc khi manh thu hai ton tai);
+chua do truong hop mot trace trai hai execution. Full suite **574 pass**.
 
 ## NEXT (con lai)
 
