@@ -761,6 +761,18 @@ Expected: mot buoc khong the qua han truoc khi bat dau khi event started cua no 
 can quyet dinh: chuyen authoritative sang PROJECTION (anh huong R07 o SC27/28/29 tap real — phai do lai
 headline) hoac sua adjacency. Khong tu sua trong S2.
 
+**S3 — Do lai tap synthetic sau F19/F20/S2; sua thoi gian settle cua harness — 2026-09-30** · Priority: cao
+Do live toan tap synthetic (18 kich ban, 36 luot; build sau F20, settle cu 35s): **32/36 (88.9 %) lenient = strict**,
+16/18 kich ban dung. Moi: SC10 2/2 (S2). Sai: SC24 0/2 (F21), SC23 0/2.
+SC23 **khong phai hoi quy platform**: harness doc luot o 42.2s sau event cuoi, MISSING_COMPENSATION_ACK fire o
+43.0s (han 30s + chu ky quet 15s -> roi trong 30–45s); ket luan cuoi cua platform mot giay sau la R10 (dung, log
+06:10:55). Cac lan truoc SC23 dung/sai tuy pha scheduler. Goc: `DETECTOR_SETTLE_SECONDS=35` tinh "mot chu ky
+luot quet cham nhat", thieu han chot dung truoc no. Da sua: **50s** = han dai nhat 30s + chu ky 15s + bien, van
+dong deu moi kich ban (giu nguyen tac chong thien lech precision cua trigger_rca). MISSING_TERMINAL_EVENT
+(10x timeout) co y khong phu; kich ban can no tu cho rieng.
+Artefact: `results/evaluation_report_synthetic_post_f20_20260930.json` (settle 35s). Can do lai hai tap voi
+settle 50s truoc khi trich so.
+
 **F21 — Nhan dinh ve khoang thoi gian hoa anchor voi event mo khoang; severity quyet dinh** · Priority: trung binh
 Problem (SC24 live sau F20): R22 DELAYED_COMPENSATION trich khoang INVENTORY_FAILED -> REFUND_PAYMENT; anchor =
 event som nhat da trich = INVENTORY_FAILED, trung anchor voi R11 FORWARD_STEP_FAILURE. Vi tri va anchorAt hoa,
