@@ -1412,9 +1412,11 @@ def run_inject_scenario(scenario: dict, run_index: int) -> dict:
         "USE_TS_AGO_2M": lambda: ts_ago(minutes=2),
         "USE_TS_AGO_1M": lambda: ts_ago(minutes=1),
         "USE_TS_AGO_80S": lambda: ts_ago(seconds=80),
+        "USE_TS_AGO_64S": lambda: ts_ago(seconds=64),
         "USE_TS_AGO_60S": lambda: ts_ago(seconds=60),
         "USE_TS_AGO_30S": lambda: ts_ago(seconds=30),
         "USE_TS_AGO_25S": lambda: ts_ago(seconds=25),
+        "USE_TS_AGO_20S": lambda: ts_ago(seconds=20),
         "USE_TS_AGO_12S": lambda: ts_ago(seconds=12),
         "USE_TS_AGO_10S": lambda: ts_ago(seconds=10),
         "USE_TS_AGO_5S": lambda: ts_ago(seconds=5),
@@ -1735,7 +1737,14 @@ INJECT_SCENARIOS = [
         "category": "C",
         "split": "train",
         "reproducibility": "synthetic",
-        "description": "C2 — skip PAYMENT step → INVALID_TRANSITION",
+        # Rewritten 2026-09-30 (ROADMAP S1/SC10). The old input -- ORDER_CREATED then
+        # INVENTORY_RESERVED, payment never seen -- is a MISSING OBSERVATION by design
+        # (I10; `aMissingIntermediateObservationRaisesNoInvalidTransition`), so its label
+        # contradicted the platform's stated semantics rather than testing R12. The label
+        # is unchanged; the input now is a transition the workflow really forbids: after
+        # payment completed, the run emits ORDER_CREATED again (a new event, not a
+        # redelivery) -- a step moving backwards to the start of its graph.
+        "description": "C2 — run returns to CREATE_ORDER after PROCESS_PAYMENT → INVALID_TRANSITION",
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "INVALID_TRANSITION",
@@ -1747,8 +1756,14 @@ INJECT_SCENARIOS = [
             {"eventType": "ORDER_CREATED", "stepName": "CREATE_ORDER",
              "serviceName": "order-service",
              "payload": {"traceId": "USE_UNIQUE"}},
-            {"eventType": "INVENTORY_RESERVED", "stepName": "RESERVE_INVENTORY",
-             "serviceName": "inventory-service", "delay": 1,
+            {"eventType": "PAYMENT_COMPLETED", "stepName": "PROCESS_PAYMENT",
+             "serviceName": "payment-service", "delay": 1,
+             "payload": {"traceId": "USE_UNIQUE"}},
+            # A new event, not a redelivery: without its own id the harness derives the
+            # same id as the first ORDER_CREATED and the platform rightly reads a duplicate.
+            {"eventType": "ORDER_CREATED", "stepName": "CREATE_ORDER",
+             "serviceName": "order-service", "delay": 1,
+             "eventId": "USE_UNIQUE",
              "payload": {"traceId": "USE_UNIQUE"}},
         ],
     },
@@ -2176,18 +2191,25 @@ NEW_SCENARIOS = [
         # FORWARD_STEP_FAILURE), and R22 is an *anomaly to verify* but not
         # the primary RCA. This empirically tests the `× 1.5` magic
         # threshold (R22 firing means 35s > 15s = 10s × 1.5).
+        # Timestamps corrected 2026-09-30 (ROADMAP S1/SC24). ORDER_CREATED used to sit at
+        # -80s and PAYMENT_COMPLETED at -60s: a 20s payment step against its 10s timeout, a
+        # real STEP_TIMEOUT the scenario never intended, and R07 correctly won on it. The
+        # forward path now runs inside every declared timeout (4s create->payment, 5s
+        # refund->refunded), so the one lateness in the data is the 35s refund D5 is about.
+        # The label is unchanged; STEP_TIMEOUT is dropped from the expected anomalies
+        # because the input no longer contains one.
         "description": "D5 — 35s-late refund → DELAYED_COMPENSATION fires; R11 primary (multi-rule)",
         "request": None,
         "expected_saga_status": None,
         "expected_rca": "FORWARD_STEP_FAILURE",
-        "expected_anomalies": ["STEP_TIMEOUT", "DELAYED_COMPENSATION"],
+        "expected_anomalies": ["DELAYED_COMPENSATION"],
         "runner": run_inject_scenario,
         "n_runs": 2,
         "wait_seconds": 70,
         "inject_events": [
             {"eventType": "ORDER_CREATED", "stepName": "CREATE_ORDER",
              "serviceName": "order-service",
-             "timestamp": "USE_TS_AGO_80S",
+             "timestamp": "USE_TS_AGO_64S",
              "payload": {"traceId": "USE_UNIQUE"}},
             {"eventType": "PAYMENT_COMPLETED", "stepName": "PROCESS_PAYMENT",
              "serviceName": "payment-service", "delay": 0.5,
@@ -2204,7 +2226,7 @@ NEW_SCENARIOS = [
              "payload": {"traceId": "USE_UNIQUE"}},
             {"eventType": "PAYMENT_REFUNDED", "stepName": "REFUND_PAYMENT",
              "serviceName": "payment-service", "delay": 0.5,
-             "timestamp": "USE_TS_AGO_5S",
+             "timestamp": "USE_TS_AGO_20S",
              "payload": {"traceId": "USE_UNIQUE"}},
         ],
     },

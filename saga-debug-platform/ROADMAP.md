@@ -710,11 +710,11 @@ Lan dau do lai ca tap tu L-10 (KLTN_STATUS). A/B voi build `93ac939` (truoc L1-L
 - **Harness — SC14, SC26**: `evaluate.py` dat traceId trong payload; tu ed06917 detector khong mo payload nua,
   `inject-event` doc truong `traceId` rieng -> khong event nao co trace, MISSING_TRACE_CONTEXT khong the bat.
   Da sua harness gui traceId o truong rieng (loi do luong, khong phai loi platform).
-- **SC10 — nhan loi thoi, khong sua platform**: ORDER_CREATED -> INVENTORY_RESERVED (thieu payment) theo thiet
+- **SC10 — (DA CHOT o S2)** nhan loi thoi, khong sua platform: ORDER_CREATED -> INVENTORY_RESERVED (thieu payment) theo thiet
   ke hien tai la THIEU QUAN SAT, khong phai chuyen buoc sai (`aMissingIntermediateObservationRaisesNoInvalidTransition`).
   Ky vong INVALID_TRANSITION cua kich ban mau thuan voi quyet dinh do. Can quyet dinh rieng: doi kich ban (vd.
   mot buoc di lui that) hay giu va ghi ro. Khong tu doi nhan (khong lam dep so).
-- **SC24 — du lieu kich ban tu chua mot STEP_TIMEOUT that, khong sua platform**: sau F17, R11 neo dung o
+- **SC24 — (DA CHOT o S2, con F20)** du lieu kich ban tu chua mot STEP_TIMEOUT that, khong sua platform: sau F17, R11 neo dung o
   INVENTORY_FAILED, nhung ORDER_CREATED (T-80s) -> PAYMENT_COMPLETED (T-60s) la 20s > 10s timeout cua
   PROCESS_PAYMENT, nen R07 neo som hon va thang. Platform bao dung su that co trong du lieu; khoang tre do
   khong phai y do cua D5. Can quyet dinh rieng co sua timestamp kich ban hay khong (khong tu sua).
@@ -724,6 +724,33 @@ Tap synthetic van KHONG gop vao headline (chi kiem ngu nghia luat).
 Tap `real` do live sau F16-F18 (2026-09-29, `results/evaluation_report_real_post_f18_20260929.json`): **74.1 %
 lenient / 74.1 % strict, tung kich ban trung khop** `evaluation_report_settled_20260921.json` (SC04/16/17 0 %,
 SC06 66.7 %, con lai 100 %). Du doan "headline khong doi" da duoc do, khong con la suy luan.
+
+**S2 — Chot SC10 va SC24 (tap synthetic) — 2026-09-30** · Priority: cao
+Nguyen tac: khong doi nhan cho khop dau ra; sua INPUT de kich ban kiem dung dieu ten no noi.
+- **SC10**: input cu (ORDER_CREATED -> INVENTORY_RESERVED, payment vang) la thieu quan sat theo I10, khong
+  phai chuyen buoc sai. Nhan giu INVALID_TRANSITION; input doi thanh chuyen buoc bi cam that: sau
+  PAYMENT_COMPLETED, run phat ORDER_CREATED moi (eventId rieng) — quay lui ve buoc dau. Do live: **2/2
+  strict** (R12 la ung vien STRONG duy nhat). Kem SAGA_STUCK vi run dung o IN_PROGRESS (dung, khong phai loi).
+  Lan chay dau thieu `eventId: USE_UNIQUE` -> harness sinh trung id -> EXACT_DUPLICATE_EVENT: loi harness,
+  da sua.
+- **SC24**: timestamp cu co khoang 20s cho PROCESS_PAYMENT (timeout 10s) — mot STEP_TIMEOUT kich ban khong co
+  y. Nhan giu FORWARD_STEP_FAILURE; ORDER_CREATED -80s -> -64s, PAYMENT_REFUNDED -5s -> -20s; bo STEP_TIMEOUT
+  khoi expected_anomalies. Do live: **van 0/2** — con STEP_TIMEOUT, nhung nay la loi platform F20, khong con
+  la loi kich ban.
+Artefact: `results/evaluation_report_synthetic_sc10_rewritten_20260930.json`,
+`results/evaluation_report_synthetic_sc24_retimed_20260930.json`. Moi truong: stack build tu code sau F19;
+inventory-service chay o cong host 18083 (8083 bi container khac chiem), token ingest cuc bo.
+Tap synthetic du kien 16/17 sau S2 (SC10 da do, 15 kich ban con lai chua do lai tren build nay).
+
+**F20 — STEP_TIMEOUT (legacy adjacency) do mot buoc tu event TRUOC no toi event BAT DAU cua chinh no** · Priority: **cao**
+Problem (SC24 live 2026-09-30, sau S2): "Step 'REFUND_PAYMENT' took 35529ms. Previous event: INVENTORY_FAILED".
+REFUND_PAYMENT la event `started` da khai bao cua buoc; buoc thuc chay REFUND_PAYMENT -> PAYMENT_REFUNDED =
+5.5s. Khoang 35s la thoi gian TRUOC khi buoc bat dau — dung la cai DELAYED_COMPENSATION do — nen cung mot
+khoang bi dem hai lan, va R07 (HIGH) thang R11 cung anchor nho severity. Log SHADOW xac nhan:
+`legacy=REFUND_PAYMENT=35529ms(>10000ms) projection=no-finding`. O SHADOW, legacy la authoritative.
+Expected: mot buoc khong the qua han truoc khi bat dau khi event started cua no DA duoc quan sat. Huong sua
+can quyet dinh: chuyen authoritative sang PROJECTION (anh huong R07 o SC27/28/29 tap real — phai do lai
+headline) hoac sua adjacency. Khong tu sua trong S2.
 
 **E1 — Ablation tang chon nguyen nhan (RcaSelector), offline — 2026-09-30** · Priority: cao
 Muc dich: tra loi "bo quyet dinh X cua selector thi ket luan nao sai". `ablate_selection.py`
