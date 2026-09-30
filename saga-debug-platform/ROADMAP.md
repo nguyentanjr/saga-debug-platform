@@ -769,6 +769,9 @@ chu taxonomy: R11 la nguyen nhan, R22 la dac trung do tre). Ca hai nhan dinh deu
 Cau hoi thiet ke can quyet dinh (khong tu doi): (a) anchor cua nhan dinh khoang la dau khoang (nhu R07 hien nay)
 hay diem vuot nguong / buoc bi tre; (b) mot nhan dinh ma bang chung bao trum bang chung cua nhan dinh khac co nen
 xep sau khong. Khong doi nhan cho khop. SC24 van 0/2 strict.
+Bang chung de can nhac (bao cao da ghi, post-F18): tap real 0 luot co hai ung vien STRONG hoa anchor; synthetic
+4 luot, severity pha hoa DUNG ca 4 (SC21: R03 CRITICAL > R04 HIGH; SC23: R10 HIGH > R13 LOW). Moi thay doi quy tac
+pha hoa phai giu SC21/SC23 va khong dua vao mot ca duy nhat (SC24).
 
 **E1 — Ablation tang chon nguyen nhan (RcaSelector), offline — 2026-09-30** · Priority: cao
 Muc dich: tra loi "bo quyet dinh X cua selector thi ket luan nao sai". `ablate_selection.py`
