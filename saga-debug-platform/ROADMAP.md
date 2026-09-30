@@ -725,6 +725,33 @@ Tap `real` do live sau F16-F18 (2026-09-29, `results/evaluation_report_real_post
 lenient / 74.1 % strict, tung kich ban trung khop** `evaluation_report_settled_20260921.json` (SC04/16/17 0 %,
 SC06 66.7 %, con lai 100 %). Du doan "headline khong doi" da duoc do, khong con la suy luan.
 
+**E1 — Ablation tang chon nguyen nhan (RcaSelector), offline — 2026-09-30** · Priority: cao
+Muc dich: tra loi "bo quyet dinh X cua selector thi ket luan nao sai". `ablate_selection.py`
+giu co dinh tap ung vien engine da sinh trong tung luot (`rca_candidates`), chi thay MOT quyet dinh,
+cham bang chinh `rca_expectation_matches(_strict)` tren ca cac luot ky vong khong ket luan (ma
+`baseline_comparison` bo qua). Bien the `engine` tai hien 27/27 real va 34/34 synthetic — kiem tra
+cho viec suy ClaimSubject tu ruleId (chi R14 la OBSERVATION_PROCESS trong code).
+Ket qua strict (real 27 luot / synthetic 34 luot), engine 74.1 % / 88.2 %:
+- Bo guard "chi de cu STRONG": real **-2** (SC03 x2: stuck khong ro nguyen nhan bi goi ten
+  STUCK_UNKNOWN_CAUSE thay vi INSUFFICIENT_EVIDENCE). SC17 doi ket luan nhung sai ca hai phia.
+- Bo guard ClaimSubject: synthetic **-2** (SC09 x2: OUT_OF_ORDER_DELIVERY duoc cong bo la nguyen nhan).
+- Cong bo moi ung vien STRONG thay vi mot nguyen nhan chinh: synthetic strict **-6** (SC20/21/23),
+  lenient +2 (SC24) — vi du cua viec lenient thuong cho cong bo nhieu nhan.
+- Xep theo thoi diem anchor thay vi vi tri buoc: synthetic **-2** (SC20).
+- Xep theo severity / rule id: **0** tren ca hai tap. Tren real, xep hang khong phan biet duoc (moi
+  luot chi co <=1 ung vien STRONG dung ve y nghia, hoac ca hai lua chon deu sai: SC04/SC16).
+Gioi han: chi tang selection, tap ung vien la dau ra cua rule/detector va duoc giu co dinh; so hoc tren
+dau vao da ghi, khong phai do live; synthetic khong gop vao headline. Artefact:
+`results/ablation_selection_e1.json`.
+
+**E2 — Ablation cac co che correctness (identity namespace, thang correlation, bat bien thu tu,
+rut lai finding)** · Priority: cao · NEXT
+Problem: E1 khong cham duoc cac co che nay — tap real la mot nguon, dung thu tu, nen chung khong
+bao gio duoc kich hoat. Can cap dau vao doi chung co kiem soat qua CorrelationService/RcaService that
+(kieu `Sc06ReplayTest`), uu tien ablation o DAU VAO (vd. gop hai source thanh mot de mo phong mat
+namespace; hoan vi thu tu nhan) thay vi them co bat/tat trong code production.
+Expected: moi co che mot bang "tat -> sai ket luan nao", kem test.
+
 ## NEXT (con lai)
 
 *(trong — N1 va N3 da xong; nhung muc khac nam o LATER)*
