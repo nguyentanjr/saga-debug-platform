@@ -773,6 +773,17 @@ Bang chung de can nhac (bao cao da ghi, post-F18): tap real 0 luot co hai ung vi
 4 luot, severity pha hoa DUNG ca 4 (SC21: R03 CRITICAL > R04 HIGH; SC23: R10 HIGH > R13 LOW). Moi thay doi quy tac
 pha hoa phai giu SC21/SC23 va khong dua vao mot ca duy nhat (SC24).
 
+**F22 — Buoc bat dau truoc khi buoc truoc no hoan thanh khong duoc phat hien** · Priority: trung binh
+Problem (probe offline khi chot SC10, 2026-09-30): ORDER_CREATED(t0) -> INVENTORY_STARTED(t1) ->
+PAYMENT_COMPLETED(t2), cach nhau 1s theo dong ho nguon (> clockSkewTolerance 500ms): khong finding nao, run
+IN_PROGRESS, INSUFFICIENT_EVIDENCE. Tuong tu: PAYMENT_STARTED sau INVENTORY_STARTED. Ly do:
+`CorrelationService.judgeTransitions` chi xet cap co event truoc la COMPLETED/FAILED (dung: event started chua
+ban giao gi), nen cap started(downstream) -> completed(upstream) khong bao gio duoc xet; va CREATE_ORDER ->
+RESERVE_INVENTORY duoc doc la thieu quan sat (I10, dung).
+Can can nhac truoc khi lam: (1) hai dau la dong ho cua hai service — I9 va clockSkewTolerance; (2) nhanh song
+song (N9) khong duoc bi bao; (3) day la nang luc phat hien moi — chi lam khi co use case that (mot he quan sat
+duoc sinh thu tu nay), khong phai vi probe tim ra. Khong co trong 27 luot real va 17 kich ban synthetic.
+
 **E1 — Ablation tang chon nguyen nhan (RcaSelector), offline — 2026-09-30** · Priority: cao
 Muc dich: tra loi "bo quyet dinh X cua selector thi ket luan nao sai". `ablate_selection.py`
 giu co dinh tap ung vien engine da sinh trong tung luot (`rca_candidates`), chi thay MOT quyet dinh,
