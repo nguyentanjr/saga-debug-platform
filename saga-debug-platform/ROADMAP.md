@@ -777,6 +777,31 @@ engine 65 % = rule_id_order 65 % = severity_only 65 % (20 luot co nhan cu the). 
 cho cung bang. -> F19, F20 va settle 50s khong doi headline, da do chu khong con suy luan.
 Artefact: `results/evaluation_report_real_post_f20_settle50_20260930.json`. README da cap nhat theo so nay.
 
+**E4 — Bien quyet dinh cua cac hang so nguong (offline) — 2026-09-30** · Priority: trung binh-cao
+Muc dich: tra loi "vi sao 1.5 / 3 / 10 / 500ms" — tieu chi KLTN "cong thuc khong giai thich duoc".
+`threshold_margins.py` tinh, cho moi luot da ghi, gia tri hang so tai do finding bi lat (theo dung dieu kien
+trong code, tu raw_events). Tren 27 luot real (settle 50s) + 36 luot synthetic (post-F20):
+- **delayed-compensation-multiplier 1.5**: moi luot ngoai SC24 lat o m_c <= 0.054, SC24 o 3.55 -> moi m trong
+  (0.054, 3.55) cho cung ket qua tren 63 luot. 1.5 khong duoc chinh cho khop du lieu.
+- **clock-skew-tolerance 500ms**: dao nguoc lon nhat o real = 0ms, SC09 ~980ms -> moi tol trong [0, 977ms) nhu nhau.
+- **missing-terminal-timeout-multiplier 10** va **service-crash-timeout-multiplier 3**: **khong anh huong luot
+  nao** — MISSING_TERMINAL_EVENT va R05 xuat hien o 0/63 luot, vi base cua nguong la 120s chu khong phai 10s
+  (F23). Neu sua F23 (base 10s), SC15 lat o m_c = 10.3 — sat ngay 10: hang so do se nhay.
+Gioi han: tinh lai tu du lieu da ghi, khong chay engine; chi cac hang so trong DetectionProperties co dung o day.
+
+**F23 — Nguong MISSING_TERMINAL_EVENT cua mot workflow phu thuoc workflow cua he KHAC** · Priority: **cao**
+Problem (tim ra khi lam E4): `detectMissingTerminalEvents` dung `maxStepTimeoutAcrossWorkflows() * 10` lam nguong
+cho MOI run. Max hien la 120s tu `declarations/workflows/kms-order-saga-workflow.yaml` (mot he ben ngoai), nen
+ORDER_SAGA (buoc dai nhat 10s) chi bi bao sau **1200s** thay vi 100s. Onboard he B da am tham doi cach phat hien
+cua he A — trai tinh than I4/I7 va zero-touch. Comment trong code noi query phai dung nguong "most permissive";
+de khong bo sot thi query phai dung nguong NHO nhat roi loc tung run theo workflow cua chinh no — hien khong co
+buoc loc do. Day la mot phan nguyen nhan cua F8 (MISSING_TERMINAL_EVENT khong fire o SC17).
+Anh huong khi sua (phai xu ly cung luc, nhu F8 da noi): SC03 (silence ~115s) va SC17 (~200s) se co
+MISSING_TERMINAL_EVENT -> R05 SERVICE_CRASH SUPPORTING -> `resolveStatus` cho EVIDENCE_AVAILABLE ma khong de cu
+nguyen nhan nao: SC03 (ky vong INSUFFICIENT_EVIDENCE) se thanh sai, SC17 van sai; R06 doi !MISSING_TERMINAL_EVENT.
+Can quyet dinh kem: muc bang chung cua R05, va SUPPORTING-only co tinh la "evidence available" khong.
+Khong tu sua: doi headline va cham vao hai quyet dinh thiet ke tren.
+
 **F21 — Nhan dinh ve khoang thoi gian hoa anchor voi event mo khoang; severity quyet dinh** · Priority: trung binh
 Problem (SC24 live sau F20): R22 DELAYED_COMPENSATION trich khoang INVENTORY_FAILED -> REFUND_PAYMENT; anchor =
 event som nhat da trich = INVENTORY_FAILED, trung anchor voi R11 FORWARD_STEP_FAILURE. Vi tri va anchorAt hoa,
