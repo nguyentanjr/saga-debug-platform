@@ -121,7 +121,8 @@ anomaly:
     # LEGACY    — duration = gap between positionally adjacent events (original)
     # PROJECTION — duration = operation duration from the execution projection
     # SHADOW     — run both, keep LEGACY authoritative, log every divergence
-    step-timeout-mode: SHADOW
+    # PROJECTION since F20: adjacency measured a step up to its own start event.
+    step-timeout-mode: PROJECTION
 
 retention:
   # Off by default: this deletes telemetry permanently, and evaluation runs in this

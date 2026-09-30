@@ -19,7 +19,7 @@ public class DetectionProperties {
     private double delayedCompensationMultiplier = 1.5;
     private Duration compensationRecentLookback = Duration.ofMinutes(10);
     private int serviceCrashTimeoutMultiplier = 3;
-    private StepTimeoutMode stepTimeoutMode = StepTimeoutMode.SHADOW;
+    private StepTimeoutMode stepTimeoutMode = StepTimeoutMode.PROJECTION;
     private int detectionBatchSize = 500;
 
     /**
@@ -38,7 +38,15 @@ public class DetectionProperties {
      * <p>LEGACY measures the gap between positionally adjacent events; PROJECTION
      * measures operation duration from the execution projection. SHADOW runs both,
      * keeps LEGACY authoritative, and logs every divergence so the two can be
-     * compared on real traffic before the switch is made.
+     * compared on real traffic.
+     *
+     * <p>PROJECTION is the default since F20. The adjacency walk measured a step from
+     * whatever event preceded it to the step's own start event, so a compensation that
+     * began late and finished quickly was reported as a slow compensation -- the same gap
+     * DELAYED_COMPENSATION reports, counted twice. On the 27 recorded runs of the official
+     * set the two agree exactly (StepTimeoutModeOnRecordedRunsTest), because none observes
+     * a declared start event; they part only where a start is observed, which is where
+     * the adjacency walk is wrong.
      */
     public enum StepTimeoutMode { LEGACY, SHADOW, PROJECTION }
 

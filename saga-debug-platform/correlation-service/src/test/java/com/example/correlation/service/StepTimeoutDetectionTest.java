@@ -91,6 +91,53 @@ class StepTimeoutDetectionTest {
                 .contains("over 4 attempt(s)");
     }
 
+    /**
+     * F20, reproduced live on SC24: a compensation that starts 35s after the failure and
+     * then completes in 5s. The adjacency walk measures the refund step from the forward
+     * failure to the refund's own start event and reports a 35s refund against its 10s
+     * timeout. A step cannot overrun before it starts; the 35s is the delay before it,
+     * which DELAYED_COMPENSATION already reports, so the legacy finding counts one gap
+     * twice. The projection measures the step from its observed start.
+     */
+    private final List<SagaEvent> lateButQuickRefund = List.of(
+            event("e1", "ORDER_CREATED", T0),
+            event("e2", "PAYMENT_COMPLETED", T0.plusSeconds(4)),
+            event("e3", "INVENTORY_FAILED", T0.plusSeconds(4)),
+            event("e4", "REFUND_PAYMENT", T0.plusSeconds(39)),
+            event("e5", "PAYMENT_REFUNDED", T0.plusSeconds(44)));
+
+    @Test
+    void theDelayBeforeAStepStartsIsNotThatStepsDuration() {
+        assertThat(findingStep(DetectionProperties.StepTimeoutMode.LEGACY, lateButQuickRefund))
+                .isEqualTo("REFUND_PAYMENT");
+        assertThat(findingStep(DetectionProperties.StepTimeoutMode.PROJECTION, lateButQuickRefund))
+                .isNull();
+    }
+
+    /** And the projection still reports a refund that is itself slow, measured from its start. */
+    @Test
+    void aSlowStepWithAnObservedStartIsStillReported() {
+        List<SagaEvent> slowRefund = List.of(
+                event("e1", "ORDER_CREATED", T0),
+                event("e2", "PAYMENT_COMPLETED", T0.plusSeconds(4)),
+                event("e3", "INVENTORY_FAILED", T0.plusSeconds(4)),
+                event("e4", "REFUND_PAYMENT", T0.plusSeconds(5)),
+                event("e5", "PAYMENT_REFUNDED", T0.plusSeconds(17)));
+
+        Anomaly anomaly = capture(DetectionProperties.StepTimeoutMode.PROJECTION, slowRefund);
+        assertThat(anomaly).isNotNull();
+        assertThat(anomaly.getObservedValue())
+                .contains("REFUND_PAYMENT took 12000ms")
+                .contains("start=OBSERVED_START");
+    }
+
+    /** The shipped default is the projection (F20); SHADOW remains available for comparison. */
+    @Test
+    void theDefaultMeasurementIsTheProjection() {
+        assertThat(new DetectionProperties().getStepTimeoutMode())
+                .isEqualTo(DetectionProperties.StepTimeoutMode.PROJECTION);
+    }
+
     @Test
     void shadowModeKeepsLegacyAuthoritative() {
         List<SagaEvent> withNoise = new ArrayList<>(slowPayment);
