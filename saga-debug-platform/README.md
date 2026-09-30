@@ -168,11 +168,26 @@ Bộ kịch bản: **28 kịch bản** (`SC01`–`SC29`, không có `SC18`), chi
 (A Service Availability = 5, B Network/Timing = 8, C State Machine = 5, D Compensation = 5,
 E Correlation/Identity = 5), **15 train / 13 test**, **10 `real` / 18 `synthetic`**.
 
-Kết quả lần chạy 2026-05-23 (`results/evaluation_report.json`) — **trên 10 kịch bản `real`,
-27 lượt chạy, thuộc nhóm A/B/D**:
+Kết quả đo lại 2026-09-30 trên build hiện tại (sau F19/F20, harness settle 50s), **tập `real`:
+10 kịch bản, 27 lượt, nhóm A/B/D**. Báo cáo: `results/evaluation_report_real_post_f20_settle50_20260930.json`
+(thư mục `results/` không nằm trong git).
 
 | Chỉ số | Giá trị |
 |---|---|
+| Độ chính xác RCA, lenient / strict | 74.1 % / 74.1 % (20/27) |
+| Kịch bản sai | SC04 0/2, SC16 0/2, SC17 0/2, SC06 2/3 |
+| Baseline, cùng tập ứng viên (20 lượt có nhãn cụ thể) | engine 65 % = xếp theo mã luật 65 % = theo severity 65 % |
+| Time-to-Insight trung bình | 101.1 s (gồm thời gian chờ detector theo hạn chót) |
+| Độ trễ RCA trung bình / p95 | 33.2 ms / 54.8 ms |
+
+> **Đọc con số này cho đúng.** Kết quả trùng từng kịch bản với lần đo 2026-09-21 và 2026-09-29, nên
+> tái lập được. Baseline cho thấy trên tập này **xếp hạng không tạo khác biệt**: mỗi lượt có nhiều
+> nhất một ứng viên mạnh đúng. Đóng góp đo được nằm ở chỗ khác: guard "chỉ công bố bằng chứng mạnh"
+> (bỏ đi mất 2 lượt) và các cơ chế correctness (namespace, bất biến thứ tự, rút lại nhận định, thang
+> correlation) — xem ablation E1–E3 trong `ROADMAP.md`. Nhãn chưa được review mù (`reviewed_by` = null).
+> Tập `synthetic` (nhóm C/E và một phần D) chỉ kiểm ngữ nghĩa luật, không gộp vào con số trên.
+
+---|---|
 | Độ chính xác RCA | 100.0 % |
 | Time-to-Insight trung bình | 50.8 s |
 | Độ trễ RCA trung bình / p95 | 32.1 ms / 80.6 ms |
@@ -192,7 +207,6 @@ Kết quả lần chạy 2026-05-23 (`results/evaluation_report.json`) — **tr�
 |---|---|
 | 9/18 luật RCA còn trong code | R03, R04, R07, R09, R12, R13, R15, R19, R22 đã khai báo trong `rules/anomaly-signature-rules.yaml`. Chín luật còn lại cần nội dung payload, trạng thái saga, tính toán thời gian hoặc sự vắng mặt của sự kiện — không ép ra YAML được |
 | Chỉ đường ghi quan sát qua HTTP có xác thực | `/api/ingest/**` và `/api/admin/inject-event` cần `Authorization: Bearer $CORRELATION_INGEST_TOKEN` (không đặt → 503); các API đọc và `/rca/**` vẫn mở |
-| Baseline chưa có số | `evaluate.py` đã tính `baseline_comparison` (3 chính sách chọn đối chứng) nhưng chưa chạy lại để lấy kết quả |
 | Danh mục kịch bản tự tham chiếu | Kịch bản được suy ra từ chính bộ luật đã cài, nên độ phủ nội tại gần như không thể thấp |
 
 | Toxiproxy chưa nối dây | Kịch bản `SC07` được đánh dấu `synthetic` vì các service nối thẳng `kafka:9092` |
