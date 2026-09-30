@@ -744,13 +744,35 @@ Gioi han: chi tang selection, tap ung vien la dau ra cua rule/detector va duoc g
 dau vao da ghi, khong phai do live; synthetic khong gop vao headline. Artefact:
 `results/ablation_selection_e1.json`.
 
-**E2 — Ablation cac co che correctness (identity namespace, thang correlation, bat bien thu tu,
-rut lai finding)** · Priority: cao · NEXT
-Problem: E1 khong cham duoc cac co che nay — tap real la mot nguon, dung thu tu, nen chung khong
-bao gio duoc kich hoat. Can cap dau vao doi chung co kiem soat qua CorrelationService/RcaService that
-(kieu `Sc06ReplayTest`), uu tien ablation o DAU VAO (vd. gop hai source thanh mot de mo phong mat
-namespace; hoan vi thu tu nhan) thay vi them co bat/tat trong code production.
-Expected: moi co che mot bang "tat -> sai ket luan nao", kem test.
+**E2 — Ablation cac co che correctness (namespace, bat bien thu tu, rut lai finding) — 2026-09-30** · Priority: cao
+`CorrectnessAblationTest`: cap dau vao doi chung qua CorrelationService + detector inline + RcaService +
+RcaSelector that (repo in-memory, nhu `Sc06ReplayTest`). Co che bi go o DAU VAO hoac o bien repository,
+khong them co bat/tat vao production.
+- **A. Namespace identity.** Hai run healthy `ORD-1` cua `shop-a` va `shop-b`: doi chung -> 2 execution,
+  0 anomaly, NO_DIAGNOSIS_NEEDED ca hai. Go namespace (gan chung mot source) -> 1 execution,
+  FORBIDDEN_POST_TERMINAL, nguyen nhan cong bo **TERMINAL_STATE_OVERWRITE** cho hai run khong co loi.
+- **B. Bat bien thu tu giao.** Moi hoan vi cua SC01/SC02/SC06/SC27 that (252 thu tu): chan doan
+  (trang thai run + nguyen nhan cong bo) **khong doi o ca 4 kich ban**. R14 bat o 122 thu tu; go guard
+  ClaimSubject tren cung dau ra -> nguyen nhan doi o **122/122** (OUT_OF_ORDER_DELIVERY thay cho
+  RETRY_EXHAUSTED o SC06). Phat hien: `rcaStatus` KHONG bat bien o SC27 (xem F19).
+- **C. Rut lai absence claim.** Run doc ngoai thu tu (event dau khong khai bao, bi goi stuck, roi
+  ORDER_CREATED toi va resolve workflow): doi chung rut 2 finding (SAGA_STUCK, ORPHAN_EVENT), khong cong bo
+  nguyen nhan. `retractClaims` no-op -> cong bo **WRONG_SAGA_CORRELATION_KEY** (R15) va them R06 tu SAGA_STUCK
+  da bi bac bo.
+Gioi han: khong chay sweep theo dong ho (R07/SAGA_STUCK tu timeout khong co trong B — SC27 o day ra
+COMPLETED/null, khac live); kich ban A va C dung dung, khong lay tu luot live; thang correlation
+(TRACE_CONTEXT/ALIAS_LINK) chua ablate — con lai la E3. Full suite **568 pass**.
+
+**F19 — `rcaStatus` phu thuoc thu tu giao khi chi co ung vien OBSERVATION_PROCESS** · Priority: trung binh-cao
+Problem (E2-B, SC27): cung tap event, 4/6 thu tu giao cho EVIDENCE_AVAILABLE, 2/6 cho NO_DIAGNOSIS_NEEDED;
+nguyen nhan cong bo null o ca hai. `RcaSelector.resolveStatus` dem R14 STRONG la "actionable evidence" du
+`promote` bo qua no vi subject. Ket qua: run COMPLETED khong loi bi bao "co bang chung" nhung khong ten
+nguyen nhan; scorer strict se cham sai tuy thu tu. Cung thay o E2-C (doi chung).
+Expected: `resolveStatus` va `promote` dung chung dinh nghia ve dieu gi la bang chung ve he duoc quan sat;
+co regression test hoan vi. Chua sua (ngoai scope E2).
+
+**E3 — Ablation thang correlation (TRACE_CONTEXT / ALIAS_LINK)** · Priority: trung binh · NEXT
+Problem: E2 chua cham. Can hai hop dong: event khong co khoa khai bao duoc noi bang trace/alias vs bo bac do.
 
 ## NEXT (con lai)
 
