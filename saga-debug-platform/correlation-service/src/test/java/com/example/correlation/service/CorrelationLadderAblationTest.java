@@ -155,6 +155,113 @@ class CorrelationLadderAblationTest {
         return results;
     }
 
+    // ══ C. ALIAS_LINK arriving after both fragments exist: a fold ═════════════
+
+    /**
+     * Payment reports its start under its own reference only; the order number arrives on
+     * its completion. By then both halves are stored, so the link folds two executions.
+     * Three arms: fold with withdrawal (the platform), no alias declared, and fold with
+     * withdrawal disabled -- the last isolates what withdrawal contributes to a fold.
+     */
+    @Test
+    void aLateAliasFoldsTwoFragmentsAndWithdrawsWhatWasClaimedAgainstThem() {
+        Arm control = new Arm(ORDERS, PAYMENTS_WITH_ALIAS);
+        List<IngestionResult> c = foldRun(control);
+
+        Arm noAlias = new Arm(ORDERS, PAYMENTS_WITHOUT_ALIAS);
+        List<IngestionResult> n = foldRun(noAlias);
+
+        Arm noWithdrawal = new Arm(ORDERS, PAYMENTS_WITH_ALIAS);
+        noWithdrawal.pipeline.retractionEnabled = false;
+        List<IngestionResult> w = foldRun(noWithdrawal);
+
+        report("C fold", "control", control, c);
+        report("C fold", "ablated (no alias)", noAlias, n);
+        report("C fold", "ablated (no retract)", noWithdrawal, w);
+
+        assertThat(control.pipeline.instances).as("folded into one run").hasSize(1);
+        String survivor = control.pipeline.instances.keySet().iterator().next();
+        ReplayPipeline.Outcome folded = control.pipeline.outcome(survivor);
+        assertThat(folded.sagaStatus).isEqualTo("COMPLETED");
+        assertThat(folded.retracted).as("the fragment's absence claim is withdrawn").isPositive();
+        assertThat(folded.primary).isNull();
+
+        assertThat(noAlias.pipeline.instances).hasSize(2);
+        assertThat(noAlias.pipeline.outcome("split-shop::P-77").primary).isNotNull();
+
+        assertThat(noWithdrawal.pipeline.instances).hasSize(1);
+        ReplayPipeline.Outcome kept = noWithdrawal.pipeline.outcome(
+                noWithdrawal.pipeline.instances.keySet().iterator().next());
+        assertThat(kept.primary)
+                .as("a complete run diagnosed from a claim made against one of its fragments")
+                .isNotNull();
+    }
+
+    private List<IngestionResult> foldRun(Arm arm) {
+        List<IngestionResult> results = new ArrayList<>();
+        results.add(arm.ingest("orders.events",
+                "{\"id\":\"o1\",\"orderNo\":\"O-1\",\"type\":\"ORDER_CREATED\",\"at\":\"" + T0 + "\"}"));
+        results.add(arm.ingest("payments.events",
+                "{\"id\":\"p0\",\"paymentRef\":\"P-77\",\"type\":\"PAYMENT_STARTED\",\"at\":\""
+                        + T0.plusSeconds(1) + "\"}"));
+        results.add(arm.ingest("payments.events",
+                "{\"id\":\"p1\",\"paymentRef\":\"P-77\",\"orderNo\":\"O-1\",\"type\":\"PAYMENT_COMPLETED\",\"at\":\""
+                        + T0.plusSeconds(2) + "\"}"));
+        results.add(arm.ingest("orders.events",
+                "{\"id\":\"o2\",\"orderNo\":\"O-1\",\"type\":\"INVENTORY_RESERVED\",\"at\":\"" + T0.plusSeconds(4) + "\"}"));
+        return results;
+    }
+
+    // ══ D. the limit of PROPAGATED_CONTEXT: one trace, two executions ═════════
+
+    /** The same system with its business id declared. */
+    private static final String TRACE_AND_KEY = """
+            name: trace-shop
+            topicPattern: 'trace-shop\\.events'
+            fields:
+              eventId: id
+              executionId: orderNo
+              eventType: type
+              eventTime: at
+              traceId: traceparentTraceId
+            """;
+
+    /**
+     * A trace is request-scoped (CorrelationBasis Javadoc): one request that starts two
+     * sagas puts both under one trace. With nothing but the trace to go on, the ladder files
+     * them as one execution -- the rung's known limit, measured rather than asserted. A
+     * declared key, when the source has one, takes precedence and keeps them apart. Both
+     * runs here start at the same instant, as two sagas started by one request would.
+     */
+    @Test
+    void oneTraceSpanningTwoRunsIsTheLimitOfTheTraceRung() {
+        String trace = "0af7651916cd43dd8448eb211c80319c";
+        Arm traceOnly = new Arm(TRACE_ONLY);
+        Arm withKey = new Arm(TRACE_AND_KEY);
+        List<IngestionResult> t = new ArrayList<>(), k = new ArrayList<>();
+        for (String run : List.of("A", "B")) {
+            List<String> payloads = healthyRun(run, trace);
+            for (String payload : payloads) {
+                t.add(traceOnly.ingest("trace-shop.events", payload));
+                k.add(withKey.ingest("trace-shop.events",
+                        payload.replace("{", "{\"orderNo\":\"ORD-" + run + "\",")));
+            }
+        }
+        report("D shared trace", "trace only", traceOnly, t);
+        report("D shared trace", "declared key", withKey, k);
+
+        assertThat(withKey.pipeline.instances).hasSize(2);
+        assertThat(traceOnly.pipeline.instances).as("two runs filed as one").hasSize(1);
+        ReplayPipeline.Outcome merged = traceOnly.pipeline.outcome(
+                traceOnly.pipeline.instances.keySet().iterator().next());
+        // Measured, not endorsed: the false merge surfaces only as an observation-process
+        // finding (the second run's events read "out of order"), which is never promoted,
+        // so the merged run is reported as a healthy completion. The rung's limit is
+        // nearly silent; only a declared key prevents it.
+        assertThat(merged.anomalies).containsExactly("OUT_OF_ORDER");
+        assertThat(merged.primary).isNull();
+    }
+
     // ══ harness ═══════════════════════════════════════════════════════════════
 
     private static List<String> healthyRun(String prefix, String traceId) {

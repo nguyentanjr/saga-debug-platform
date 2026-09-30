@@ -839,8 +839,16 @@ Bac bi go dung nhu mot he dang onboard thieu no: khong truyen trace, hoac mappin
   IN_PROGRESS voi ORPHAN_EVENT, cong bo **WRONG_SAGA_CORRELATION_KEY**; manh order COMPLETED khong finding
   (buoc payment vang mat duoc doc la thieu quan sat, khong phai loi — dung I10, nhung la mot run "healthy"
   co mot buoc khong ai thay).
-Gioi han: kich ban dung, khong lay tu luot live; khong co fold (alias toi truoc khi manh thu hai ton tai);
-chua do truong hop mot trace trai hai execution. Full suite **574 pass**.
+- **C. ALIAS_LINK den muon -> fold (bo sung 2026-09-30).** Payment bao PAYMENT_STARTED chi voi `paymentRef`,
+  `orderNo` toi o PAYMENT_COMPLETED: hai manh da ton tai -> merge. Doi chung: 1 execution COMPLETED, ORPHAN_EVENT
+  cua manh bi rut (retracted=1), khong cong bo nguyen nhan. Bo alias -> 2 manh, manh payment bi cong bo
+  WRONG_SAGA_CORRELATION_KEY. Fold nhung tat rut lai -> run DAY DU bi cong bo **WRONG_SAGA_CORRELATION_KEY** tu
+  mot nhan dinh lam tren manh.
+- **D. Gioi han cua bac trace (bo sung 2026-09-30).** Hai run khoi cung luc duoi mot trace (mot request khoi hai
+  saga), khong co khoa khai bao: gop thanh **1 execution COMPLETED, khong chan doan**; dau vet duy nhat la
+  OUT_OF_ORDER (subject OBSERVATION_PROCESS, khong duoc de cu). Gop sai gan nhu im lang. Co khoa khai bao -> 2
+  execution dung. Ghi nhan la gioi han, khong phai loi: I2 cho phep trace la bang chung; can noi ro trong KLTN.
+Gioi han: kich ban dung, khong lay tu luot live. Full suite **580 pass**.
 
 ## NEXT (con lai)
 

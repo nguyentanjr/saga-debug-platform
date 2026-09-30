@@ -89,6 +89,23 @@ final class ReplayPipeline {
             return n;
         });
         when(rcaRepo.save(any())).thenAnswer(c -> c.getArgument(0));
+        // What a fold of two executions does to stored rows (ExecutionAliasResolver.merge).
+        when(eventRepo.repointSaga(anyString(), anyString())).thenAnswer(c -> {
+            int n = 0;
+            for (SagaEvent e : events) {
+                if (e.getSagaId().equals(c.getArgument(0))) { e.setSagaId(c.getArgument(1)); n++; }
+            }
+            return n;
+        });
+        when(anomalyRepo.repointSaga(anyString(), anyString())).thenAnswer(c -> {
+            int n = 0;
+            for (Anomaly a : anomalies) {
+                if (a.getSagaId().equals(c.getArgument(0))) { a.setSagaId(c.getArgument(1)); n++; }
+            }
+            return n;
+        });
+        doAnswer(c -> instances.remove(((SagaInstance) c.getArgument(0)).getSagaId()))
+                .when(sagas).delete(any(SagaInstance.class));
 
         WorkflowRegistry workflows = new WorkflowRegistry(); workflows.load();
         RuleRegistry rules = new RuleRegistry(); rules.load();
