@@ -889,19 +889,23 @@ public class AnomalyDetectionService {
     }
 
     public void detectMissingTerminalEvents() {
-        // One cutoff bounds the query for every workflow, so it has to be the most
-        // permissive step timeout in the registry; a per-saga check would need a
-        // per-workflow query and buys nothing here.
-        int maxTimeout = maxStepTimeoutAcrossWorkflows()
-                * detectionProperties.getMissingTerminalTimeoutMultiplier();
+        int multiplier = detectionProperties.getMissingTerminalTimeoutMultiplier();
+        Instant now = Instant.now();
 
-        Instant cutoff = Instant.now().minus(maxTimeout, ChronoUnit.SECONDS);
+        // The query only narrows the candidates, so it takes the SHORTEST threshold any
+        // workflow can have; each run is then held to its own workflow's. It used to apply
+        // the longest step timeout across every loaded workflow to every run, so onboarding
+        // a system with a 120s step moved ORDER_SAGA's threshold from 100s to 1200s (F23).
+        Instant cutoff = now.minus((long) minStepTimeoutAcrossWorkflows() * multiplier, ChronoUnit.SECONDS);
 
         List<SagaInstance> stuckSagas = sagaInstanceRepository.findByStatusInAndLastUpdatedBefore(
                 List.of(SagaStatus.STARTED, SagaStatus.IN_PROGRESS), cutoff, detectionBatch());
 
         for (SagaInstance saga : stuckSagas) {
             if (saga.hasWorkflowConflict()) continue;
+            int maxTimeout = maxStepTimeoutOf(specFor(saga)) * multiplier;
+            if (saga.getLastUpdated() != null
+                    && saga.getLastUpdated().isAfter(now.minus(maxTimeout, ChronoUnit.SECONDS))) continue;
             if (anomalyRepository.existsBySagaIdAndAnomalyType(
                     saga.getSagaId(), AnomalyType.MISSING_TERMINAL_EVENT)) continue;
 
@@ -1143,17 +1147,24 @@ public class AnomalyDetectionService {
      * <p>Used only where one cutoff has to bound a query across every workflow at once;
      * taking the maximum keeps the query from excluding sagas of the slowest workflow.
      */
-    private int maxStepTimeoutAcrossWorkflows() {
-        int fallback = detectionProperties.getDefaultStepTimeoutSeconds();
-        return workflowRegistry.workflowNames().stream()
-                .map(name -> workflowRegistry.byType(name).orElse(null))
-                .filter(Objects::nonNull)
-                .filter(spec -> spec.getSteps() != null)
-                .flatMap(spec -> spec.getSteps().stream()
-                        .map(step -> spec.getStepTimeoutSeconds(step.getId())))
-                .mapToInt(Integer::intValue)
+    /** The slowest step of one workflow; the default timeout when it is unknown. */
+    private int maxStepTimeoutOf(WorkflowSpec spec) {
+        if (spec == null || spec.getSteps() == null) return detectionProperties.getDefaultStepTimeoutSeconds();
+        return spec.getSteps().stream()
+                .mapToInt(step -> spec.getStepTimeoutSeconds(step.getId()))
                 .max()
-                .orElse(fallback);
+                .orElse(detectionProperties.getDefaultStepTimeoutSeconds());
+    }
+
+    /** The smallest per-workflow threshold base, so a query bounded by it misses no run. */
+    private int minStepTimeoutAcrossWorkflows() {
+        return Math.min(detectionProperties.getDefaultStepTimeoutSeconds(),
+                workflowRegistry.workflowNames().stream()
+                        .map(name -> workflowRegistry.byType(name).orElse(null))
+                        .filter(Objects::nonNull)
+                        .mapToInt(this::maxStepTimeoutOf)
+                        .min()
+                        .orElse(detectionProperties.getDefaultStepTimeoutSeconds()));
     }
 
     /**

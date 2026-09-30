@@ -761,9 +761,16 @@ public class RcaService {
                 if (stuckSeconds > serviceCrashTimeoutSeconds) {
                     
                     
+                    // A hypothesis, not supporting evidence. All it rests on is silence, and
+                    // silence does not tell a crashed source from a partitioned one, a stalled
+                    // consumer, or an observer reading late -- the same reason F5 withdrew
+                    // TRANSIENT_SERVICE_FAILURE. At SUPPORTING it made a run "evidence
+                    // available" while naming nothing, once F23 let the rule fire at all.
                     CandidateAssessment rr = candidate("SERVICE_CRASH",
                             isRecovered ? "MEDIUM" : "CRITICAL", "R05",
-                            CandidateStatus.SUPPORTING_EVIDENCE);
+                            CandidateStatus.WEAK_EVIDENCE);
+                    rr.setStatusReason("Only silence was observed; whether the source crashed, "
+                            + "was unreachable, or its events were delayed is not established.");
                     rr.getEvidence().add(evidence("Saga stuck for " + stuckSeconds + "s (>"
                             + serviceCrashTimeoutSeconds + "s threshold)"));
                     rr.getEvidence().add(evidence("Both SAGA_STUCK and MISSING_TERMINAL_EVENT anomalies present"));

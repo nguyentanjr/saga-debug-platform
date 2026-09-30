@@ -77,21 +77,23 @@ class AlertContentTest {
     }
 
     /**
-     * A stuck run still raises an alert on SUPPORTING evidence about the observed system,
-     * but does not call SERVICE_CRASH the primary cause: the result does not.
+     * A run that has only gone silent: R05 is a hypothesis (WEAK) since F23/R05, because
+     * silence does not establish a crash. It stays in the candidates for the reader, the
+     * result says the evidence is insufficient, and no diagnosis is announced. It used to
+     * be SUPPORTING, which alerted on a result that named no cause.
      */
     @Test
-    void supportingEvidenceStillAlertsWithoutBeingCalledPrimary() {
+    void silenceAloneIsAHypothesisAndAnnouncesNothing() {
         anomalies.add(anomaly(1L, AnomalyType.SAGA_STUCK));
         anomalies.add(anomaly(2L, AnomalyType.MISSING_TERMINAL_EVENT));
 
         RcaResult result = analyze(SagaStatus.IN_PROGRESS, event("e-1", "ORDER_CREATED", 0));
 
         assertThat(result.getCandidates()).extracting(c -> c.getRuleId() + ":" + c.getStatus())
-                .contains("R05:SUPPORTING_EVIDENCE");
+                .contains("R05:WEAK_EVIDENCE");
+        assertThat(result.getRcaStatus()).isEqualTo(RcaStatus.INSUFFICIENT_EVIDENCE);
         assertThat(result.getPrimaryRootCauses()).isEmpty();
-        assertThat(alerts).singleElement()
-                .satisfies(alert -> assertThat(alert.primaryRootCauses()).isEmpty());
+        assertThat(alerts).isEmpty();
     }
 
     /**
