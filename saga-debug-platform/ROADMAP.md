@@ -770,8 +770,12 @@ SC23 **khong phai hoi quy platform**: harness doc luot o 42.2s sau event cuoi, M
 luot quet cham nhat", thieu han chot dung truoc no. Da sua: **50s** = han dai nhat 30s + chu ky 15s + bien, van
 dong deu moi kich ban (giu nguyen tac chong thien lech precision cua trigger_rca). MISSING_TERMINAL_EVENT
 (10x timeout) co y khong phu; kich ban can no tu cho rieng.
-Artefact: `results/evaluation_report_synthetic_post_f20_20260930.json` (settle 35s). Can do lai hai tap voi
-settle 50s truoc khi trich so.
+Artefact: `results/evaluation_report_synthetic_post_f20_20260930.json` (settle 35s).
+**Tap real do lai voi settle 50s** (build sau F19/F20, 27 luot): **74.1 % lenient / 74.1 % strict**, tung kich ban
+trung lan 2026-09-21 va 2026-09-29 (SC04/16/17 0 %, SC06 2/3, con lai 100 %). Baseline cung tap ung vien:
+engine 65 % = rule_id_order 65 % = severity_only 65 % (20 luot co nhan cu the). E1 chay lai tren bao cao nay
+cho cung bang. -> F19, F20 va settle 50s khong doi headline, da do chu khong con suy luan.
+Artefact: `results/evaluation_report_real_post_f20_settle50_20260930.json`. README da cap nhat theo so nay.
 
 **F21 — Nhan dinh ve khoang thoi gian hoa anchor voi event mo khoang; severity quyet dinh** · Priority: trung binh
 Problem (SC24 live sau F20): R22 DELAYED_COMPENSATION trich khoang INVENTORY_FAILED -> REFUND_PAYMENT; anchor =
