@@ -68,3 +68,9 @@ scenarios.txt
 *.md
 docs/
 
+
+# Tai lieu chi giu local, khong dua len GitHub
+*.md
+oracle/*.txt
+!oracle/requirements.txt
+*.pptx
