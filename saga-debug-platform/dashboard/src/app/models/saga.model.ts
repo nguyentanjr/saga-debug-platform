@@ -56,12 +56,16 @@ export interface RcaCandidate {
   evidence: Evidence[];
   suggestions?: string[];
   statusReason?: string;
+  /** The workflow step the cause is anchored to, when the rule can name one. */
+  anchorStepId?: string | null;
+  anchorAt?: string | null;
 }
 
 export interface RcaResult {
   id: number;
   sagaId: string;
   rootCause: string | null;
+  outcome?: string | null;
   severity: string;
   evidence: string | null;
   suggestions: string | null;

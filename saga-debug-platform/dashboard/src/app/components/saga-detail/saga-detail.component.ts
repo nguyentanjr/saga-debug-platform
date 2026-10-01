@@ -2,9 +2,18 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription, interval } from 'rxjs';
 import { SagaService } from '../../services/saga.service';
-import { Evidence, RcaCandidate, RcaResult, SagaDetail } from '../../models/saga.model';
+import { Evidence, RcaCandidate, RcaResult, SagaDetail, SagaEvent } from '../../models/saga.model';
 
 /** Mid-tone colours that all keep a white icon legible. */
+/** One step of the saga as it actually ran, in first-seen order. */
+export interface StepView {
+  name: string;
+  /** forward = ran before the root-cause step; rootCause = the anchored step; rollback = first seen after it. */
+  role: 'forward' | 'rootCause' | 'rollback';
+  eventCount: number;
+  hasAnomaly: boolean;
+}
+
 const SERVICE_PALETTE = ['#3f51b5', '#4caf50', '#ff9800', '#9c27b0', '#00897b', '#e91e63', '#5d4037', '#1e88e5'];
 
 @Component({
@@ -21,6 +30,12 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   errorMessage = '';
   expandedPayload: number | null = null;
   traceIds: string[] = [];
+  /** Diagnosis view, recomputed on every load. */
+  latestRca: RcaResult | null = null;
+  primaryCandidate: RcaCandidate | null = null;
+  steps: StepView[] = [];
+  evidenceEventIds = new Set<string>();
+  highlightedEventId: string | null = null;
   private pollSub?: Subscription;
 
   constructor(
@@ -52,6 +67,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
         this.saga = detail;
         this.loading = false;
         this.extractTraceIds();
+        this.buildDiagnosis();
       },
       error: (err) => {
         console.error('Failed to load saga', err);
@@ -110,6 +126,122 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
       } catch {}
     }
     this.traceIds = Array.from(ids);
+  }
+
+  /**
+   * Derives the diagnosis view purely from what the observer already returned: the newest RCA,
+   * its leading candidate, the step it is anchored to and the events cited as evidence. Step
+   * roles are positional (before / at / after the anchored step), so no event or step vocabulary
+   * of the observed system is assumed here.
+   */
+  buildDiagnosis(): void {
+    const saga = this.saga;
+    if (!saga) return;
+    const results = [...saga.rcaResults].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    this.latestRca = results[0] || null;
+    const candidates = this.latestRca ? this.getCandidates(this.latestRca) : [];
+    const primary = this.latestRca?.primaryRootCauses || [];
+    this.primaryCandidate =
+      candidates.find(c => c.status === 'STRONG_EVIDENCE' && primary.includes(c.rootCause))
+      || candidates.find(c => c.status === 'STRONG_EVIDENCE')
+      || candidates.find(c => c.status === 'SUPPORTING_EVIDENCE')
+      || null;
+
+    const cited = new Set<string>();
+    for (const e of this.primaryCandidate?.evidence || []) {
+      (e.eventIds || []).forEach(id => cited.add(id));
+    }
+    for (const a of saga.anomalies) {
+      (a.evidenceEventIds || []).forEach(id => cited.add(id));
+    }
+    this.evidenceEventIds = cited;
+
+    const anomalous = new Set<string>();
+    for (const a of saga.anomalies) {
+      for (const id of a.evidenceEventIds || []) {
+        const ev = saga.events.find(x => x.eventId === id);
+        if (ev) anomalous.add(this.stepOf(ev));
+      }
+    }
+    const anchor = this.primaryCandidate?.anchorStepId || null;
+    const steps: StepView[] = [];
+    let anchorSeen = false;
+    for (const ev of saga.events) {
+      const name = this.stepOf(ev);
+      const existing = steps.find(s => s.name === name);
+      if (existing) {
+        existing.eventCount++;
+        continue;
+      }
+      let role: StepView['role'] = anchorSeen ? 'rollback' : 'forward';
+      if (anchor && name === anchor) {
+        role = 'rootCause';
+        anchorSeen = true;
+      }
+      steps.push({ name, role, eventCount: 1, hasAnomaly: anomalous.has(name) });
+    }
+    this.steps = steps;
+  }
+
+  stepOf(event: SagaEvent): string {
+    return this.saga?.workflowSteps?.[event.id] || event.stepName || event.eventType;
+  }
+
+  isEvidenceEvent(event: SagaEvent): boolean {
+    return !!event.eventId && this.evidenceEventIds.has(event.eventId);
+  }
+
+  isRootCauseEvent(event: SagaEvent): boolean {
+    const anchor = this.primaryCandidate?.anchorStepId;
+    return !!anchor && this.stepOf(event) === anchor && this.isEvidenceEvent(event);
+  }
+
+  /** Plain-language one-liner for the diagnosis banner. */
+  verdict(): string {
+    const saga = this.saga;
+    if (!saga) return '';
+    if (saga.workflowConflicts?.length) return 'Status undetermined: conflicting workflow declarations.';
+    const rca = this.latestRca;
+    if (!rca) return 'Not analysed yet. RCA runs automatically after the saga ends.';
+    if (this.isHealthy(rca)) return 'Saga completed normally. Nothing to diagnose.';
+    if (this.isInsufficient(rca)) {
+      return saga.status === 'COMPLETED'
+        ? `Completed, but with ${saga.anomalies.length} anomal${saga.anomalies.length === 1 ? 'y' : 'ies'}; evidence is not enough to name a cause.`
+        : 'Something went wrong, but the evidence is not enough to name a cause.';
+    }
+    const c = this.primaryCandidate;
+    if (!c) return rca.rootCause ? `Most likely cause: ${this.formatEnumLabel(rca.rootCause)}.` : '';
+    const where = c.anchorStepId ? ` at step ${c.anchorStepId}` : '';
+    return `${this.formatEnumLabel(c.rootCause)}${where}.`;
+  }
+
+  verdictClass(): string {
+    const rca = this.latestRca;
+    if (!rca) return 'verdict-pending';
+    if (this.isHealthy(rca)) return 'verdict-ok';
+    if (this.isInsufficient(rca)) return 'verdict-unknown';
+    return 'verdict-problem';
+  }
+
+  stepRoleLabel(step: StepView): string {
+    switch (step.role) {
+      case 'rootCause': return 'root cause';
+      case 'rollback': return 'after failure';
+      default: return 'ok';
+    }
+  }
+
+  eventLabel(eventId: string): string {
+    const ev = this.saga?.events.find(e => e.eventId === eventId);
+    return ev ? ev.eventType : eventId.slice(0, 8);
+  }
+
+  focusEvent(eventId: string): void {
+    this.highlightedEventId = eventId;
+    document.getElementById('ev-' + eventId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => {
+      if (this.highlightedEventId === eventId) this.highlightedEventId = null;
+    }, 2000);
   }
 
   parseJson(jsonStr?: string | null): any[] {

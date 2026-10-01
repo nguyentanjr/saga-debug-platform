@@ -24,6 +24,50 @@
       Status and diagnosis are undetermined. Earlier anomaly findings are retained for
       inspection but must be re-evaluated after the declarations are corrected.</span>
   </div>
+  <!-- Diagnosis: what went wrong, where, and which events prove it -->
+  <mat-card class="diagnosis-card" [ngClass]="verdictClass()">
+    <div class="diagnosis-head">
+      <mat-icon class="diagnosis-icon">{{ verdictClass() === 'verdict-ok' ? 'check_circle' : verdictClass() === 'verdict-problem' ? 'report' : 'help_outline' }}</mat-icon>
+      <div>
+        <div class="diagnosis-kicker">Diagnosis · {{ saga.workflowType }} · {{ saga.status }}</div>
+        <div class="diagnosis-verdict">{{ verdict() }}</div>
+        <div class="diagnosis-sub" *ngIf="primaryCandidate">
+          Rule {{ primaryCandidate.ruleId }} ·
+          <span class="candidate-status-badge" [ngClass]="'cstatus-' + primaryCandidate.status.toLowerCase()">{{ formatEnumLabel(primaryCandidate.status) }}</span>
+          <span *ngIf="primaryCandidate.severity && primaryCandidate.severity !== 'NONE'"
+                class="candidate-severity" [ngClass]="getSeverityClass(primaryCandidate.severity)">{{ primaryCandidate.severity }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step strip: the saga as it actually ran -->
+    <div class="step-strip" *ngIf="steps.length > 0">
+      <ng-container *ngFor="let step of steps; let last = last">
+        <div class="step-node" [ngClass]="'step-' + step.role">
+          <div class="step-name">{{ step.name }}</div>
+          <div class="step-role">
+            <mat-icon *ngIf="step.hasAnomaly" class="step-anomaly" title="Anomaly detected on this step">warning</mat-icon>
+            {{ stepRoleLabel(step) }}<span *ngIf="step.eventCount > 1"> · {{ step.eventCount }} events</span>
+          </div>
+        </div>
+        <mat-icon class="step-arrow" *ngIf="!last">arrow_forward</mat-icon>
+      </ng-container>
+    </div>
+
+    <!-- Evidence, each fact linked to the events it cites -->
+    <ul class="diagnosis-evidence" *ngIf="primaryCandidate && getEvidence(primaryCandidate).length > 0">
+      <li *ngFor="let ev of getEvidence(primaryCandidate)">
+        <span>{{ ev.fact }}</span>
+        <button *ngFor="let id of ev.eventIds" class="event-chip" type="button" (click)="focusEvent(id)">
+          <mat-icon>my_location</mat-icon>{{ eventLabel(id) }}
+        </button>
+      </li>
+    </ul>
+    <ul class="diagnosis-evidence" *ngIf="latestRca && isInsufficient(latestRca) && getMissingEvidence(latestRca).length > 0">
+      <li *ngFor="let m of getMissingEvidence(latestRca)"><span>Missing: {{ m }}</span></li>
+    </ul>
+  </mat-card>
+
   <div class="summary-cards">
     <mat-card>
       <mat-card-header><mat-card-title>Saga ID</mat-card-title></mat-card-header>
@@ -72,7 +116,11 @@
     </mat-card-header>
     <mat-card-content>
       <div class="timeline">
-        <div class="timeline-item" *ngFor="let event of saga.events; let i = index">
+        <div class="timeline-item" *ngFor="let event of saga.events; let i = index"
+             [attr.id]="event.eventId ? 'ev-' + event.eventId : null"
+             [class.is-evidence]="isEvidenceEvent(event)"
+             [class.is-root]="isRootCauseEvent(event)"
+             [class.is-focused]="event.eventId && event.eventId === highlightedEventId">
           <div class="timeline-dot" [style.background-color]="serviceColor(event.serviceName)">
             <mat-icon>{{ getEventIcon(event.eventType) }}</mat-icon>
           </div>
@@ -80,10 +128,11 @@
             <div class="timeline-header">
               <strong>{{ event.eventType }}</strong>
               <span class="service-tag">{{ event.serviceName }}</span>
+              <span class="evidence-tag" *ngIf="isEvidenceEvent(event)">{{ isRootCauseEvent(event) ? 'root cause' : 'evidence' }}</span>
               <span class="event-id-tag" *ngIf="event.eventId">ID: {{ event.eventId | slice:0:8 }}</span>
             </div>
             <div class="timeline-meta">
-              <span>Step: {{ saga.workflowSteps?.[event.id] || event.stepName }}</span>
+              <span>Step: {{ stepOf(event) }}</span>
               <span class="separator">|</span>
               <span>{{ event.timestamp | date:'medium' }}</span>
             </div>
