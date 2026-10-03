@@ -163,6 +163,31 @@
       </td>
     </ng-container>
 
+    <ng-container matColumnDef="diagnosis">
+      <th mat-header-cell *matHeaderCellDef>Diagnosis</th>
+      <td mat-cell *matCellDef="let saga" class="diagnosis-cell">
+        <ng-container *ngIf="!saga.workflowConflicts?.length; else undetermined">
+          <ng-container [ngSwitch]="saga.rcaStatus">
+            <span *ngSwitchCase="'EVIDENCE_AVAILABLE'" class="dx dx-problem">
+              <mat-icon>report</mat-icon>{{ formatLabel(saga.rootCause) }}
+              <code class="dx-step" *ngIf="saga.rootCauseStep">@ {{ saga.rootCauseStep }}</code>
+            </span>
+            <span *ngSwitchCase="'INSUFFICIENT_EVIDENCE'" class="dx dx-unknown">
+              <mat-icon>help_outline</mat-icon>Cause not established
+            </span>
+            <span *ngSwitchCase="'NO_DIAGNOSIS_NEEDED'" class="dx dx-ok">
+              <mat-icon>check_circle</mat-icon>Healthy
+            </span>
+            <span *ngSwitchDefault class="dx dx-pending">Not analysed yet</span>
+          </ng-container>
+          <span class="dx-anomalies" *ngIf="saga.anomalyCount">
+            <mat-icon>warning</mat-icon>{{ saga.anomalyCount }}
+          </span>
+        </ng-container>
+        <ng-template #undetermined><span class="dx dx-unknown">Undetermined</span></ng-template>
+      </td>
+    </ng-container>
+
     <ng-container matColumnDef="workflowType">
       <th mat-header-cell *matHeaderCellDef>Workflow</th>
       <td mat-cell *matCellDef="let saga">{{ saga.workflowConflicts?.length ? 'CONFLICT: ' + saga.workflowConflicts.join(', ') : saga.workflowType }}</td>

@@ -81,6 +81,21 @@ public class SagaController {
                             r -> (String) r[0],
                             r -> (Long) r[1]));
 
+        // The newest diagnosis per run, and the findings still standing (L25), so the list
+        // can say where a run broke without opening it.
+        Map<String, RcaResult> latestRca = new java.util.HashMap<>();
+        Map<String, Long> anomalyCounts = new java.util.HashMap<>();
+        if (!sagaIds.isEmpty()) {
+            for (RcaResult rca : rcaResultRepository.findBySagaIdInOrderByCreatedAtDesc(sagaIds)) {
+                latestRca.putIfAbsent(rca.getSagaId(), rca);
+            }
+            for (Anomaly anomaly : anomalyRepository.findBySagaIdIn(sagaIds)) {
+                if (anomaly.getRetractedAt() == null) {
+                    anomalyCounts.merge(anomaly.getSagaId(), 1L, Long::sum);
+                }
+            }
+        }
+
         Page<SagaListItem> result = sagas.map(saga -> {
             SagaListItem item = new SagaListItem();
             item.setSagaId(saga.getSagaId());
@@ -93,10 +108,34 @@ public class SagaController {
                 item.setDurationMs(Duration.between(saga.getStartTime(), saga.getEndTime()).toMillis());
             }
             item.setEventCount(eventCounts.getOrDefault(saga.getSagaId(), 0L));
+            item.setAnomalyCount(anomalyCounts.getOrDefault(saga.getSagaId(), 0L));
+            // A diagnosis reached under a disputed specification is not a current one.
+            RcaResult rca = saga.hasWorkflowConflict() ? null : latestRca.get(saga.getSagaId());
+            if (rca != null) {
+                item.setRcaStatus(rca.getRcaStatus() != null ? rca.getRcaStatus().name() : null);
+                item.setRootCause(rca.getRootCause());
+                item.setRootCauseStep(promotedAnchorStep(rca));
+            }
             return item;
         });
 
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * The step the stored diagnosis is anchored to: that of the candidate RCA promoted, which
+     * the result names by rule and cause. Null when nothing was promoted or the rule names no
+     * step; never taken from another candidate.
+     */
+    static String promotedAnchorStep(RcaResult rca) {
+        if (rca.getRootCause() == null || rca.getCandidates() == null) return null;
+        return rca.getCandidates().stream()
+                .filter(c -> rca.getRootCause().equals(c.getRootCause())
+                        && java.util.Objects.equals(rca.getRuleId(), c.getRuleId()))
+                .map(com.example.correlation.domain.rca.RcaCandidate::getAnchorStepId)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     /**

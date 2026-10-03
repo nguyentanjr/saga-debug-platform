@@ -199,3 +199,21 @@
 mat-form-field {
   width: 200px;
 }
+
+/* ---- Diagnosis column (D1) ---- */
+.diagnosis-cell { white-space: nowrap; }
+.dx { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; }
+.dx mat-icon { font-size: 16px; width: 16px; height: 16px; }
+.dx-problem { color: #c62828; }
+.dx-unknown { color: #ef6c00; }
+.dx-ok { color: #2e7d32; }
+.dx-pending { color: #9e9e9e; font-style: italic; }
+.dx-step {
+  margin-left: 4px; padding: 1px 6px; border-radius: 4px;
+  background: #ffebee; color: #b71c1c; font-size: 11px;
+}
+.dx-anomalies {
+  display: inline-flex; align-items: center; gap: 2px; margin-left: 8px;
+  font-size: 12px; color: #f57c00;
+}
+.dx-anomalies mat-icon { font-size: 14px; width: 14px; height: 14px; }

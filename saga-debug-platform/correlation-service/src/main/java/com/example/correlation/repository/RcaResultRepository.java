@@ -24,6 +24,7 @@ public interface RcaResultRepository extends JpaRepository<RcaResult, Long> {
     int repointSaga(@Param("merged") String merged, @Param("canonical") String canonical);
 
     List<RcaResult> findBySagaIdOrderByCreatedAtDesc(String sagaId);
+    List<RcaResult> findBySagaIdInOrderByCreatedAtDesc(Collection<String> sagaIds);
     List<RcaResult> findByCreatedAtAfter(Instant since);
     void deleteAllBySagaId(String sagaId);
 

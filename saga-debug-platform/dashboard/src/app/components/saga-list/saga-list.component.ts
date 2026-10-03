@@ -12,7 +12,7 @@ import { DashboardSummary, MetricItem, SagaListItem, ScenarioDefinition, Scenari
 })
 export class SagaListComponent implements OnInit, OnDestroy {
 
-  displayedColumns: string[] = ['sagaId', 'status', 'workflowType', 'startTime', 'durationMs', 'eventCount'];
+  displayedColumns: string[] = ['sagaId', 'status', 'diagnosis', 'workflowType', 'startTime', 'durationMs', 'eventCount'];
   sagas: SagaListItem[] = [];
   totalElements = 0;
   pageSize = 20;
@@ -137,6 +137,11 @@ export class SagaListComponent implements OnInit, OnDestroy {
   onFilterChange(): void {
     this.pageIndex = 0;
     this.loadSagas();
+  }
+
+  /** FORWARD_STEP_FAILURE -> Forward Step Failure */
+  formatLabel(value?: string | null): string {
+    return value ? value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : '';
   }
 
   onRowClick(saga: SagaListItem): void {

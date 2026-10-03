@@ -140,12 +140,12 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     const results = [...saga.rcaResults].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     this.latestRca = results[0] || null;
     const candidates = this.latestRca ? this.getCandidates(this.latestRca) : [];
-    const primary = this.latestRca?.primaryRootCauses || [];
-    this.primaryCandidate =
-      candidates.find(c => c.status === 'STRONG_EVIDENCE' && primary.includes(c.rootCause))
-      || candidates.find(c => c.status === 'STRONG_EVIDENCE')
-      || candidates.find(c => c.status === 'SUPPORTING_EVIDENCE')
-      || null;
+    // The candidate RCA promoted, which the stored result names by rule and cause; the same
+    // choice the saga list makes, so both screens point at the same step.
+    const rca = this.latestRca;
+    this.primaryCandidate = rca?.rootCause
+      ? candidates.find(c => c.rootCause === rca.rootCause && c.ruleId === rca.ruleId) || null
+      : null;
 
     const cited = new Set<string>();
     for (const e of this.primaryCandidate?.evidence || []) {

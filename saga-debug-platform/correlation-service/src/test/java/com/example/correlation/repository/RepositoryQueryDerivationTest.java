@@ -76,6 +76,7 @@ class RepositoryQueryDerivationTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "findBySagaIdOrderByCreatedAtDesc",
+            "findBySagaIdInOrderByCreatedAtDesc",
             "findByCreatedAtAfter",
             "deleteAllBySagaId",
             "deleteBySagaIdIn",
@@ -106,7 +107,8 @@ class RepositoryQueryDerivationTest {
                 "findBySagaIdInOrderBySagaIdAscTimestampAsc", "deleteBySagaIdIn",
                 "findBySagaId", "findByDetectedAtAfter", "existsBySagaIdAndAnomalyType",
                 "deleteByDetectedAtBefore", "findBySagaIdIn",
-                "findBySagaIdOrderByCreatedAtDesc", "findByCreatedAtAfter", "deleteAllBySagaId");
+                "findBySagaIdOrderByCreatedAtDesc", "findBySagaIdInOrderByCreatedAtDesc",
+                "findByCreatedAtAfter", "deleteAllBySagaId");
 
         List<String> declared = repositories.stream()
                 .flatMap(repo -> java.util.Arrays.stream(repo.getDeclaredMethods()))

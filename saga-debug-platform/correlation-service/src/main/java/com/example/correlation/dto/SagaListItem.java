@@ -15,6 +15,12 @@ public class SagaListItem {
     private Instant endTime;
     private Long durationMs;
     private long eventCount;
+    /** Standing (not retracted) findings on the run. */
+    private long anomalyCount;
+    /** The newest stored diagnosis, summarised; all null when the run has none. */
+    private String rcaStatus;
+    private String rootCause;
+    private String rootCauseStep;
 
     public String getSagaId() { return sagaId; }
     public void setSagaId(String sagaId) { this.sagaId = sagaId; }
@@ -36,4 +42,16 @@ public class SagaListItem {
 
     public long getEventCount() { return eventCount; }
     public void setEventCount(long eventCount) { this.eventCount = eventCount; }
+
+    public long getAnomalyCount() { return anomalyCount; }
+    public void setAnomalyCount(long anomalyCount) { this.anomalyCount = anomalyCount; }
+
+    public String getRcaStatus() { return rcaStatus; }
+    public void setRcaStatus(String rcaStatus) { this.rcaStatus = rcaStatus; }
+
+    public String getRootCause() { return rootCause; }
+    public void setRootCause(String rootCause) { this.rootCause = rootCause; }
+
+    public String getRootCauseStep() { return rootCauseStep; }
+    public void setRootCauseStep(String rootCauseStep) { this.rootCauseStep = rootCauseStep; }
 }

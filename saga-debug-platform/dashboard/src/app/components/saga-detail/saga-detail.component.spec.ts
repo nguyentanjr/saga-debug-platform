@@ -20,7 +20,7 @@ const compensated = [
 
 function rcaAnchoredAt(step: string | null, createdAt = '2026-10-01T00:00:00Z'): RcaResult {
   return {
-    id: 1, sagaId: 's', rootCause: 'FORWARD_STEP_FAILURE', severity: 'LOW', evidence: null, suggestions: null,
+    id: 1, sagaId: 's', rootCause: 'FORWARD_STEP_FAILURE', ruleId: 'R11', severity: 'LOW', evidence: null, suggestions: null,
     createdAt, rcaStatus: 'EVIDENCE_AVAILABLE', primaryRootCauses: ['FORWARD_STEP_FAILURE'],
     candidates: [
       { ruleId: 'R99', rootCause: 'OTHER', severity: 'LOW', status: 'RULED_OUT', evidence: [], anchorStepId: 'CREATE' },
@@ -62,6 +62,17 @@ describe('SagaDetailComponent diagnosis view', () => {
 
     expect(c.steps.every(s => s.role === 'forward')).toBeTrue();
     expect(c.verdict()).toBe('Forward Step Failure.');
+  });
+
+  it('follows the candidate RCA promoted, not another strong one with the same cause', () => {
+    const rca = rcaAnchoredAt('RESERVE');
+    rca.candidates!.unshift({ ruleId: 'R30', rootCause: 'FORWARD_STEP_FAILURE', severity: 'LOW',
+      status: 'STRONG_EVIDENCE', evidence: [], anchorStepId: 'PAY' });
+    c.saga = saga('COMPENSATED', compensated, [rca]);
+    c.buildDiagnosis();
+
+    expect(c.primaryCandidate?.ruleId).toBe('R11');
+    expect(c.steps.find(s => s.role === 'rootCause')?.name).toBe('RESERVE');
   });
 
   it('uses the newest RCA when the saga was re-analysed', () => {

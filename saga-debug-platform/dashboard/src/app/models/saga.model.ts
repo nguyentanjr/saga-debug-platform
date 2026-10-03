@@ -7,8 +7,11 @@ export interface SagaListItem {
   endTime: string | null;
   durationMs: number | null;
   eventCount: number;
-  rcaStatus?: RcaStatus;
+  rcaStatus?: RcaStatus | null;
   anomalyCount?: number;
+  /** The newest diagnosis' promoted cause and the step it is anchored to, when there is one. */
+  rootCause?: string | null;
+  rootCauseStep?: string | null;
 }
 
 export interface SagaEvent {
@@ -66,6 +69,7 @@ export interface RcaResult {
   sagaId: string;
   rootCause: string | null;
   outcome?: string | null;
+  ruleId?: string | null;
   severity: string;
   evidence: string | null;
   suggestions: string | null;
