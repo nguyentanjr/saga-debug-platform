@@ -17,7 +17,7 @@ import java.time.Instant;
  *
  * <p>This is the only evidence the platform has that does not come from the saga's own
  * events. It exists for one question those events cannot answer: when a run went silent,
- * was the service it was waiting on actually down? See R23.
+ * was the service it was waiting on actually down? See R25.
  */
 @Entity
 @Table(name = "service_lifecycle_events")

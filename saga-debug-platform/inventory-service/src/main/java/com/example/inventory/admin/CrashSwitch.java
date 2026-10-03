@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>The exit happens before the listener returns, so the message's offset is not committed
  * and the restarted process (compose {@code restart: on-failure}) handles it again. The
  * container runtime records a real {@code die} and {@code start}, which is the evidence the
- * observer's R23 reads. Disarmed on use: one crash per arming.
+ * observer's R25 reads. Disarmed on use: one crash per arming.
  */
 @Component
 public class CrashSwitch {

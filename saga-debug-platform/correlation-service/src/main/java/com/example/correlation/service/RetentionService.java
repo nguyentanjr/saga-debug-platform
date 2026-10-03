@@ -72,7 +72,7 @@ public class RetentionService {
         if (purged > 0) {
             log.info("Retention purge removed {} saga(s) settled before {}", purged, cutoff);
         }
-        // Lifecycle facts are not tied to a saga, so they age on their own clock (R23).
+        // Lifecycle facts are not tied to a saga, so they age on their own clock (R25).
         int lifecycle = lifecycleRepository.deleteExpiredKeepingLatestPerService(cutoff);
         if (lifecycle > 0) {
             log.info("Retention purge removed {} service lifecycle fact(s) before {}", lifecycle, cutoff);

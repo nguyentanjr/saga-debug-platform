@@ -164,7 +164,7 @@ public class ScenarioService {
                 List.of(
                         "inventory-service exits while handling this order's payment message.",
                         "Its restart policy starts it again; it re-reads the uncommitted message and the order completes.",
-                        "The observer learns of the exit from the container runtime, not from the saga's events (R23).",
+                        "The observer learns of the exit from the container runtime, not from the saga's events (R25).",
                         "Open the saga after about a minute."));
     }
 

@@ -20,7 +20,7 @@ import java.util.Map;
 /**
  * Lifecycle facts pushed by whatever knows them in a deployment without Docker: a systemd
  * {@code ExecStopPost=} hook, a supervisord event listener, a Kubernetes watcher, an
- * Alertmanager webhook. They land in the same table the Docker collector writes, so R23
+ * Alertmanager webhook. They land in the same table the Docker collector writes, so R25
  * reads them the same way.
  *
  * <p>{@code basis} is required, not defaulted. A sender that only knows a probe failed must

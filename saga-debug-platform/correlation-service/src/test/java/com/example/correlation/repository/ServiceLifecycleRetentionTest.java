@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Lifecycle facts age out, but never a service's latest one: an exit with no start after it
- * is the beginning of a down interval a still-waiting run needs, however old it is (R23).
+ * is the beginning of a down interval a still-waiting run needs, however old it is (R25).
  */
 @DataJpaTest(showSql = false, properties = {
         "spring.datasource.url=jdbc:h2:mem:lifecycle_retention;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",

@@ -61,7 +61,7 @@ public class RcaService {
     private final ExecutionProjectionService executionProjectionService;
     private final FailureSignalRegistry failureSignalRegistry;
     private final RcaService self;
-    /** Optional: absent in tests that construct this service by hand, and then R23 is not assessed. */
+    /** Optional: absent in tests that construct this service by hand, and then R25 is not assessed. */
     private com.example.correlation.service.rca.ServiceDownRule serviceDownRule;
 
     public RcaService(SagaInstanceRepository sagaInstanceRepository,
@@ -136,7 +136,7 @@ public class RcaService {
         addIfPresent(candidates, declaredSignal);
         addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
-        // R23: the one rule that reads beyond the run's own events. When the runtime says the
+        // R25: the one rule that reads beyond the run's own events. When the runtime says the
         // awaited step's service was down, the timeout and silence it caused are explained.
         var serviceDown = serviceDownRule == null ? null
                 : serviceDownRule.assess(saga, events, workflow, Instant.now()).orElse(null);

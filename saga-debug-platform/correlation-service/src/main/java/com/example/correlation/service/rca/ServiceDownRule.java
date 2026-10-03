@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * R23 — the run waited on a step longer than the step allows, and the container runtime
+ * R25 — the run waited on a step longer than the step allows, and the container runtime
  * reported that the service owning that step was down during that wait.
  *
  * <h2>Why a separate source of evidence</h2>
@@ -59,7 +59,7 @@ import java.util.Set;
 @Component
 public class ServiceDownRule {
 
-    public static final String RULE_ID = "R23";
+    public static final String RULE_ID = "R25";
     public static final String ROOT_CAUSE = "SERVICE_CRASH";
 
     private static final Set<SagaStatus> ENDED =

@@ -22,7 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * R23: a crash is named only when the runtime reported the awaited step's service down
+ * R25: a crash is named only when the runtime reported the awaited step's service down
  * during a wait longer than the step allows. Shapes follow the evaluation scenarios that
  * stop inventory-service: SC04/SC16 (stopped, run waits, restarted, run completes) and
  * SC03/SC17 (stopped, run still waiting at analysis time).
@@ -128,8 +128,8 @@ class ServiceDownRuleTest {
 
         assertThat(r07.getStatus()).isEqualTo(CandidateStatus.SUPPORTING_EVIDENCE);
         assertThat(r06.getStatus()).isEqualTo(CandidateStatus.SUPPORTING_EVIDENCE);
-        assertThat(r07.getStatusReason()).contains("R23");
-        assertThat(selection.getPrimary().getRuleId()).isEqualTo("R23");
+        assertThat(r07.getStatusReason()).contains("R25");
+        assertThat(selection.getPrimary().getRuleId()).isEqualTo("R25");
     }
 
     /** Another step's timeout, or a silence outside the wait, is not this crash's consequence. */

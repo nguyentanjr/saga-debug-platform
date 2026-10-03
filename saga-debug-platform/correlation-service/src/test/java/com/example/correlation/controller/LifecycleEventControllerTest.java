@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * A deployment without Docker reports lifecycle facts itself. What is recorded must say how
- * it was known, because R23 trusts a process report and a probe differently.
+ * it was known, because R25 trusts a process report and a probe differently.
  */
 class LifecycleEventControllerTest {
 

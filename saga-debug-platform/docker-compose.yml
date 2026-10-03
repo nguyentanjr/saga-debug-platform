@@ -121,7 +121,7 @@ services:
       # then a file plus a restart.
       CORRELATION_DECLARATIONS_DIR: /app/declarations
 
-      # R23: when the runtime says the service a run waits on exited, that is evidence the
+      # R25: when the runtime says the service a run waits on exited, that is evidence the
       # run's own events cannot give. Read through docker-events-proxy, never the engine
       # socket itself (ADR 0001). Set to false to measure the events-only observer.
       CORRELATION_LIVENESS_DOCKER_ENABLED: ${CORRELATION_LIVENESS_DOCKER_ENABLED:-true}

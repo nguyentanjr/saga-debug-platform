@@ -48,7 +48,7 @@ public class SagaDetailResponse {
     /**
      * What the runtime reported about the services this run's workflow names: each one's
      * state when the run began, and every change while it ran. Empty when no lifecycle
-     * source is configured. See R23.
+     * source is configured. See R25.
      */
     private List<LifecycleEntry> lifecycle = List.of();
 
