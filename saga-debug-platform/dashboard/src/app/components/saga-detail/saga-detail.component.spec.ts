@@ -104,4 +104,25 @@ describe('SagaDetailComponent diagnosis view', () => {
     expect(c.verdictClass()).toBe('verdict-pending');
     expect(c.verdict()).toContain('Not analysed yet');
   });
+
+  it('puts runtime reports between the events they happened between', () => {
+    const at = (sec: number) => new Date(Date.UTC(2026, 9, 1, 10, 0, sec)).toISOString();
+    const events = [ev(1, 'e1', 'ORDER_CREATED', 'CREATE'), ev(2, 'e2', 'PAID', 'PAY'), ev(3, 'e3', 'RESERVED', 'RESERVE')];
+    events[0].receivedAt = at(0); events[1].receivedAt = at(1); events[2].receivedAt = at(50);
+    c.saga = { ...saga('COMPLETED', events, []), lifecycle: [
+      { service: 'inventory-service', state: 'UP', occurredAt: at(48), source: 'docker', basis: 'PROCESS', detail: 'start' },
+      { service: 'inventory-service', state: 'DOWN', occurredAt: at(2), source: 'docker', basis: 'PROCESS', detail: 'die exitCode=1' }
+    ] };
+    c.buildTimeline();
+
+    expect(c.timeline.map(i => i.kind === 'event' ? i.event.eventId : i.entry.state))
+      .toEqual(['e1', 'e2', 'DOWN', 'UP', 'e3']);
+  });
+
+  it('says a probe saw the service unreachable, not that it exited', () => {
+    expect(c.lifecycleLabel({ service: 'billing', state: 'DOWN', occurredAt: '', source: 'alertmanager', basis: 'PROBE' }))
+      .toBe('billing stopped answering probes');
+    expect(c.lifecycleLabel({ service: 'billing', state: 'DOWN', occurredAt: '', source: 'docker', basis: 'PROCESS' }))
+      .toBe('billing exited');
+  });
 });

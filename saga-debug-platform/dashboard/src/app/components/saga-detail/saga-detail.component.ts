@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription, interval } from 'rxjs';
 import { SagaService } from '../../services/saga.service';
-import { Evidence, RcaCandidate, RcaResult, SagaDetail, SagaEvent } from '../../models/saga.model';
+import { Evidence, LifecycleEntry, RcaCandidate, RcaResult, SagaDetail, SagaEvent } from '../../models/saga.model';
 
 /** Mid-tone colours that all keep a white icon legible. */
 /** One step of the saga as it actually ran, in first-seen order. */
@@ -13,6 +13,11 @@ export interface StepView {
   eventCount: number;
   hasAnomaly: boolean;
 }
+
+/** One row of the timeline: an event of the run, or a runtime report about one of its services. */
+export type TimelineItem =
+  | { kind: 'event'; at: string; event: SagaEvent; index: number }
+  | { kind: 'lifecycle'; at: string; entry: LifecycleEntry };
 
 const SERVICE_PALETTE = ['#3f51b5', '#4caf50', '#ff9800', '#9c27b0', '#00897b', '#e91e63', '#5d4037', '#1e88e5'];
 
@@ -36,6 +41,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   steps: StepView[] = [];
   evidenceEventIds = new Set<string>();
   highlightedEventId: string | null = null;
+  timeline: TimelineItem[] = [];
   private pollSub?: Subscription;
 
   constructor(
@@ -68,6 +74,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
         this.loading = false;
         this.extractTraceIds();
         this.buildDiagnosis();
+        this.buildTimeline();
       },
       error: (err) => {
         console.error('Failed to load saga', err);
@@ -181,6 +188,33 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
       steps.push({ name, role, eventCount: 1, hasAnomaly: anomalous.has(name) });
     }
     this.steps = steps;
+  }
+
+  /**
+   * Events and runtime reports on one time axis. Events are placed by when the platform
+   * received them, the same clock the runtime's reports use (both on this host); an event
+   * without a receive time falls back to its own timestamp. Ties keep events first.
+   */
+  buildTimeline(): void {
+    const saga = this.saga;
+    if (!saga) return;
+    const items: TimelineItem[] = saga.events.map((event, index) => ({
+      kind: 'event' as const, at: event.receivedAt || event.timestamp, event, index
+    }));
+    for (const entry of saga.lifecycle || []) {
+      items.push({ kind: 'lifecycle', at: entry.occurredAt, entry });
+    }
+    this.timeline = items
+      .map((item, order) => ({ item, order }))
+      .sort((a, b) => (Date.parse(a.item.at) - Date.parse(b.item.at)) || (a.order - b.order))
+      .map(x => x.item);
+  }
+
+  lifecycleLabel(entry: LifecycleEntry): string {
+    if (entry.basis === 'PROBE') {
+      return entry.state === 'DOWN' ? `${entry.service} stopped answering probes` : `${entry.service} answering probes again`;
+    }
+    return entry.state === 'DOWN' ? `${entry.service} exited` : `${entry.service} started`;
   }
 
   stepOf(event: SagaEvent): string {

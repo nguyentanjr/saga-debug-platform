@@ -49,6 +49,14 @@ public class SagaController {
 
     private final com.example.correlation.workflow.WorkflowRegistry workflowRegistry;
 
+    /** Optional: tests that build this controller by hand leave it unset, and lifecycle stays empty. */
+    private com.example.correlation.repository.ServiceLifecycleEventRepository lifecycleRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLifecycleRepository(com.example.correlation.repository.ServiceLifecycleEventRepository repository) {
+        this.lifecycleRepository = repository;
+    }
+
     @GetMapping
     public ResponseEntity<Page<SagaListItem>> listSagas(
             @RequestParam(value = "status", required = false) String status,
@@ -123,6 +131,42 @@ public class SagaController {
     }
 
     /**
+     * Each declared service's state when the run began (its latest report before the start,
+     * looked for up to an hour back) and every report while the run was open.
+     */
+    List<SagaDetailResponse.LifecycleEntry> lifecycleFor(SagaInstance saga,
+            com.example.correlation.workflow.WorkflowSpec workflow) {
+        if (lifecycleRepository == null || saga.getStartTime() == null) return List.of();
+        java.util.Set<String> services = new java.util.LinkedHashSet<>();
+        java.util.stream.Stream.concat(
+                        workflow.getSteps() == null ? java.util.stream.Stream.empty() : workflow.getSteps().stream(),
+                        workflow.getCompensationSteps() == null ? java.util.stream.Stream.empty()
+                                : workflow.getCompensationSteps().stream())
+                .map(step -> step.getService())
+                .filter(service -> service != null && !service.isBlank())
+                .forEach(services::add);
+        if (services.isEmpty()) return List.of();
+
+        Instant start = saga.getStartTime();
+        Instant end = saga.getEndTime() != null ? saga.getEndTime() : Instant.now();
+        List<com.example.correlation.domain.ServiceLifecycleEvent> found = lifecycleRepository
+                .findByServiceNameInAndOccurredAtBetweenOrderByOccurredAtAsc(services, start.minus(Duration.ofHours(1)), end);
+
+        Map<String, com.example.correlation.domain.ServiceLifecycleEvent> stateAtStart = new java.util.HashMap<>();
+        List<com.example.correlation.domain.ServiceLifecycleEvent> shown = new java.util.ArrayList<>();
+        for (var event : found) {
+            if (event.getOccurredAt().isBefore(start)) stateAtStart.put(event.getServiceName(), event);
+            else shown.add(event);
+        }
+        shown.addAll(stateAtStart.values());
+        return shown.stream()
+                .sorted(java.util.Comparator.comparing(com.example.correlation.domain.ServiceLifecycleEvent::getOccurredAt))
+                .map(e -> new SagaDetailResponse.LifecycleEntry(e.getServiceName(), e.getState().name(),
+                        e.getOccurredAt(), e.getSource(), e.getBasis().name(), e.getDetail()))
+                .toList();
+    }
+
+    /**
      * The step the stored diagnosis is anchored to: that of the candidate RCA promoted, which
      * the result names by rule and cause. Null when nothing was promoted or the rule names no
      * step; never taken from another candidate.
@@ -184,6 +228,8 @@ public class SagaController {
         }
         response.setEvents(events);
         if (!saga.hasWorkflowConflict()) {
+            workflowRegistry.byType(saga.getWorkflowType())
+                    .ifPresent(workflow -> response.setLifecycle(lifecycleFor(saga, workflow)));
             workflowRegistry.byType(saga.getWorkflowType()).ifPresent(workflow -> {
                 java.util.Map<String, String> steps = new java.util.LinkedHashMap<>();
                 for (SagaEvent event : events) {

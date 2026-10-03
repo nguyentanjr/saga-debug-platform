@@ -45,6 +45,12 @@ public class SagaDetailResponse {
     private List<SagaEvent> events;
     private List<Anomaly> anomalies;
     private List<RcaResult> rcaResults;
+    /**
+     * What the runtime reported about the services this run's workflow names: each one's
+     * state when the run began, and every change while it ran. Empty when no lifecycle
+     * source is configured. See R23.
+     */
+    private List<LifecycleEntry> lifecycle = List.of();
 
     public String getSagaId() { return sagaId; }
     public void setSagaId(String sagaId) { this.sagaId = sagaId; }
@@ -64,6 +70,14 @@ public class SagaDetailResponse {
      *                        another, which is the evidence for the link; null for the
      *                        execution's own declared key
      */
+    public record LifecycleEntry(String service, String state, Instant occurredAt,
+            String source, String basis, String detail) {}
+
+    public List<LifecycleEntry> getLifecycle() { return lifecycle; }
+    public void setLifecycle(List<LifecycleEntry> lifecycle) {
+        this.lifecycle = lifecycle != null ? lifecycle : List.of();
+    }
+
     public record IdentityLink(String identifier, String source, String linkedByEventId) {
     }
 
