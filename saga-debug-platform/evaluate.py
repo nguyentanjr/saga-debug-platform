@@ -1593,8 +1593,13 @@ ADVANCED_SCENARIOS = [
         "request": {"customerId": "eval-03", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 50.00},
         "expected_saga_status": "IN_PROGRESS",
-        "expected_rca_status": "INSUFFICIENT_EVIDENCE",
-        "expected_rca": None,
+        # Label = the fault injected (inventory-service stopped), not what an events-only
+        # observer can say. Was INSUFFICIENT_EVIDENCE/None: correct for silence alone, but the
+        # injected fault is a crash, the same one SC17 injects. With the collector off
+        # (CORRELATION_LIVENESS_DOCKER_ENABLED=false) this scenario measures the gap R23 closes.
+        "label_before_r23": "INSUFFICIENT_EVIDENCE",
+        "expected_rca_status": "EVIDENCE_AVAILABLE",
+        "expected_rca": "SERVICE_CRASH",
         "expected_anomalies": ["SAGA_STUCK"],
         "runner": run_stuck_saga,
         "stuck_wait_seconds": 65,
@@ -1609,7 +1614,11 @@ ADVANCED_SCENARIOS = [
         "request": {"customerId": "eval-04", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 60.00},
         "expected_saga_status": "COMPLETED",
-        "expected_rca": "TRANSIENT_SERVICE_FAILURE",
+        # Label = the fault injected: inventory-service stopped, then restarted by the harness.
+        # Was TRANSIENT_SERVICE_FAILURE, a cause F5 withdrew because nothing self-healed here;
+        # SC16 injects the same fault for longer and was already labelled SERVICE_CRASH.
+        "label_before_r23": "TRANSIENT_SERVICE_FAILURE",
+        "expected_rca": "SERVICE_CRASH",
         "expected_anomalies": ["SAGA_STUCK"],
         "runner": run_recovered_from_stuck,
         "stuck_wait_seconds": 45,

@@ -98,6 +98,7 @@ services:
     depends_on:
       - postgres
       - kafka
+      - docker-events-proxy
     environment:
       CORRELATION_DB_HOST: postgres
       CORRELATION_DB_PORT: 5432
@@ -115,11 +116,32 @@ services:
       # than from inside the jar. Attaching to a system this image was never built with is
       # then a file plus a restart.
       CORRELATION_DECLARATIONS_DIR: /app/declarations
+
+      # R23: when the runtime says the service a run waits on exited, that is evidence the
+      # run's own events cannot give. Read through docker-events-proxy, never the engine
+      # socket itself (ADR 0001). Set to false to measure the events-only observer.
+      CORRELATION_LIVENESS_DOCKER_ENABLED: ${CORRELATION_LIVENESS_DOCKER_ENABLED:-true}
+      CORRELATION_LIVENESS_DOCKER_ENDPOINT: tcp://docker-events-proxy:2375
     volumes:
       - ./results:/app/results
       - ./declarations:/app/declarations:ro
     ports:
       - "8084:8084"
+
+  # The observer's only window onto the container runtime: forwards GET /events and refuses
+  # every other engine call (no container start/stop/inspect, no POST at all), so
+  # correlation-service can read lifecycle facts but cannot act on the observed system.
+  docker-events-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: docker-events-proxy
+    environment:
+      EVENTS: 1
+      PING: 1
+      VERSION: 0
+      CONTAINERS: 0
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   # Demo tooling, not part of the observer. It creates orders and switches the payment
   # service into failure mode so the dashboard can produce a saga run on demand. That

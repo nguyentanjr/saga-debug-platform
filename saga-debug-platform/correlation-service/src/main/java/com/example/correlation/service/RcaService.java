@@ -61,6 +61,8 @@ public class RcaService {
     private final ExecutionProjectionService executionProjectionService;
     private final FailureSignalRegistry failureSignalRegistry;
     private final RcaService self;
+    /** Optional: absent in tests that construct this service by hand, and then R23 is not assessed. */
+    private com.example.correlation.service.rca.ServiceDownRule serviceDownRule;
 
     public RcaService(SagaInstanceRepository sagaInstanceRepository,
             SagaEventRepository sagaEventRepository,
@@ -88,6 +90,11 @@ public class RcaService {
         this.alertSink = alertSink;
         this.executionProjectionService = executionProjectionService;
         this.self = self;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setServiceDownRule(com.example.correlation.service.rca.ServiceDownRule serviceDownRule) {
+        this.serviceDownRule = serviceDownRule;
     }
 
     @Transactional
@@ -129,6 +136,10 @@ public class RcaService {
         addIfPresent(candidates, declaredSignal);
         addIfPresent(candidates, ruleTimeoutRetryStorm(workflow, anomalies, events));
         addIfPresent(candidates, ruleServiceCrash(saga, anomalies, events));
+        // R23: the one rule that reads beyond the run's own events. When the runtime says the
+        // awaited step's service was down, the timeout and silence it caused are explained.
+        var serviceDown = serviceDownRule == null ? null
+                : serviceDownRule.assess(saga, events, workflow, Instant.now()).orElse(null);
         addIfPresent(candidates, ruleRecoveredAfterSilence(saga, anomalies, events));
         addIfPresent(candidates, ruleCompensationStepFailure(workflow, saga, events, anomalies));
         addIfPresent(candidates, ruleForwardStepFailure(workflow, saga, events));
@@ -143,6 +154,10 @@ public class RcaService {
         
         addIfPresent(candidates, ruleStuckUnknownCause(saga, anomalies));
         addIfPresent(candidates, ruleObservabilityGap(anomalies));
+        if (serviceDown != null) {
+            candidates.add(serviceDown.candidate());
+            com.example.correlation.service.rca.ServiceDownRule.explainSymptoms(candidates, anomalies, serviceDown);
+        }
 
         // Locate each candidate in the execution before ranking, so ordering reflects
         // where the execution diverged rather than how the rules happen to be named.

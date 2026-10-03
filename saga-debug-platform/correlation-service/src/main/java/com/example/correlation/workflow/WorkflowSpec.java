@@ -388,6 +388,26 @@ public class WorkflowSpec {
         return allSteps().stream().anyMatch(s -> s.getId() != null && s.getId().equals(stepId));
     }
 
+    /** The service the workflow declares for a step, when it declares one. */
+    public Optional<String> serviceOf(String stepId) {
+        return allSteps().stream()
+                .filter(s -> stepId != null && stepId.equals(s.getId()))
+                .map(StepSpec::getService)
+                .filter(service -> service != null && !service.isBlank())
+                .findFirst();
+    }
+
+    /** The steps that declare {@code stepId} as their predecessor: what runs once it is done. */
+    public List<String> stepsAfter(String stepId) {
+        if (stepId == null) return List.of();
+        return allSteps().stream()
+                .map(StepSpec::getId)
+                .filter(Objects::nonNull)
+                .filter(candidate -> predecessorSteps(candidate).contains(stepId))
+                .distinct()
+                .toList();
+    }
+
 
     private List<StepSpec> allSteps() {
         List<StepSpec> all = new ArrayList<>();
