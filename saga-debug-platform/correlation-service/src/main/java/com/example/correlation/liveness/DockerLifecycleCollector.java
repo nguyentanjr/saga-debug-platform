@@ -95,7 +95,8 @@ public class DockerLifecycleCollector {
         }
     }
 
-    private void follow() throws Exception {
+    /** One connection: replays from the last recorded report, then follows until the stream ends. */
+    void follow() throws Exception {
         long since = repository.findTopBySourceOrderByOccurredAtDesc(DockerEventParser.SOURCE)
                 .map(e -> e.getOccurredAt().getEpochSecond())
                 .orElse(Instant.now().minus(initialLookback).getEpochSecond());
@@ -120,11 +121,11 @@ public class DockerLifecycleCollector {
         }
     }
 
-    private record Connection(Closeable handle, InputStream in, OutputStream out) implements AutoCloseable {
+    record Connection(Closeable handle, InputStream in, OutputStream out) implements AutoCloseable {
         @Override public void close() throws IOException { handle.close(); }
     }
 
-    private Connection open() throws IOException {
+    Connection open() throws IOException {
         URI uri = URI.create(endpoint);
         if ("tcp".equals(uri.getScheme())) {
             Socket socket = new Socket(uri.getHost(), uri.getPort());
