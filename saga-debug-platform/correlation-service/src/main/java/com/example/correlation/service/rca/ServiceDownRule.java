@@ -152,18 +152,25 @@ public class ServiceDownRule {
         return waits;
     }
 
-    /** The first wait some down interval of its service overlaps. */
+    /**
+     * The first wait some down interval of its service overlaps, preferring an interval the
+     * runtime reported (PROCESS) over one a probe inferred (PROBE): the first settles that the
+     * process was gone, the second only that it could not be reached.
+     */
     static Optional<Finding> assess(SagaInstance saga, List<Wait> waits,
             List<ServiceLifecycleEvent> lifecycle) {
         Map<String, List<DownInterval>> downByService = downIntervals(lifecycle);
+        Finding probed = null;
         for (Wait wait : waits) {
             for (DownInterval down : downByService.getOrDefault(wait.service(), List.of())) {
-                if (down.overlaps(wait.from(), wait.to())) {
+                if (!down.overlaps(wait.from(), wait.to())) continue;
+                if (down.exit().getBasis() == ServiceLifecycleEvent.Basis.PROCESS) {
                     return Optional.of(new Finding(candidate(saga, wait, down), wait));
                 }
+                if (probed == null) probed = new Finding(candidate(saga, wait, down), wait);
             }
         }
-        return Optional.empty();
+        return Optional.ofNullable(probed);
     }
 
     private record DownInterval(ServiceLifecycleEvent exit, ServiceLifecycleEvent start) {
@@ -212,7 +219,8 @@ public class ServiceDownRule {
 
         ServiceLifecycleEvent exit = down.exit();
         c.getEvidence().add(Evidence.of(
-                wait.service() + " exited at " + exit.getOccurredAt()
+                wait.service() + (exit.getBasis() == ServiceLifecycleEvent.Basis.PROBE
+                                ? " stopped answering probes at " : " exited at ") + exit.getOccurredAt()
                         + " (" + exit.getDetail() + ", reported by " + exit.getSource() + ")",
                 exit.getDetail(), "running while " + wait.stepId() + " is awaited", null, List.of()));
         if (down.start() != null) {
@@ -235,9 +243,18 @@ public class ServiceDownRule {
         }
 
         c.setAnchorStepId(wait.stepId());
-        c.setStatusReason("The container runtime reported " + wait.service()
-                + "'s process exited while the run was waiting on " + wait.stepId()
-                + "; the run's own events could only show the silence.");
+        if (exit.getBasis() == ServiceLifecycleEvent.Basis.PROBE) {
+            // A probe that could not reach the service is also what a partition looks like,
+            // so this corroborates a crash without settling it.
+            c.setStatus(CandidateStatus.SUPPORTING_EVIDENCE);
+            c.setStatusReason(wait.service() + " could not be reached by a probe while the run was "
+                    + "waiting on " + wait.stepId() + "; a probe cannot tell a stopped process "
+                    + "from an unreachable one.");
+        } else {
+            c.setStatusReason("The runtime reported " + wait.service()
+                    + "'s process exited while the run was waiting on " + wait.stepId()
+                    + "; the run's own events could only show the silence.");
+        }
         c.getSuggestions().add("Check " + wait.service() + " logs before " + exit.getOccurredAt()
                 + " for why it exited (" + exit.getDetail() + ")");
         c.getSuggestions().add("Review " + wait.service() + "'s restart policy and health checks");
@@ -254,6 +271,8 @@ public class ServiceDownRule {
      */
     public static void explainSymptoms(List<CandidateAssessment> candidates, List<Anomaly> anomalies,
             Finding finding) {
+        // Only an established cause turns other findings into its consequences.
+        if (finding.candidate().getStatus() != CandidateStatus.STRONG_EVIDENCE) return;
         Wait wait = finding.explainedWait();
         Map<Long, Anomaly> byId = new HashMap<>();
         anomalies.stream().filter(a -> a.getId() != null).forEach(a -> byId.put(a.getId(), a));

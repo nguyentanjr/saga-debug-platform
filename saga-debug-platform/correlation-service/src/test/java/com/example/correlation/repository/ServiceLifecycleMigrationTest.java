@@ -39,4 +39,25 @@ class ServiceLifecycleMigrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM service_lifecycle_events", Integer.class))
                 .isEqualTo(1);
     }
+
+    /** Rows written before V20 all came from Docker die/start: a process report. */
+    @Test
+    void existingRowsArePROCESSAndOnlyTwoBasesExist() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V19__service_lifecycle_events.sql"))
+                .execute(dataSource);
+        jdbc.update("INSERT INTO service_lifecycle_events "
+                + "(service_name, state, occurred_at, received_at, source, detail, external_id) "
+                + "VALUES ('inventory-service', 'DOWN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'docker', 'die', 'a')");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V20__service_lifecycle_basis.sql"))
+                .execute(dataSource);
+
+        assertThat(jdbc.queryForObject("SELECT basis FROM service_lifecycle_events", String.class))
+                .isEqualTo("PROCESS");
+        assertThatThrownBy(() -> jdbc.update("UPDATE service_lifecycle_events SET basis = 'GUESS'"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
 }

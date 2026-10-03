@@ -150,6 +150,39 @@ class ServiceDownRuleTest {
         assertThat(r06.getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
+    /** A probe that could not reach the service is also what a partition looks like. */
+    @Test
+    void aFailedProbeCorroboratesACrashWithoutSettlingIt() {
+        SagaInstance saga = saga(SagaStatus.COMPLETED);
+        ServiceDownRule.Finding finding = assess(saga, recoveredRun(), T0.plusSeconds(60),
+                probe("inventory-service", ServiceLifecycleEvent.State.DOWN, T0.minusSeconds(3)),
+                probe("inventory-service", ServiceLifecycleEvent.State.UP, T0.plusSeconds(48)))
+                .orElseThrow();
+
+        assertThat(finding.candidate().getStatus()).isEqualTo(CandidateStatus.SUPPORTING_EVIDENCE);
+        assertThat(finding.candidate().getStatusReason()).contains("cannot tell");
+
+        Anomaly timeout = anomaly(1L, AnomalyType.STEP_TIMEOUT, "workflow:RESERVE_INVENTORY.timeout", T0.plusSeconds(50));
+        CandidateAssessment r07 = strong("R07", "DOWNSTREAM_TIMEOUT", "HIGH", Evidence.of("timeout", 1L));
+        ServiceDownRule.explainSymptoms(new ArrayList<>(List.of(r07, finding.candidate())), List.of(timeout), finding);
+        assertThat(r07.getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
+    }
+
+    @Test
+    void aProcessReportOutranksAProbeForTheSameWait() {
+        Optional<ServiceDownRule.Finding> finding = assess(saga(SagaStatus.COMPLETED), recoveredRun(), T0.plusSeconds(60),
+                probe("inventory-service", ServiceLifecycleEvent.State.DOWN, T0.minusSeconds(10)),
+                probe("inventory-service", ServiceLifecycleEvent.State.UP, T0.plusSeconds(5)),
+                down("inventory-service", T0.plusSeconds(10)), up("inventory-service", T0.plusSeconds(48)));
+
+        assertThat(finding.orElseThrow().candidate().getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
+    }
+
+    private static ServiceLifecycleEvent probe(String service, ServiceLifecycleEvent.State state, Instant at) {
+        return new ServiceLifecycleEvent(service, state, at, "alertmanager", "up==0",
+                service + ":" + state + ":" + at, ServiceLifecycleEvent.Basis.PROBE);
+    }
+
     private Optional<ServiceDownRule.Finding> assess(SagaInstance saga, List<SagaEvent> events, Instant now,
             ServiceLifecycleEvent... lifecycle) {
         return ServiceDownRule.assess(saga, ServiceDownRule.waits(saga, events, workflow, now), List.of(lifecycle));

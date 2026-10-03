@@ -25,6 +25,13 @@ public class ServiceLifecycleEvent {
 
     public enum State { DOWN, UP }
 
+    /**
+     * How the state was established. PROCESS: the runtime managing the process reported it.
+     * PROBE: something outside could or could not reach the service, which a network
+     * partition also produces. See V20.
+     */
+    public enum Basis { PROCESS, PROBE }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -55,6 +62,10 @@ public class ServiceLifecycleEvent {
     @Column(name = "external_id", nullable = false)
     private String externalId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "basis", nullable = false)
+    private Basis basis = Basis.PROCESS;
+
     protected ServiceLifecycleEvent() {
     }
 
@@ -69,6 +80,12 @@ public class ServiceLifecycleEvent {
         this.externalId = externalId;
     }
 
+    public ServiceLifecycleEvent(String serviceName, State state, Instant occurredAt,
+            String source, String detail, String externalId, Basis basis) {
+        this(serviceName, state, occurredAt, source, detail, externalId);
+        this.basis = basis;
+    }
+
     public Long getId() { return id; }
     public String getServiceName() { return serviceName; }
     public State getState() { return state; }
@@ -77,4 +94,5 @@ public class ServiceLifecycleEvent {
     public String getSource() { return source; }
     public String getDetail() { return detail; }
     public String getExternalId() { return externalId; }
+    public Basis getBasis() { return basis; }
 }
