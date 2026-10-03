@@ -8,6 +8,7 @@ spring:
 scenario:
   order-service-url: ${SCENARIO_ORDER_SERVICE_URL:http://order-service:8081}
   payment-service-url: ${SCENARIO_PAYMENT_SERVICE_URL:http://payment-service:8082}
+  inventory-service-url: ${SCENARIO_INVENTORY_SERVICE_URL:http://inventory-service:8083}
 
 # The dashboard calls this service directly for the "Run scenario" buttons.
 demo:

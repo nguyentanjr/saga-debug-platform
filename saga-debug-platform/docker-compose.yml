@@ -64,6 +64,10 @@ services:
   inventory-service:
     build: ./inventory-service
     container_name: inventory-service
+    # The "Inventory crash" demo exits this process abruptly; the runtime brings it back.
+    # A `docker stop` (the evaluation harness) is not restarted: Docker never restarts a
+    # container its operator stopped.
+    restart: on-failure
     depends_on:
       - postgres
       - kafka
@@ -158,6 +162,7 @@ services:
     environment:
       SCENARIO_ORDER_SERVICE_URL: http://order-service:8081
       SCENARIO_PAYMENT_SERVICE_URL: http://payment-service:8082
+      SCENARIO_INVENTORY_SERVICE_URL: http://inventory-service:8083
       DEMO_ALLOWED_ORIGIN: ${DEMO_ALLOWED_ORIGIN:-http://localhost:4200}
     ports:
       - "8085:8085"
