@@ -125,6 +125,8 @@ services:
       # run's own events cannot give. Read through docker-events-proxy, never the engine
       # socket itself (ADR 0001). Set to false to measure the events-only observer.
       CORRELATION_LIVENESS_DOCKER_ENABLED: ${CORRELATION_LIVENESS_DOCKER_ENABLED:-true}
+      # Ablation: false removes R25 itself, so earlier facts in the table are not read either.
+      CORRELATION_LIVENESS_ENABLED: ${CORRELATION_LIVENESS_ENABLED:-true}
       CORRELATION_LIVENESS_DOCKER_ENDPOINT: tcp://docker-events-proxy:2375
     volumes:
       - ./results:/app/results

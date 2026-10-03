@@ -57,6 +57,10 @@ import java.util.Set;
  * SUPPORTING_EVIDENCE with the reason. They stay in the result with their evidence.
  */
 @Component
+// false = the events-only observer: R25 is not assessed at all, whatever the table holds.
+// The measured ablation; turning off only the collector would leave older facts readable.
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        prefix = "correlation.liveness", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ServiceDownRule {
 
     public static final String RULE_ID = "R25";
