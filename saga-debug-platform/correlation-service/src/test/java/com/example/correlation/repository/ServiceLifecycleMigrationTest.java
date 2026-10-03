@@ -60,4 +60,22 @@ class ServiceLifecycleMigrationTest {
         assertThatThrownBy(() -> jdbc.update("UPDATE service_lifecycle_events SET basis = 'GUESS'"))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
+
+    /** V21 adds a nullable scope: rows recorded before it stay unscoped. */
+    @Test
+    void existingRowsStayUnscopedAfterV21() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V19__service_lifecycle_events.sql"),
+                new ClassPathResource("db/migration/V20__service_lifecycle_basis.sql")).execute(dataSource);
+        jdbc.update("INSERT INTO service_lifecycle_events "
+                + "(service_name, state, occurred_at, received_at, source, detail, external_id) "
+                + "VALUES ('payment-service', 'DOWN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'docker', 'die', 'a')");
+
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V21__service_lifecycle_scope.sql"))
+                .execute(dataSource);
+
+        assertThat(jdbc.queryForObject("SELECT scope FROM service_lifecycle_events", String.class)).isNull();
+    }
 }

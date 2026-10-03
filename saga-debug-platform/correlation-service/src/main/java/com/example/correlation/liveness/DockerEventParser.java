@@ -27,6 +27,8 @@ import java.util.Optional;
 public final class DockerEventParser {
 
     public static final String SOURCE = "docker";
+    /** Compose's project label: which deployment the container belongs to (V21). */
+    static final String PROJECT_LABEL = "com.docker.compose.project";
 
     private final ObjectMapper objectMapper;
     private final String serviceLabel;
@@ -74,6 +76,8 @@ public final class DockerEventParser {
 
         String containerId = node.path("Actor").path("ID").asText(node.path("id").asText(""));
         String externalId = containerId + ":" + action + ":" + timeNano;
-        return Optional.of(new ServiceLifecycleEvent(service, state, occurredAt, SOURCE, detail, externalId));
+        String scope = attributes.path(PROJECT_LABEL).asText("");
+        return Optional.of(new ServiceLifecycleEvent(service, state, occurredAt, SOURCE, detail, externalId)
+                .inScope(scope));
     }
 }

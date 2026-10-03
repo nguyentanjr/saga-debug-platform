@@ -150,6 +150,44 @@ class ServiceDownRuleTest {
         assertThat(r06.getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
+    /**
+     * Two deployments both run a payment-service (the demo and the hotel saga, observed at
+     * once). With no declared scope, a name two scopes report cannot be pinned on this run.
+     */
+    @Test
+    void aServiceNameTwoDeploymentsReportIsNotAttributedWithoutADeclaredScope() {
+        List<ServiceLifecycleEvent> lifecycle = List.of(
+                down("inventory-service", T0.minusSeconds(3)).inScope("hotel-real"),
+                up("inventory-service", T0.plusSeconds(48)).inScope("hotel-real"),
+                down("inventory-service", T0.plusSeconds(100)).inScope("saga-debug-platform"));
+
+        assertThat(ServiceDownRule.assess(saga(SagaStatus.COMPLETED),
+                ServiceDownRule.waits(saga(SagaStatus.COMPLETED), recoveredRun(), workflow, T0.plusSeconds(60)),
+                ServiceDownRule.readable(lifecycle, null))).isEmpty();
+    }
+
+    @Test
+    void aDeclaredScopeReadsOnlyItsOwnDeployment() {
+        List<ServiceLifecycleEvent> lifecycle = List.of(
+                down("inventory-service", T0.minusSeconds(3)).inScope("hotel-real"),
+                up("inventory-service", T0.plusSeconds(48)).inScope("hotel-real"),
+                down("inventory-service", T0.minusSeconds(3)).inScope("saga-debug-platform"),
+                up("inventory-service", T0.plusSeconds(48)).inScope("saga-debug-platform"));
+
+        assertThat(ServiceDownRule.readable(lifecycle, "hotel-real")).hasSize(2)
+                .allSatisfy(e -> assertThat(e.getScope()).isEqualTo("hotel-real"));
+        assertThat(ServiceDownRule.readable(lifecycle, "kms")).isEmpty();
+    }
+
+    /** One deployment only: the name is unambiguous and is used, scoped or not. */
+    @Test
+    void aSingleScopeIsUsedWithoutADeclaration() {
+        List<ServiceLifecycleEvent> lifecycle = List.of(
+                down("inventory-service", T0.minusSeconds(3)).inScope("saga-debug-platform"),
+                up("inventory-service", T0.plusSeconds(48)).inScope("saga-debug-platform"));
+        assertThat(ServiceDownRule.readable(lifecycle, null)).hasSize(2);
+    }
+
     /** A probe that could not reach the service is also what a partition looks like. */
     @Test
     void aFailedProbeCorroboratesACrashWithoutSettlingIt() {

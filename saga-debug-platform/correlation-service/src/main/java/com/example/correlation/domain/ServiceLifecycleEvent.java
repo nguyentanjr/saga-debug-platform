@@ -66,6 +66,10 @@ public class ServiceLifecycleEvent {
     @Column(name = "basis", nullable = false)
     private Basis basis = Basis.PROCESS;
 
+    /** The deployment the service belongs to (Compose project), when known. See V21. */
+    @Column(name = "scope")
+    private String scope;
+
     protected ServiceLifecycleEvent() {
     }
 
@@ -95,4 +99,11 @@ public class ServiceLifecycleEvent {
     public String getDetail() { return detail; }
     public String getExternalId() { return externalId; }
     public Basis getBasis() { return basis; }
+    public String getScope() { return scope; }
+
+    /** Returns this fact with its deployment scope set; null leaves it unscoped. */
+    public ServiceLifecycleEvent inScope(String scope) {
+        this.scope = scope == null || scope.isBlank() ? null : scope;
+        return this;
+    }
 }

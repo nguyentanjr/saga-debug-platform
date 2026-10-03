@@ -27,6 +27,7 @@ class DockerEventParserTest {
         assertThat(event.getDetail()).isEqualTo("die exitCode=143");
         assertThat(event.getOccurredAt()).isEqualTo(Instant.ofEpochSecond(1790000000L, 123456789L));
         assertThat(event.getExternalId()).isEqualTo("abc123:die:1790000000123456789");
+        assertThat(event.getScope()).isEqualTo("saga-debug-platform");
     }
 
     @Test
@@ -62,6 +63,7 @@ class DockerEventParserTest {
     private static String line(String action, String service, String extraAttributes) {
         return "{\"status\":\"" + action + "\",\"id\":\"abc123\",\"Type\":\"container\",\"Action\":\""
                 + action + "\",\"Actor\":{\"ID\":\"abc123\",\"Attributes\":{" + extraAttributes
+                + "\"com.docker.compose.project\":\"saga-debug-platform\","
                 + "\"com.docker.compose.service\":\"" + service + "\",\"name\":\"" + service + "\"}},"
                 + "\"scope\":\"local\",\"time\":1790000000,\"timeNano\":1790000000123456789}";
     }

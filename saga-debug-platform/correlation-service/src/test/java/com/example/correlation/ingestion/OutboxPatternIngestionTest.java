@@ -295,6 +295,12 @@ class OutboxPatternIngestionTest {
         return registry;
     }
 
+    /** Its payment-service shares a name with the demo's; the declaration says whose (V21). */
+    @org.junit.jupiter.api.Test
+    void theHotelWorkflowDeclaresTheDeploymentItsServicesRunIn() {
+        org.assertj.core.api.Assertions.assertThat(roomReservation().getRuntimeScope()).isEqualTo("hotel-real");
+    }
+
     private static WorkflowSpec roomReservation() {
         WorkflowRegistry registry = new WorkflowRegistry();
         ReflectionTestUtils.setField(registry, "declarationsDirectory", declarationsDirectory());

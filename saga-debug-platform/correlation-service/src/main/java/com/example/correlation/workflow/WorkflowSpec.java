@@ -46,6 +46,12 @@ public class WorkflowSpec {
      * changed no existing file.
      */
     private List<String> sources = new ArrayList<>();
+
+    /**
+     * The deployment this workflow's services run in, as the runtime names it (Compose
+     * project). Optional; when set, only lifecycle facts from that scope are read (V21).
+     */
+    private String runtimeScope;
     private List<StepSpec> steps;
     private List<StepSpec> compensationSteps;
     private List<TransitionSpec> transitions;
@@ -55,6 +61,9 @@ public class WorkflowSpec {
     public void setName(String name) { this.name = name; }
 
     public List<String> getSources() { return sources; }
+
+    public String getRuntimeScope() { return runtimeScope; }
+    public void setRuntimeScope(String runtimeScope) { this.runtimeScope = runtimeScope; }
     public void setSources(List<String> sources) {
         this.sources = sources != null ? sources : new ArrayList<>();
     }

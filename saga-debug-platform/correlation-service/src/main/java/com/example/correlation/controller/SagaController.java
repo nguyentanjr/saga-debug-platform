@@ -149,8 +149,10 @@ public class SagaController {
 
         Instant start = saga.getStartTime();
         Instant end = saga.getEndTime() != null ? saga.getEndTime() : Instant.now();
-        List<com.example.correlation.domain.ServiceLifecycleEvent> found = lifecycleRepository
-                .findByServiceNameInAndOccurredAtBetweenOrderByOccurredAtAsc(services, start.minus(Duration.ofHours(1)), end);
+        List<com.example.correlation.domain.ServiceLifecycleEvent> found =
+                com.example.correlation.service.rca.ServiceDownRule.readable(lifecycleRepository
+                        .findByServiceNameInAndOccurredAtBetweenOrderByOccurredAtAsc(services,
+                                start.minus(Duration.ofHours(1)), end), workflow.getRuntimeScope());
 
         Map<String, com.example.correlation.domain.ServiceLifecycleEvent> stateAtStart = new java.util.HashMap<>();
         List<com.example.correlation.domain.ServiceLifecycleEvent> shown = new java.util.ArrayList<>();

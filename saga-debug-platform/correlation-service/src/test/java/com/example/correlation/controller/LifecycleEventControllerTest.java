@@ -33,7 +33,7 @@ class LifecycleEventControllerTest {
     void aProcessExitReportedBySystemdIsRecordedAsTheRuntimeSawIt() throws Exception {
         var response = controller.record(body("""
                 {"service":"inventory-service","state":"down","at":"2026-10-04T10:00:05Z",
-                 "basis":"process","detail":"exit code 137 (OOM)","source":"systemd"}"""), "Bearer " + TOKEN);
+                 "basis":"process","detail":"exit code 137 (OOM)","source":"systemd","scope":"billing-prod"}"""), "Bearer " + TOKEN);
 
         assertThat(response.getStatusCode().value()).isEqualTo(201);
         ArgumentCaptor<ServiceLifecycleEvent> saved = ArgumentCaptor.forClass(ServiceLifecycleEvent.class);
@@ -43,6 +43,7 @@ class LifecycleEventControllerTest {
         assertThat(saved.getValue().getBasis()).isEqualTo(ServiceLifecycleEvent.Basis.PROCESS);
         assertThat(saved.getValue().getOccurredAt()).isEqualTo(Instant.parse("2026-10-04T10:00:05Z"));
         assertThat(saved.getValue().getSource()).isEqualTo("systemd");
+        assertThat(saved.getValue().getScope()).isEqualTo("billing-prod");
     }
 
     /** Omitting basis must not let a health check be read as a process exit. */

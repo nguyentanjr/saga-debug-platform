@@ -33,7 +33,8 @@ import java.util.Map;
  * <pre>
  * POST /api/lifecycle-events
  * {"service":"inventory-service","state":"DOWN","at":"2026-10-04T10:00:05Z",
- *  "basis":"process","detail":"exit code 137 (OOM)","source":"systemd","id":"optional"}
+ *  "basis":"process","detail":"exit code 137 (OOM)","source":"systemd","id":"optional",
+ *  "scope":"optional, the deployment the service belongs to"}
  * </pre>
  */
 @RestController
@@ -90,7 +91,7 @@ public class LifecycleEventController {
         }
         try {
             repository.save(new ServiceLifecycleEvent(service, state, at, source,
-                    text(body, "detail"), id, basis));
+                    text(body, "detail"), id, basis).inScope(text(body, "scope")));
         } catch (DataIntegrityViolationException concurrentDuplicate) {
             return ResponseEntity.ok(Map.of("status", "duplicate", "id", id));
         }

@@ -95,7 +95,28 @@ public class ServiceDownRule {
         Instant to = waits.stream().map(Wait::to).max(Comparator.naturalOrder()).orElseThrow();
         List<ServiceLifecycleEvent> lifecycle =
                 repository.findByServiceNameInAndOccurredAtBetweenOrderByOccurredAtAsc(services, from, to);
-        return assess(saga, waits, lifecycle);
+        return assess(saga, waits, readable(lifecycle, workflow.getRuntimeScope()));
+    }
+
+    /**
+     * The facts that can be attributed to this workflow's services (V21).
+     *
+     * <p>With a declared {@code runtimeScope}, only that deployment's facts. Without one, a
+     * service name is usable only while a single scope reports it: when two deployments both
+     * report a {@code payment-service}, neither restart can be pinned on this run, and the
+     * rule makes no claim rather than picking one — as execution keys refuse an ambiguous raw
+     * id (ADR 0002).
+     */
+    public static List<ServiceLifecycleEvent> readable(List<ServiceLifecycleEvent> lifecycle, String runtimeScope) {
+        if (runtimeScope != null && !runtimeScope.isBlank()) {
+            return lifecycle.stream().filter(e -> runtimeScope.equals(e.getScope())).toList();
+        }
+        Map<String, Set<Optional<String>>> scopesByService = new HashMap<>();
+        lifecycle.forEach(e -> scopesByService.computeIfAbsent(e.getServiceName(), k -> new java.util.HashSet<>())
+                .add(Optional.ofNullable(e.getScope())));
+        return lifecycle.stream()
+                .filter(e -> scopesByService.get(e.getServiceName()).size() == 1)
+                .toList();
     }
 
     /**
