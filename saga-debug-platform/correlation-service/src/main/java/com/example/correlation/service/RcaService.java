@@ -163,7 +163,7 @@ public class RcaService {
         // where the execution diverged rather than how the rules happen to be named.
         ExecutionProjection projection =
                 executionProjectionService.project(sagaId, events, workflow);
-        anchorCandidates(candidates, events, projection, workflow);
+        anchorCandidates(candidates, events, projection, workflow, anomalies);
 
         RcaSelector.SelectionResult selection =
                 rcaSelector.select(candidates, anomalies, saga, executionOrder(projection, workflow));
@@ -289,15 +289,19 @@ public class RcaService {
     private void anchorCandidates(List<CandidateAssessment> candidates,
             List<SagaEvent> events,
             ExecutionProjection projection,
-            WorkflowSpec workflow) {
+            WorkflowSpec workflow,
+            List<Anomaly> anomalies) {
 
         Map<String, SagaEvent> eventsById = events.stream()
                 .filter(e -> e.getEventId() != null)
                 .collect(Collectors.toMap(SagaEvent::getEventId, e -> e, (a, b) -> a));
+        Map<Long, Anomaly> anomaliesById = anomalies.stream()
+                .filter(a -> a.getId() != null)
+                .collect(Collectors.toMap(Anomaly::getId, a -> a, (a, b) -> a));
 
         for (CandidateAssessment candidate : candidates) {
             List<SagaEvent> cited = candidate.getEvidence().stream()
-                    .flatMap(evidence -> evidence.eventIds().stream())
+                    .flatMap(evidence -> anchoringEventIds(evidence, anomaliesById, eventsById).stream())
                     .map(eventsById::get)
                     .filter(Objects::nonNull)
                     .filter(e -> e.getTimestamp() != null)
@@ -322,6 +326,35 @@ public class RcaService {
                         .ifPresent(candidate::setAnchorStepId);
             }
         }
+    }
+
+    /** Findings that measure how long the run took to reach an event (F21, F25). */
+    private static final Set<AnomalyType> DURATION_FINDINGS =
+            EnumSet.of(AnomalyType.STEP_TIMEOUT, AnomalyType.DELAYED_COMPENSATION);
+
+    /**
+     * The events an evidence item places in the execution.
+     *
+     * <p>Usually every event it cites. A duration finding is the exception: it cites the event
+     * that opened the interval and the one that closed it, and what it says is late is the
+     * step of the closing one — the step that took too long to report. Anchoring it at the
+     * opening event put a RESERVE_INVENTORY timeout at PROCESS_PAYMENT (F25), and put a late
+     * refund at the inventory failure that triggered it, level with that failure, where
+     * severity then chose the delay over the failure (F21).
+     */
+    private static List<String> anchoringEventIds(Evidence evidence, Map<Long, Anomaly> anomaliesById,
+            Map<String, SagaEvent> eventsById) {
+        Anomaly anomaly = evidence.anomalyId() == null ? null : anomaliesById.get(evidence.anomalyId());
+        if (anomaly == null || !DURATION_FINDINGS.contains(anomaly.getAnomalyType())) {
+            return evidence.eventIds();
+        }
+        return evidence.eventIds().stream()
+                .map(eventsById::get)
+                .filter(Objects::nonNull)
+                .filter(e -> e.getTimestamp() != null)
+                .max(Comparator.comparing(SagaEvent::getTimestamp))
+                .map(e -> List.of(e.getEventId()))
+                .orElse(evidence.eventIds());
     }
 
     /**
