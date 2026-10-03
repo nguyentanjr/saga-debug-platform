@@ -5,6 +5,7 @@ import com.example.correlation.repository.AnomalyRepository;
 import com.example.correlation.repository.RcaResultRepository;
 import com.example.correlation.repository.SagaEventRepository;
 import com.example.correlation.repository.SagaInstanceRepository;
+import com.example.correlation.repository.ServiceLifecycleEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -45,12 +46,15 @@ public class RetentionService {
     private final AnomalyRepository anomalyRepository;
     private final RcaResultRepository rcaResultRepository;
     private final RetentionProperties properties;
+    private final ServiceLifecycleEventRepository lifecycleRepository;
 
     public RetentionService(SagaInstanceRepository sagaInstanceRepository,
             SagaEventRepository sagaEventRepository,
             AnomalyRepository anomalyRepository,
             RcaResultRepository rcaResultRepository,
-            RetentionProperties properties) {
+            RetentionProperties properties,
+            ServiceLifecycleEventRepository lifecycleRepository) {
+        this.lifecycleRepository = lifecycleRepository;
         this.sagaInstanceRepository = sagaInstanceRepository;
         this.sagaEventRepository = sagaEventRepository;
         this.anomalyRepository = anomalyRepository;
@@ -67,6 +71,11 @@ public class RetentionService {
         int purged = purgeOlderThan(cutoff);
         if (purged > 0) {
             log.info("Retention purge removed {} saga(s) settled before {}", purged, cutoff);
+        }
+        // Lifecycle facts are not tied to a saga, so they age on their own clock (R23).
+        int lifecycle = lifecycleRepository.deleteExpiredKeepingLatestPerService(cutoff);
+        if (lifecycle > 0) {
+            log.info("Retention purge removed {} service lifecycle fact(s) before {}", lifecycle, cutoff);
         }
     }
 
