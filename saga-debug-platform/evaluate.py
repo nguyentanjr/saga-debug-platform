@@ -1342,6 +1342,7 @@ def run_circuit_breaker(scenario: dict, run_index: int) -> dict:
     refused = breaker_refused_since(breaker_window_start)
     if refused is not None:
         scenario = dict(scenario, expected_rca="CIRCUIT_BREAKER_OPEN" if refused else "RETRY_EXHAUSTED")
+        result["rca_expected"] = scenario["expected_rca"]
         result["label_basis"] = ("payment actuator: NOT_PERMITTED during run" if refused
                                  else "payment actuator: no NOT_PERMITTED, breaker closed during run")
 
