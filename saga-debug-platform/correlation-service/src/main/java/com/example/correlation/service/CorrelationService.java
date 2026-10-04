@@ -1,5 +1,7 @@
 package com.example.correlation.service;
 
+import com.example.correlation.domain.AnomalyType;
+
 import com.example.correlation.domain.IngestedEvent;
 import com.example.correlation.domain.SagaEvent;
 import com.example.correlation.domain.SagaInstance;
@@ -190,11 +192,15 @@ public class CorrelationService {
         if (timeline.endedAt().isPresent()) {
             anomalyDetectionService.withdrawMissingTerminal(sagaId, newStatus);
         }
-        timeline.postTerminal().ifPresent(pair ->
+        // Asked of the whole evidence every time, and answered both ways: a pair the clocks
+        // ordered can be reordered by a causal link that arrives later (F28).
+        timeline.postTerminal().ifPresentOrElse(pair ->
                 anomalyDetectionService.detectForbiddenPostTerminal(sagaId,
-                        pair.endedAs(), pair.terminal(), pair.late()));
-        timeline.regression().ifPresent(regression ->
-                anomalyDetectionService.detectStateRegression(sagaId, regression));
+                        pair.endedAs(), pair.terminal(), pair.late()),
+                () -> anomalyDetectionService.withdrawUnprovenOrder(sagaId, AnomalyType.FORBIDDEN_POST_TERMINAL));
+        timeline.regression().ifPresentOrElse(regression ->
+                anomalyDetectionService.detectStateRegression(sagaId, regression),
+                () -> anomalyDetectionService.withdrawUnprovenOrder(sagaId, AnomalyType.STATE_REGRESSION));
         if (!timeline.contestedOutcome().isEmpty()) {
             anomalyDetectionService.detectIndeterminateOrder(sagaId, timeline.contestedOutcome());
         }

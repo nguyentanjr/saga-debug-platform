@@ -71,6 +71,7 @@ public final class EvidenceTimeline {
     private final SagaEvent decidingEvent;
     private final List<SagaEvent> contested;
     private final Regression regression;
+    private final Causality causality;
 
     /**
      * An observation that provably followed an ending and reported something lower.
@@ -109,7 +110,8 @@ public final class EvidenceTimeline {
 
     private EvidenceTimeline(WorkflowSpec spec, List<SagaEvent> ordered, List<Bearing> bearings,
             SagaStatus status, SagaEvent decidingEvent, List<SagaEvent> contested,
-            Regression regression) {
+            Regression regression, Causality causality) {
+        this.causality = causality;
         this.spec = spec;
         this.ordered = ordered;
         this.bearings = bearings;
@@ -120,6 +122,70 @@ public final class EvidenceTimeline {
     }
 
     /**
+     * What the run's own events say about which caused which (F28).
+     *
+     * <p>A producer that records the event it was reacting to ({@code causationId}, V9)
+     * states an order no clock can contradict: an event cannot happen before its cause.
+     * Clocks can, and do. On 2026-10-04 three services stamped a reservation 0.77s before
+     * the payment that caused it, and the timeline, ordering by clock, ended the run before
+     * it had started. So the clock is read through causality: an event is placed no earlier
+     * than its cause ({@link #at}), and a declared ancestor is before its descendants
+     * whatever the stamps say ({@link #isAncestor}). Where no causation is declared, or the
+     * cause is not in hand, the clock decides exactly as before.
+     */
+    private static final class Causality {
+        private final java.util.Map<String, SagaEvent> byId = new java.util.HashMap<>();
+        private final java.util.Map<SagaEvent, Instant> at = new java.util.IdentityHashMap<>();
+        private final java.util.Map<SagaEvent, Integer> depth = new java.util.IdentityHashMap<>();
+
+        Causality(List<SagaEvent> events) {
+            for (SagaEvent e : events) {
+                if (e.getEventId() != null) byId.putIfAbsent(e.getEventId(), e);
+            }
+            for (SagaEvent e : events) resolve(e, new java.util.HashSet<>());
+        }
+
+        private SagaEvent causeOf(SagaEvent e) {
+            String id = e.getCausationId();
+            if (id == null || id.equals(e.getEventId())) return null;
+            return byId.get(id);
+        }
+
+        private void resolve(SagaEvent e, Set<SagaEvent> visiting) {
+            if (at.containsKey(e)) return;
+            SagaEvent cause = causeOf(e);
+            if (cause == null || !visiting.add(e)) {
+                at.put(e, e.getTimestamp());
+                depth.put(e, 0);
+                return;
+            }
+            resolve(cause, visiting);
+            Instant own = e.getTimestamp();
+            Instant causeAt = at.get(cause);
+            at.put(e, own == null ? causeAt : causeAt == null || own.isAfter(causeAt) ? own : causeAt);
+            depth.put(e, depth.getOrDefault(cause, 0) + 1);
+        }
+
+        /** When the event happened, no earlier than anything it was caused by. */
+        Instant at(SagaEvent e) {
+            return at.containsKey(e) ? at.get(e) : e.getTimestamp();
+        }
+
+        int depth(SagaEvent e) {
+            return depth.getOrDefault(e, 0);
+        }
+
+        /** Whether {@code ancestor} is on {@code event}'s declared chain of causes. */
+        boolean isAncestor(SagaEvent ancestor, SagaEvent event) {
+            Set<SagaEvent> seen = new java.util.HashSet<>();
+            for (SagaEvent cur = causeOf(event); cur != null && seen.add(cur); cur = causeOf(cur)) {
+                if (cur == ancestor) return true;
+            }
+            return false;
+        }
+    }
+
+    /**
      * @param spec   the workflow this run belongs to, or null while it is still unknown.
      *               Without one nothing can be classified, so the timeline reports only
      *               that the run has been seen — never a guess at where it got to
@@ -127,17 +193,18 @@ public final class EvidenceTimeline {
      */
     public static EvidenceTimeline of(WorkflowSpec spec, List<SagaEvent> events) {
         List<SagaEvent> given = events == null ? List.of() : events;
+        Causality causality = new Causality(given);
         if (spec == null) {
             // A run with no specification has no derivable status. IN_PROGRESS here is not
             // a reading of its evidence; it says only that the run exists and that nothing
             // has been able to judge it.
             return new EvidenceTimeline(null, List.copyOf(given), List.of(),
                     given.isEmpty() ? SagaStatus.STARTED : SagaStatus.IN_PROGRESS,
-                    null, List.of(), null);
+                    null, List.of(), null, causality);
         }
 
         List<SagaEvent> ordered = new ArrayList<>(given);
-        ordered.sort(businessOrder(spec));
+        ordered.sort(businessOrder(spec, causality));
 
         List<Bearing> bearings = new ArrayList<>();
         for (SagaEvent event : ordered) {
@@ -147,7 +214,7 @@ public final class EvidenceTimeline {
         if (bearings.isEmpty()) {
             return new EvidenceTimeline(spec, List.copyOf(ordered), List.of(),
                     ordered.isEmpty() ? SagaStatus.STARTED : SagaStatus.IN_PROGRESS,
-                    null, List.of(), null);
+                    null, List.of(), null, causality);
         }
 
         // The run's status is what the last status-bearing observation says — but "last"
@@ -157,7 +224,7 @@ public final class EvidenceTimeline {
         List<Bearing> contenders = new ArrayList<>();
         for (Bearing bearing : bearings) {
             if (bearing == last
-                    || relate(spec, bearing.event(), last.event()) == Relation.UNDETERMINED) {
+                    || relate(spec, causality, bearing.event(), last.event()) == Relation.UNDETERMINED) {
                 contenders.add(bearing);
             }
         }
@@ -183,7 +250,7 @@ public final class EvidenceTimeline {
         }
 
         return new EvidenceTimeline(spec, List.copyOf(ordered), List.copyOf(bearings),
-                status, deciding, contestedEvents, firstRegression(spec, bearings));
+                status, deciding, contestedEvents, firstRegression(spec, causality, bearings), causality);
     }
 
     /**
@@ -246,12 +313,12 @@ public final class EvidenceTimeline {
      * would need evidence that the steps in between were not merely unobserved — evidence
      * an observer of a partial stream does not have.
      */
-    private static Regression firstRegression(WorkflowSpec spec, List<Bearing> bearings) {
+    private static Regression firstRegression(WorkflowSpec spec, Causality causality, List<Bearing> bearings) {
         for (int i = 1; i < bearings.size(); i++) {
             Bearing earlier = bearings.get(i - 1);
             Bearing later = bearings.get(i);
             if (!earlier.status().isTerminal()) continue;
-            if (relate(spec, earlier.event(), later.event()) != Relation.BEFORE) continue;
+            if (relate(spec, causality, earlier.event(), later.event()) != Relation.BEFORE) continue;
             if (later.status().progressRank() < earlier.status().progressRank()) {
                 return new Regression(earlier.event(), earlier.status(),
                         later.event(), later.status());
@@ -273,9 +340,11 @@ public final class EvidenceTimeline {
      * from it: {@link #relate} reports such a pair as undetermined, and every claim this
      * class makes is checked against that rather than against the sort.
      */
-    private static Comparator<SagaEvent> businessOrder(WorkflowSpec spec) {
+    private static Comparator<SagaEvent> businessOrder(WorkflowSpec spec, Causality causality) {
         return Comparator
-                .comparing(SagaEvent::getTimestamp, Comparator.nullsLast(Comparator.naturalOrder()))
+                .comparing(causality::at, Comparator.nullsLast(Comparator.naturalOrder()))
+                // A cause placed at the same instant as its effect still comes first.
+                .thenComparingInt(causality::depth)
                 .thenComparingInt(event -> spec.classifyEvent(event.getEventType())
                         .map(role -> spec.upstreamStepCount(role.stepId()))
                         .orElse(Integer.MAX_VALUE))
@@ -290,11 +359,15 @@ public final class EvidenceTimeline {
      * What can be proved about the order of two observations, as opposed to what the sort
      * had to decide in order to produce a sequence at all.
      */
-    private static Relation relate(WorkflowSpec spec, SagaEvent left, SagaEvent right) {
+    private static Relation relate(WorkflowSpec spec, Causality causality, SagaEvent left, SagaEvent right) {
         if (left == right) return Relation.UNDETERMINED;
 
-        Instant leftAt = left.getTimestamp();
-        Instant rightAt = right.getTimestamp();
+        // A declared cause precedes its effects; no clock overrules that (F28).
+        if (causality.isAncestor(left, right)) return Relation.BEFORE;
+        if (causality.isAncestor(right, left)) return Relation.AFTER;
+
+        Instant leftAt = causality.at(left);
+        Instant rightAt = causality.at(right);
         if (leftAt != null && rightAt != null && !leftAt.equals(rightAt)) {
             return leftAt.isBefore(rightAt) ? Relation.BEFORE : Relation.AFTER;
         }
@@ -347,7 +420,7 @@ public final class EvidenceTimeline {
     /** The earliest instant any observation of this run carries. */
     public Optional<Instant> startedAt() {
         return ordered.stream()
-                .map(SagaEvent::getTimestamp)
+                .map(causality::at)
                 .filter(Objects::nonNull)
                 .min(Comparator.naturalOrder());
     }
@@ -355,7 +428,7 @@ public final class EvidenceTimeline {
     /** The latest instant any observation of this run carries. */
     public Optional<Instant> lastEventAt() {
         return ordered.stream()
-                .map(SagaEvent::getTimestamp)
+                .map(causality::at)
                 .filter(Objects::nonNull)
                 .max(Comparator.naturalOrder());
     }
@@ -368,7 +441,7 @@ public final class EvidenceTimeline {
      */
     public Optional<Instant> endedAt() {
         return status.isTerminal() && decidingEvent != null
-                ? Optional.ofNullable(decidingEvent.getTimestamp())
+                ? Optional.ofNullable(causality.at(decidingEvent))
                 : Optional.empty();
     }
 
@@ -415,14 +488,14 @@ public final class EvidenceTimeline {
     public boolean isAfterEnding(SagaEvent event) {
         return bearings.stream()
                 .filter(bearing -> bearing.status().isTerminal())
-                .anyMatch(ended -> relate(spec, ended.event(), event) == Relation.BEFORE);
+                .anyMatch(ended -> relate(spec, causality, ended.event(), event) == Relation.BEFORE);
     }
 
     public Optional<PostTerminal> postTerminal() {
         return bearings.stream()
                 .filter(bearing -> bearing.status().isTerminal())
                 .flatMap(ended -> ordered.stream()
-                        .filter(late -> relate(spec, ended.event(), late) == Relation.BEFORE)
+                        .filter(late -> relate(spec, causality, ended.event(), late) == Relation.BEFORE)
                         .findFirst()
                         .map(late -> new PostTerminal(ended.event(), ended.status(), late))
                         .stream())

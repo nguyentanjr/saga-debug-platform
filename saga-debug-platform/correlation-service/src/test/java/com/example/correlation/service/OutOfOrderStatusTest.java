@@ -487,6 +487,41 @@ class OutOfOrderStatusTest {
         return all;
     }
 
+    // ── F. clocks that disagree with the declared causation ───────────────────
+
+    /**
+     * F28, as delivered on 2026-10-04 (SC01 run 1): the reservation was read first, then the
+     * order, then the payment, and the reservation's own stamp was 0.77s before both. With
+     * only the reservation and the order in hand nothing links them, so the clock orders the
+     * pair and the order reads as arriving after the run had ended. The payment closes the
+     * causal chain; that finding no longer holds and is withdrawn, and the run ends COMPLETED.
+     */
+    @Test
+    void aFindingTheClocksSupportedIsWithdrawnWhenTheCausalChainCloses() {
+        Instant base = Instant.parse("2026-10-03T19:33:21Z");
+        observeCaused("inventory", "INVENTORY_RESERVED", "payment", base.plusMillis(787));
+        observeCaused("order", "ORDER_CREATED", null, base.plusMillis(1517));
+        verify(anomalyDetectionService).detectForbiddenPostTerminal(eq(RUN.canonical()), any(), any(), any());
+
+        observeCaused("payment", "PAYMENT_COMPLETED", "order", base.plusMillis(1559));
+
+        // Raised on the two-event prefix, then withdrawn once the chain closed (a withdrawal
+        // asked while nothing stands is a no-op, so it may also run on the first event).
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(anomalyDetectionService);
+        inOrder.verify(anomalyDetectionService).detectForbiddenPostTerminal(eq(RUN.canonical()), any(), any(), any());
+        inOrder.verify(anomalyDetectionService).withdrawUnprovenOrder(RUN.canonical(),
+                com.example.correlation.domain.AnomalyType.FORBIDDEN_POST_TERMINAL);
+        assertThat(run().getStatus()).isEqualTo(SagaStatus.COMPLETED);
+        assertThat(run().getEndTime()).isAfterOrEqualTo(run().getStartTime());
+    }
+
+    private void observeCaused(String eventId, String eventType, String causedBy, Instant at) {
+        correlationService.processEvent(new IngestedEvent(
+                new IngestedEvent.Identity(SOURCE, RUN, eventId, null, CorrelationBasis.DECLARED_KEY),
+                null, eventType, "UNKNOWN", "a-service", at, "{}", Instant.now(),
+                new IngestedEvent.Causality(causedBy, null, null, null)));
+    }
+
     private void observe(Observation observation) {
         correlationService.processEvent(new IngestedEvent(
                 new IngestedEvent.Identity(SOURCE, RUN, observation.eventId(), null,
