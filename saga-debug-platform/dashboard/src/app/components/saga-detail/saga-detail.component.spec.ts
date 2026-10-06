@@ -1,5 +1,5 @@
 import { SagaDetailComponent } from './saga-detail.component';
-import { RcaResult, SagaDetail, SagaEvent } from '../../models/saga.model';
+import { RcaCandidate, RcaResult, SagaDetail, SagaEvent } from '../../models/saga.model';
 
 function ev(id: number, eventId: string, eventType: string, stepName: string): SagaEvent {
   return { id, eventId, sagaId: 's', eventType, stepName, serviceName: 'svc', timestamp: '', payload: '{}', receivedAt: '' };
@@ -48,12 +48,58 @@ describe('SagaDetailComponent diagnosis view', () => {
     expect(c.verdict()).toBe('Forward Step Failure at step RESERVE.');
   });
 
-  it('highlights exactly the cited events and tells the root-cause event apart', () => {
+  it('highlights exactly the cited events, as evidence rather than as the cause', () => {
     c.saga = saga('COMPENSATED', compensated, [rcaAnchoredAt('RESERVE')]);
     c.buildDiagnosis();
 
     expect(compensated.filter(e => c.isEvidenceEvent(e)).map(e => e.eventId)).toEqual(['e3', 'e5']);
-    expect(compensated.filter(e => c.isRootCauseEvent(e)).map(e => e.eventId)).toEqual(['e3']);
+    expect(c.citedEventIds()).toEqual(['e3', 'e5']);
+  });
+
+  it('labels the anchored step as affected and leaves the others unlabelled', () => {
+    c.saga = saga('COMPENSATED', compensated, [rcaAnchoredAt('RESERVE')]);
+    c.buildDiagnosis();
+
+    expect(c.steps.map(s => c.stepRoleLabel(s))).toEqual(['', '', 'affected step', 'after failure']);
+  });
+
+  it('drops step anomaly markers once the diagnosis names a step', () => {
+    const anomalies = [{ id: 1, sagaId: 's', anomalyType: 'STEP_TIMEOUT', detectedAt: '', description: '', evidenceEventIds: ['e2', 'e3'] }];
+    c.saga = saga('COMPENSATED', compensated, [rcaAnchoredAt('RESERVE')], anomalies);
+    c.buildDiagnosis();
+
+    expect(c.steps.find(s => s.name === 'PAY')?.hasAnomaly).toBeTrue();
+    expect(c.steps.some(s => c.showStepAnomaly(s))).toBeFalse();
+  });
+
+  it('labels a long wait between timeline rows and shows one date for a single day', () => {
+    const at = (sec: number) => new Date(Date.UTC(2026, 9, 1, 10, 0, sec)).toISOString();
+    const events = [ev(1, 'e1', 'A', 'S1'), ev(2, 'e2', 'B', 'S2'), ev(3, 'e3', 'C', 'S3')];
+    events[0].receivedAt = at(0); events[1].receivedAt = at(1); events[2].receivedAt = at(45);
+    c.saga = saga('COMPLETED', events, []);
+    c.buildTimeline();
+
+    expect([0, 1, 2].map(k => c.gapLabel(k))).toEqual([null, null, '44 s later']);
+    expect(c.timelineDay).not.toBeNull();
+    expect(c.timeFormat).toBe('mediumTime');
+  });
+
+  it('summarises an anomaly by what was seen, not how it was measured', () => {
+    expect(c.anomalySummary({ observedValue: 'RESERVE took 44090ms over 1 attempt(s); start=OBSERVED_CAUSAL_LINK', expectedValue: '<= 5000ms' }))
+      .toBe('RESERVE took 44090ms over 1 attempt(s) (expected <= 5000ms)');
+  });
+
+  it('states a reason all candidates of a group share once, and keeps distinct ones per candidate', () => {
+    const same = (r: string) => ({ ruleId: r, rootCause: r, severity: 'LOW', status: 'SUPPORTING_EVIDENCE', evidence: [], statusReason: 'Consequence of R25' }) as RcaCandidate;
+    expect(c.sharedReason([same('A'), same('B')])).toBe('Consequence of R25');
+    expect(c.sharedReason([same('A'), { ...same('B'), statusReason: 'other' }])).toBeNull();
+    expect(c.sharedReason([same('A')])).toBeNull();
+  });
+
+  it('leaves the trace link out of suggestions, since the header offers it', () => {
+    const rca = rcaAnchoredAt('RESERVE');
+    rca.suggestions = JSON.stringify(['Check logs', 'View traces: http://localhost:16686/trace/abc']);
+    expect(c.suggestions(rca)).toEqual(['Check logs']);
   });
 
   it('does not invent a failed step when the rule names no anchor', () => {
