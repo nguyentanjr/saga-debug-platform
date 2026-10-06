@@ -499,6 +499,27 @@ public class AnomalyDetectionService {
      * guard is the absence of this finding). SAGA_STUCK is not withdrawn: the silence it
      * reports did happen, and R06 is built on it.
      */
+    /**
+     * Withdraws an ordering finding the whole evidence no longer establishes (F28).
+     *
+     * <p>FORBIDDEN_POST_TERMINAL and STATE_REGRESSION are occurrences, and an occurrence
+     * proven by a declared causal link stays proven: more events only add links. One proven
+     * only by clocks does not. When the event that sits causally between the pair arrives,
+     * the timeline may place the "late" observation before the ending after all, and the
+     * finding then describes the producers' clocks, not the run. It is withdrawn with that
+     * reason, as an absence claim is withdrawn when its evidence turns up.
+     */
+    public void withdrawUnprovenOrder(String sagaId, AnomalyType type) {
+        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, type)) return;
+        int withdrawn = anomalyRepository.retractClaims(sagaId, Set.of(type), Instant.now(),
+                "the order it rested on came from clocks; later observations declare a causal "
+                        + "order under which it no longer holds");
+        if (withdrawn > 0) {
+            log.info("Withdrew {} against execution {}: declared causation reorders its pair",
+                    type, sagaId);
+        }
+    }
+
     public void withdrawMissingTerminal(String sagaId, SagaStatus endedAs) {
         if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_TERMINAL_EVENT)) return;
         int withdrawn = anomalyRepository.retractClaims(sagaId,

@@ -20,10 +20,13 @@ public class ScenarioService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final String orderServiceUrl;
     private final String paymentServiceUrl;
+    private final String inventoryServiceUrl;
 
     public ScenarioService(
             @Value("${scenario.order-service-url:http://order-service:8081}") String orderServiceUrl,
-            @Value("${scenario.payment-service-url:http://payment-service:8082}") String paymentServiceUrl) {
+            @Value("${scenario.payment-service-url:http://payment-service:8082}") String paymentServiceUrl,
+            @Value("${scenario.inventory-service-url:http://inventory-service:8083}") String inventoryServiceUrl) {
+        this.inventoryServiceUrl = inventoryServiceUrl;
         this.orderServiceUrl = orderServiceUrl;
         this.paymentServiceUrl = paymentServiceUrl;
     }
@@ -75,7 +78,15 @@ public class ScenarioService {
                         "Temporarily enable payment fail-mode, create an order, then restore payment automatically.",
                         "Saga FAILED",
                         "CIRCUIT_BREAKER_OPEN",
-                        12)
+                        12),
+                new ScenarioDefinition(
+                        "SC_UI_INVENTORY_CRASH",
+                        "Inventory crash",
+                        "real",
+                        "Make inventory-service crash while handling the next order; its restart policy brings it back and the order completes late.",
+                        "Saga COMPLETED after inventory restarts",
+                        "SERVICE_CRASH",
+                        60)
         );
     }
 
@@ -85,6 +96,7 @@ public class ScenarioService {
             case "SC_UI_HEALTHY" -> runHealthy();
             case "SC_UI_COMPENSATION" -> runCompensation();
             case "SC_UI_CIRCUIT_BREAKER" -> runCircuitBreaker();
+            case "SC_UI_INVENTORY_CRASH" -> runInventoryCrash();
             default -> throw new IllegalArgumentException("Unknown scenario: " + scenarioId);
         };
     }
@@ -133,6 +145,27 @@ public class ScenarioService {
             setPaymentFailMode(false);
             throw e;
         }
+    }
+
+    private ScenarioRunResponse runInventoryCrash() {
+        try {
+            restTemplate.postForEntity(inventoryServiceUrl + "/api/admin/crash-on-next-payment", null, Map.class);
+        } catch (RestClientException e) {
+            throw new IllegalStateException("Could not arm inventory-service crash: " + e.getMessage(), e);
+        }
+        Map<String, Object> order = createOrder("ui-inventory-crash", "PRODUCT-1", 1, BigDecimal.valueOf(60));
+        return response(
+                "SC_UI_INVENTORY_CRASH",
+                "Inventory crash",
+                order,
+                "Saga COMPLETED after inventory-service restarts",
+                "SERVICE_CRASH",
+                List.of("STEP_TIMEOUT"),
+                List.of(
+                        "inventory-service exits while handling this order's payment message.",
+                        "Its restart policy starts it again; it re-reads the uncommitted message and the order completes.",
+                        "The observer learns of the exit from the container runtime, not from the saga's events (R25).",
+                        "Open the saga after about a minute."));
     }
 
     private Map<String, Object> createOrder(String customerPrefix, String productId, int quantity, BigDecimal amount) {

@@ -86,6 +86,17 @@ class RepositoryQueryDerivationTest {
                 .doesNotThrowAnyException();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "findByServiceNameInAndOccurredAtBetweenOrderByOccurredAtAsc",
+            "existsBySourceAndExternalId",
+            "findTopBySourceOrderByOccurredAtDesc",
+    })
+    void serviceLifecycleQueriesResolve(String methodName) {
+        assertThatCode(() -> new PartTree(methodName, com.example.correlation.domain.ServiceLifecycleEvent.class))
+                .doesNotThrowAnyException();
+    }
+
     /**
      * Guards the list above against drifting out of date: every derived method declared
      * on the repositories must appear in one of the parameterised sets.
@@ -94,7 +105,8 @@ class RepositoryQueryDerivationTest {
     void everyDeclaredDerivedQueryIsCovered() {
         List<Class<?>> repositories = List.of(
                 SagaInstanceRepository.class, SagaEventRepository.class,
-                AnomalyRepository.class, RcaResultRepository.class);
+                AnomalyRepository.class, RcaResultRepository.class,
+                ServiceLifecycleEventRepository.class);
 
         List<String> covered = List.of(
                 "findByStatus", "findByStatusAndLastUpdatedBefore", "countByStartTimeAfter",
@@ -108,7 +120,9 @@ class RepositoryQueryDerivationTest {
                 "findBySagaId", "findByDetectedAtAfter", "existsBySagaIdAndAnomalyType",
                 "deleteByDetectedAtBefore", "findBySagaIdIn",
                 "findBySagaIdOrderByCreatedAtDesc", "findBySagaIdInOrderByCreatedAtDesc",
-                "findByCreatedAtAfter", "deleteAllBySagaId");
+                "findByCreatedAtAfter", "deleteAllBySagaId",
+                "findByServiceNameInAndOccurredAtBetweenOrderByOccurredAtAsc",
+                "existsBySourceAndExternalId", "findTopBySourceOrderByOccurredAtDesc");
 
         List<String> declared = repositories.stream()
                 .flatMap(repo -> java.util.Arrays.stream(repo.getDeclaredMethods()))

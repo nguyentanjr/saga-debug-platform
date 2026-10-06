@@ -1276,6 +1276,28 @@ def run_compensation_step_failure(scenario: dict, run_index: int) -> dict:
     return result
 
 
+def breaker_refused_since(since: datetime):
+    """Whether payment-service's breaker refused a call (NOT_PERMITTED) at or after `since`.
+
+    None when the actuator cannot be read, so the caller keeps the scenario's own label.
+    """
+    try:
+        r = requests.get(f"{PAYMENT_URL}/actuator/circuitbreakerevents/paymentProcessing", timeout=5)
+        events = r.json().get("circuitBreakerEvents", [])
+    except Exception:
+        return None
+    for e in events:
+        if e.get("type") != "NOT_PERMITTED":
+            continue
+        created = e.get("creationTime", "").split("[")[0].replace("Z", "+00:00")
+        try:
+            if datetime.fromisoformat(created[:26] + created[-6:] if "." in created else created) >= since:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def run_circuit_breaker(scenario: dict, run_index: int) -> dict:
     """SC06: Enable payment fail-mode → Resilience4j retry exhausted →
     circuit breaker fallback → PaymentFailedEvent with 'circuit breaker' text."""
@@ -1287,6 +1309,7 @@ def run_circuit_breaker(scenario: dict, run_index: int) -> dict:
         print(" ❌ fail-mode"); return result
     time.sleep(1)
 
+    breaker_window_start = datetime.now(timezone.utc)
     order_resp, latency = create_order(scenario["request"])
     result["order_latency_ms"] = latency
     if order_resp is None:
@@ -1310,6 +1333,18 @@ def run_circuit_breaker(scenario: dict, run_index: int) -> dict:
     # Then fallback publishes PaymentFailedEvent → saga FAILED.
     print(f" waiting for retry exhaustion...", end="", flush=True)
     detail, wait_s = poll_saga_terminal(saga_id, timeout=30)
+
+    # Ground truth for this run, from payment-service's own breaker record (its actuator,
+    # which the observer never reads): did the breaker refuse a call during the run? The
+    # breaker needs minimumNumberOfCalls=5 before it can open, so the first run of a fresh
+    # breaker fails on its 3 retries with the breaker still CLOSED. A fixed label of
+    # CIRCUIT_BREAKER_OPEN scored that run's correct RETRY_EXHAUSTED as wrong (C4).
+    refused = breaker_refused_since(breaker_window_start)
+    if refused is not None:
+        scenario = dict(scenario, expected_rca="CIRCUIT_BREAKER_OPEN" if refused else "RETRY_EXHAUSTED")
+        result["rca_expected"] = scenario["expected_rca"]
+        result["label_basis"] = ("payment actuator: NOT_PERMITTED during run" if refused
+                                 else "payment actuator: no NOT_PERMITTED, breaker closed during run")
 
     rca, rca_ms = trigger_rca(saga_id)
     finalize_result(result, saga_id, rca, rca_ms, t_start, scenario)
@@ -1437,6 +1472,13 @@ def run_inject_scenario(scenario: dict, run_index: int) -> dict:
         ts = ev.get("timestamp")
         if ts in ts_markers:
             ts = ts_markers[ts]()
+        elif ts is None:
+            # Stamp the moment of sending, as a producer stamps its own event. Without it the
+            # observer can only use when it received the event, and injected events travel on
+            # one Kafka topic per type, consumed in parallel: SC22 run 2 (2026-10-03) had
+            # INVENTORY_FAILED received 1.5s before ORDER_CREATED and was scored on that
+            # delivery order rather than on the scenario (F24).
+            ts = ts_ago()
 
         eid = ev.get("eventId")
         if eid == "USE_UNIQUE":
@@ -1593,8 +1635,13 @@ ADVANCED_SCENARIOS = [
         "request": {"customerId": "eval-03", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 50.00},
         "expected_saga_status": "IN_PROGRESS",
-        "expected_rca_status": "INSUFFICIENT_EVIDENCE",
-        "expected_rca": None,
+        # Label = the fault injected (inventory-service stopped), not what an events-only
+        # observer can say. Was INSUFFICIENT_EVIDENCE/None: correct for silence alone, but the
+        # injected fault is a crash, the same one SC17 injects. With the collector off
+        # (CORRELATION_LIVENESS_DOCKER_ENABLED=false) this scenario measures the gap R25 closes.
+        "label_before_r25": "INSUFFICIENT_EVIDENCE",
+        "expected_rca_status": "EVIDENCE_AVAILABLE",
+        "expected_rca": "SERVICE_CRASH",
         "expected_anomalies": ["SAGA_STUCK"],
         "runner": run_stuck_saga,
         "stuck_wait_seconds": 65,
@@ -1609,7 +1656,11 @@ ADVANCED_SCENARIOS = [
         "request": {"customerId": "eval-04", "productId": "PRODUCT-1",
                     "quantity": 1, "amount": 60.00},
         "expected_saga_status": "COMPLETED",
-        "expected_rca": "TRANSIENT_SERVICE_FAILURE",
+        # Label = the fault injected: inventory-service stopped, then restarted by the harness.
+        # Was TRANSIENT_SERVICE_FAILURE, a cause F5 withdrew because nothing self-healed here;
+        # SC16 injects the same fault for longer and was already labelled SERVICE_CRASH.
+        "label_before_r25": "TRANSIENT_SERVICE_FAILURE",
+        "expected_rca": "SERVICE_CRASH",
         "expected_anomalies": ["SAGA_STUCK"],
         "runner": run_recovered_from_stuck,
         "stuck_wait_seconds": 45,

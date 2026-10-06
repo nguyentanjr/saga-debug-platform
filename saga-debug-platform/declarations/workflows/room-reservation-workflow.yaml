@@ -24,6 +24,10 @@
 workflow:
   name: ROOM_RESERVATION
   version: "1.0"
+  # The Compose project these services run in on this deployment (tmp/hotel-real-*.yml use
+  # -p hotel-real). Their payment-service shares its name with the demo's, so without this
+  # the platform could not tell which deployment's restart a run waited through (V21, R25).
+  runtimeScope: hotel-real
 
   steps:
     - id: BOOK_ROOM

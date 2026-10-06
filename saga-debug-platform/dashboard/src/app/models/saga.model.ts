@@ -80,6 +80,16 @@ export interface RcaResult {
   missingEvidence?: string[];
 }
 
+/** What the container runtime (or a pushed report) said about a service the workflow names. */
+export interface LifecycleEntry {
+  service: string;
+  state: 'DOWN' | 'UP';
+  occurredAt: string;
+  source: string;
+  basis: 'PROCESS' | 'PROBE';
+  detail?: string | null;
+}
+
 export interface SagaDetail {
   workflowSteps?: Record<string, string>;
   workflowConflicts?: string[];
@@ -92,6 +102,7 @@ export interface SagaDetail {
   events: SagaEvent[];
   anomalies: Anomaly[];
   rcaResults: RcaResult[];
+  lifecycle?: LifecycleEntry[];
 }
 
 export interface Page<T> {

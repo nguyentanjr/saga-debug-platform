@@ -91,6 +91,43 @@ class CompensationAnchorTest {
         assertThat(result.getRuleId()).isEqualTo("R03");
     }
 
+    /**
+     * F21 / SC24: the delay cites the failure that triggered the rollback and the late
+     * rollback start. What it says is late is the rollback step, so that is where it
+     * anchors; anchored at the failure it tied with R11 and severity chose the delay.
+     */
+    @Test
+    void aLateRollbackIsAnchoredAtTheRollbackNotAtTheFailureThatTriggeredIt() {
+        SagaEvent failed = event("e3", "INVENTORY_FAILED", "{}", 4);
+        SagaEvent refund = event("e4", "REFUND_PAYMENT", "{}", 39);
+        SagaEvent refunded = event("e5", "PAYMENT_REFUNDED", "{}", 44);
+        RcaResult result = analyze(SagaStatus.COMPENSATED,
+                List.of(anomaly(1, AnomalyType.DELAYED_COMPENSATION, failed, refund)),
+                event("e1", "ORDER_CREATED", "{}", 0),
+                event("e2", "PAYMENT_COMPLETED", "{}", 2),
+                failed, refund, refunded);
+
+        assertThat(result.getRuleId()).isEqualTo("R11");
+        assertThat(result.getCandidates()).filteredOn(c -> "R22".equals(c.getRuleId()))
+                .singleElement().satisfies(c -> assertThat(c.getAnchorAt()).isEqualTo(refund.getTimestamp()));
+    }
+
+    /** F25: a timeout measured until INVENTORY_RESERVED is RESERVE_INVENTORY's timeout. */
+    @Test
+    void aStepTimeoutIsAnchoredAtTheStepThatWasLate() {
+        SagaEvent paid = event("e2", "PAYMENT_COMPLETED", "{}", 1);
+        SagaEvent reserved = event("e3", "INVENTORY_RESERVED", "{}", 50);
+        RcaResult result = analyze(SagaStatus.COMPLETED,
+                List.of(anomaly(1, AnomalyType.STEP_TIMEOUT, paid, reserved)),
+                event("e1", "ORDER_CREATED", "{}", 0), paid, reserved);
+
+        assertThat(result.getCandidates()).filteredOn(c -> "R07".equals(c.getRuleId()))
+                .singleElement().satisfies(c -> {
+                    assertThat(c.getAnchorStepId()).isEqualTo("RESERVE_INVENTORY");
+                    assertThat(c.getAnchorAt()).isEqualTo(reserved.getTimestamp());
+                });
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static RcaResult analyze(SagaStatus status, List<Anomaly> standing, SagaEvent... events) {

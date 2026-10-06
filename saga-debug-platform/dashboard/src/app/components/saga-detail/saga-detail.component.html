@@ -116,7 +116,32 @@
     </mat-card-header>
     <mat-card-content>
       <div class="timeline">
-        <div class="timeline-item" *ngFor="let event of saga.events; let i = index"
+        <ng-container *ngFor="let item of timeline">
+        <div class="timeline-item lifecycle-item" *ngIf="item.kind === 'lifecycle'"
+             [class.lifecycle-down]="item.entry.state === 'DOWN'"
+             [class.lifecycle-probe]="item.entry.basis === 'PROBE'">
+          <div class="timeline-dot lifecycle-dot">
+            <mat-icon>{{ item.entry.state === 'DOWN' ? 'power_off' : 'power' }}</mat-icon>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-header">
+              <strong>{{ lifecycleLabel(item.entry) }}</strong>
+              <span class="lifecycle-tag">runtime · {{ item.entry.source }}</span>
+              <span class="lifecycle-tag probe" *ngIf="item.entry.basis === 'PROBE'">probe only</span>
+            </div>
+            <div class="timeline-meta">
+              <span *ngIf="item.entry.detail">{{ item.entry.detail }}</span>
+              <span class="separator" *ngIf="item.entry.detail">|</span>
+              <span>{{ item.entry.occurredAt | date:'medium' }}</span>
+            </div>
+          </div>
+        </div>
+        <ng-container *ngIf="item.kind === 'event'">
+        <ng-container *ngTemplateOutlet="eventRow; context: { event: item.event, i: item.index }"></ng-container>
+        </ng-container>
+        </ng-container>
+        <ng-template #eventRow let-event="event" let-i="i">
+        <div class="timeline-item"
              [attr.id]="event.eventId ? 'ev-' + event.eventId : null"
              [class.is-evidence]="isEvidenceEvent(event)"
              [class.is-root]="isRootCauseEvent(event)"
@@ -144,6 +169,7 @@
             <pre class="payload-content" *ngIf="expandedPayload === i">{{ formatPayload(event.payload) }}</pre>
           </div>
         </div>
+        </ng-template>
       </div>
     </mat-card-content>
   </mat-card>
