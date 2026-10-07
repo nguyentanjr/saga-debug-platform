@@ -85,6 +85,20 @@
               "extractLicenses": false,
               "sourceMap": true,
               "namedChunks": true
+            },
+            "hotel": {
+              "buildOptimizer": false,
+              "optimization": false,
+              "vendorChunk": true,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "namedChunks": true,
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.hotel.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -97,6 +111,11 @@
             },
             "development": {
               "browserTarget": "dashboard:build:development"
+            },
+            "hotel": {
+              "browserTarget": "dashboard:build:hotel",
+              "port": 4201,
+              "proxyConfig": "proxy.hotel.json"
             }
           },
           "defaultConfiguration": "development"
