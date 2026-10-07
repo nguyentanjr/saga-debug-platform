@@ -19,7 +19,20 @@ export type TimelineItem =
   | { kind: 'event'; at: string; event: SagaEvent; index: number }
   | { kind: 'lifecycle'; at: string; entry: LifecycleEntry };
 
+/** A collapsed tier of RCA candidates below the strong ones. */
+export interface CandidateGroup {
+  title: string;
+  icon: string;
+  cssClass: string;
+  candidates: RcaCandidate[];
+}
+
 const SERVICE_PALETTE = ['#3f51b5', '#4caf50', '#ff9800', '#9c27b0', '#00897b', '#e91e63', '#5d4037', '#1e88e5'];
+
+/** Gaps between timeline rows at least this long are labelled, so a long wait is visible. */
+const GAP_LABEL_MIN_MS = 5000;
+
+const JAEGER_UI = 'http://localhost:16686';
 
 @Component({
   selector: 'app-saga-detail',
@@ -42,6 +55,11 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
   evidenceEventIds = new Set<string>();
   highlightedEventId: string | null = null;
   timeline: TimelineItem[] = [];
+  /** Set when every timeline row falls on one day, so rows need only the time. */
+  timelineDay: string | null = null;
+  timeFormat = 'medium';
+  expandedAnomaly: number | null = null;
+  copied = false;
   private pollSub?: Subscription;
 
   constructor(
@@ -171,6 +189,8 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
       }
     }
     const anchor = this.primaryCandidate?.anchorStepId || null;
+    // A run that completed was only slowed at the anchored step; nothing after it ran because of a failure.
+    const failed = saga.status !== 'COMPLETED';
     const steps: StepView[] = [];
     let anchorSeen = false;
     for (const ev of saga.events) {
@@ -180,7 +200,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
         existing.eventCount++;
         continue;
       }
-      let role: StepView['role'] = anchorSeen ? 'rollback' : 'forward';
+      let role: StepView['role'] = anchorSeen && failed ? 'rollback' : 'forward';
       if (anchor && name === anchor) {
         role = 'rootCause';
         anchorSeen = true;
@@ -201,13 +221,29 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     const items: TimelineItem[] = saga.events.map((event, index) => ({
       kind: 'event' as const, at: event.receivedAt || event.timestamp, event, index
     }));
+    // The observer also returns each service's last report before the run began. A service
+    // already down then belongs on the timeline; one that was simply running does not, and
+    // drawn as a row it reads as something that happened during the run.
+    const runStart = Date.parse(saga.startTime);
     for (const entry of saga.lifecycle || []) {
+      if (entry.state === 'UP' && Date.parse(entry.occurredAt) < runStart) continue;
       items.push({ kind: 'lifecycle', at: entry.occurredAt, entry });
     }
     this.timeline = items
       .map((item, order) => ({ item, order }))
       .sort((a, b) => (Date.parse(a.item.at) - Date.parse(b.item.at)) || (a.order - b.order))
       .map(x => x.item);
+
+    const days = new Set(this.timeline.map(i => new Date(i.at).toDateString()));
+    this.timelineDay = this.timeline.length > 0 && days.size === 1 ? this.timeline[0].at : null;
+    this.timeFormat = this.timelineDay ? 'mediumTime' : 'medium';
+  }
+
+  /** "42 s later" before row k when it follows the previous row by a long wait. */
+  gapLabel(k: number): string | null {
+    if (k === 0 || k >= this.timeline.length) return null;
+    const gap = Date.parse(this.timeline[k].at) - Date.parse(this.timeline[k - 1].at);
+    return gap >= GAP_LABEL_MIN_MS ? `${Math.round(gap / 1000)} s later` : null;
   }
 
   lifecycleLabel(entry: LifecycleEntry): string {
@@ -225,9 +261,22 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     return !!event.eventId && this.evidenceEventIds.has(event.eventId);
   }
 
-  isRootCauseEvent(event: SagaEvent): boolean {
-    const anchor = this.primaryCandidate?.anchorStepId;
-    return !!anchor && this.stepOf(event) === anchor && this.isEvidenceEvent(event);
+  /** Events the leading candidate cites, in timeline order, each once. */
+  citedEventIds(): string[] {
+    const cited = new Set<string>();
+    for (const e of this.primaryCandidate?.evidence || []) {
+      (e.eventIds || []).forEach(id => cited.add(id));
+    }
+    return (this.saga?.events || []).map(e => e.eventId).filter(id => !!id && cited.has(id));
+  }
+
+  /**
+   * The anomaly marker on a step is only shown while no step has been named: once the
+   * diagnosis anchors a step, a marker elsewhere usually means that step's event opened the
+   * measured interval, and it reads as a second problem.
+   */
+  showStepAnomaly(step: StepView): boolean {
+    return step.hasAnomaly && !this.primaryCandidate?.anchorStepId;
   }
 
   /** Plain-language one-liner for the diagnosis banner. */
@@ -259,10 +308,87 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
 
   stepRoleLabel(step: StepView): string {
     switch (step.role) {
-      case 'rootCause': return 'root cause';
+      // The step is where the diagnosis applies; the cause itself is the candidate.
+      case 'rootCause': return 'affected step';
       case 'rollback': return 'after failure';
-      default: return 'ok';
+      default: return '';
     }
+  }
+
+  tierLabel(status: string): string {
+    switch (status) {
+      case 'STRONG_EVIDENCE': return 'Strong';
+      case 'SUPPORTING_EVIDENCE': return 'Supporting';
+      case 'WEAK_EVIDENCE': return 'Weak';
+      default: return this.formatEnumLabel(status);
+    }
+  }
+
+  shortId(id: string): string {
+    return id.length > 20 ? `${id.slice(0, 18)}…` : id;
+  }
+
+  copySagaId(): void {
+    if (!this.saga) return;
+    navigator.clipboard?.writeText(this.saga.sagaId).then(() => {
+      this.copied = true;
+      setTimeout(() => this.copied = false, 1500);
+    }).catch(() => {});
+  }
+
+  formatDuration(ms: number): string {
+    return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`;
+  }
+
+  traceUrl(traceId: string): string {
+    return `${JAEGER_UI}/trace/${traceId}`;
+  }
+
+  toggleAnomaly(index: number): void {
+    this.expandedAnomaly = this.expandedAnomaly === index ? null : index;
+  }
+
+  /**
+   * The observed value up to its first ';' (what was seen; the rest says how it was measured),
+   * against the expected value. Both are shown in full in the row's details.
+   */
+  anomalySummary(anomaly: { observedValue?: string | null; expectedValue?: string | null; description?: string | null }): string {
+    if (!anomaly.observedValue) return anomaly.description || '-';
+    const seen = anomaly.observedValue.split(';')[0].trim();
+    return anomaly.expectedValue ? `${seen} (expected ${anomaly.expectedValue})` : seen;
+  }
+
+  evidenceRaw(evidence: Evidence): string {
+    return [evidence.observedValue && `Observed: ${evidence.observedValue}`,
+            evidence.expectedValue && `Expected: ${evidence.expectedValue}`].filter(Boolean).join('\n');
+  }
+
+  /** Tiers below strong evidence, collapsed by default. */
+  collapsedGroups(rca: RcaResult): CandidateGroup[] {
+    return [
+      { title: 'Supporting evidence', icon: 'playlist_add_check', cssClass: 'supporting-candidates',
+        candidates: this.getSupportingEvidenceCandidates(rca) },
+      { title: 'Weak / fallback evidence', icon: 'help', cssClass: 'weak-candidates',
+        candidates: this.getWeakEvidenceCandidates(rca) },
+      { title: 'Alternatives considered', icon: 'rule', cssClass: 'alternatives-panel',
+        candidates: this.getAlternativeCandidates(rca) }
+    ].filter(g => g.candidates.length > 0);
+  }
+
+  trackGroup(_: number, group: CandidateGroup): string {
+    return group.title;
+  }
+
+  /** The reason every candidate of a group shares, so it is said once for the group. */
+  sharedReason(candidates: RcaCandidate[]): string | null {
+    const reasons = new Set(candidates.map(c => c.statusReason || ''));
+    const only = reasons.size === 1 ? [...reasons][0] : '';
+    return candidates.length > 1 && only ? only : null;
+  }
+
+  /** Suggestions without the trace link, which the header already offers. */
+  suggestions(rca: RcaResult): string[] {
+    return this.parseJson(rca.suggestions).filter(s => typeof s === 'string' && !s.includes(JAEGER_UI));
   }
 
   eventLabel(eventId: string): string {
@@ -288,20 +414,6 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     } catch {
       return [];
     }
-  }
-
-  isJaegerLink(text: string): boolean {
-    return !!text && text.includes('http://localhost:16686');
-  }
-
-  getTextBeforeLink(text: string): string {
-    const idx = text.indexOf('http://');
-    return idx > 0 ? text.substring(0, idx) : '';
-  }
-
-  extractLink(text: string): string {
-    const match = text.match(/https?:\/\/[^\s,]+/);
-    return match ? match[0] : '';
   }
 
   /**
@@ -427,10 +539,6 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     return 'Legacy Result';
   }
 
-  getStatusDetail(rca: RcaResult): string {
-    return '';
-  }
-
   getCandidateClass(status: string): string {
     return 'candidate-' + status.toLowerCase();
   }
@@ -445,30 +553,12 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     return candidate.statusReason;
   }
 
-  getReasonLabel(status: string): string {
-    switch (status) {
-      case 'STRONG_EVIDENCE':
-      case 'SUPPORTING_EVIDENCE':
-        return 'Evidence basis';
-      case 'WEAK_EVIDENCE': return 'Caution';
-      case 'RULED_OUT': return 'Ruled out because';
-      default: return 'Reason';
-    }
-  }
-
   getEvidence(candidate: RcaCandidate): Evidence[] {
     return candidate.evidence || [];
   }
 
   formatEnumLabel(value: string): string {
     return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-  }
-
-  hasLegacyDescriptions(): boolean {
-    if (!this.saga) {
-      return false;
-    }
-    return this.saga.anomalies.some(a => !!a.description && (!a.observedValue || !a.expectedValue || !a.thresholdSource));
   }
 
   getSourceClass(source?: string): string {

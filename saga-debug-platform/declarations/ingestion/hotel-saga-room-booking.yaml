@@ -40,6 +40,8 @@ source:
   topicPattern: 'room-booking\.outbox\.events'
 
   fields:
+    # Nothing on the record names the publisher; each outbox topic has exactly one.
+    serviceName: const:hotel-service
     # The saga id, carried as the Kafka record key by Debezium's EventRouter.
     executionId: key
 

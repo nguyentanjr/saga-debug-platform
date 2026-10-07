@@ -32,6 +32,8 @@ source:
   topicPattern: 'payment\.outbox\.events'
 
   fields:
+    # Nothing on the record names the publisher; each outbox topic has exactly one.
+    serviceName: const:payment-service
     executionId: key
     eventId: header:id
 
