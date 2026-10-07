@@ -165,6 +165,29 @@ describe('SagaDetailComponent diagnosis view', () => {
       .toEqual(['e1', 'e2', 'DOWN', 'UP', 'e3']);
   });
 
+  it('does not call steps after the anchored one "after failure" when the run completed', () => {
+    c.saga = saga('COMPLETED', compensated.slice(0, 4), [rcaAnchoredAt('PAY')]);
+    c.buildDiagnosis();
+
+    expect(c.steps.map(s => `${s.name}:${s.role}`))
+      .toEqual(['CREATE:forward', 'PAY:rootCause', 'RESERVE:forward', 'UNDO_PAY:forward']);
+  });
+
+  it('leaves out a service that was simply running before the run, but keeps one already down', () => {
+    const at = (sec: number) => new Date(Date.UTC(2026, 9, 1, 10, 0, sec)).toISOString();
+    const events = [ev(1, 'e1', 'A', 'S1')];
+    events[0].receivedAt = at(30);
+    c.saga = { ...saga('COMPLETED', events, []), startTime: at(30), lifecycle: [
+      { service: 'payment', state: 'UP', occurredAt: at(0), source: 'docker', basis: 'PROCESS' },
+      { service: 'hotel', state: 'DOWN', occurredAt: at(5), source: 'docker', basis: 'PROCESS' },
+      { service: 'hotel', state: 'UP', occurredAt: at(40), source: 'docker', basis: 'PROCESS' }
+    ] };
+    c.buildTimeline();
+
+    expect(c.timeline.map(i => i.kind === 'event' ? i.event.eventId : `${i.entry.service}:${i.entry.state}`))
+      .toEqual(['hotel:DOWN', 'e1', 'hotel:UP']);
+  });
+
   it('says a probe saw the service unreachable, not that it exited', () => {
     expect(c.lifecycleLabel({ service: 'billing', state: 'DOWN', occurredAt: '', source: 'alertmanager', basis: 'PROBE' }))
       .toBe('billing stopped answering probes');

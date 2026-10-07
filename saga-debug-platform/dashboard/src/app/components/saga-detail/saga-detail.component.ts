@@ -189,6 +189,8 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
       }
     }
     const anchor = this.primaryCandidate?.anchorStepId || null;
+    // A run that completed was only slowed at the anchored step; nothing after it ran because of a failure.
+    const failed = saga.status !== 'COMPLETED';
     const steps: StepView[] = [];
     let anchorSeen = false;
     for (const ev of saga.events) {
@@ -198,7 +200,7 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
         existing.eventCount++;
         continue;
       }
-      let role: StepView['role'] = anchorSeen ? 'rollback' : 'forward';
+      let role: StepView['role'] = anchorSeen && failed ? 'rollback' : 'forward';
       if (anchor && name === anchor) {
         role = 'rootCause';
         anchorSeen = true;
@@ -219,7 +221,12 @@ export class SagaDetailComponent implements OnInit, OnDestroy {
     const items: TimelineItem[] = saga.events.map((event, index) => ({
       kind: 'event' as const, at: event.receivedAt || event.timestamp, event, index
     }));
+    // The observer also returns each service's last report before the run began. A service
+    // already down then belongs on the timeline; one that was simply running does not, and
+    // drawn as a row it reads as something that happened during the run.
+    const runStart = Date.parse(saga.startTime);
     for (const entry of saga.lifecycle || []) {
+      if (entry.state === 'UP' && Date.parse(entry.occurredAt) < runStart) continue;
       items.push({ kind: 'lifecycle', at: entry.occurredAt, entry });
     }
     this.timeline = items
