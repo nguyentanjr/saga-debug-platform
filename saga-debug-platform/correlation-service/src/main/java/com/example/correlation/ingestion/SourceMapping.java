@@ -26,6 +26,9 @@ import java.util.regex.PatternSyntaxException;
  *   <li>{@code key} — the transport's record key</li>
  *   <li>{@code header:NAME} — a transport header</li>
  *   <li>{@code source} — the topic, queue or source name the observation arrived on</li>
+ *   <li>{@code const:VALUE} — VALUE itself, for what is known about the source rather than
+ *       carried by it: an outbox topic is published by one service, and saying which in the
+ *       mapping beats recording "unknown" for every event on it</li>
  *   <li>anything else — a dotted path into the payload, which is the default</li>
  * </ul>
  *
@@ -332,6 +335,7 @@ public class SourceMapping {
     public static final String KEY_SOURCE = "key";
     public static final String SOURCE_REF = "source";
     public static final String HEADER_PREFIX = "header:";
+    public static final String CONST_PREFIX = "const:";
 
 
     /** The first of these paths that resolves to a value. */
@@ -355,7 +359,7 @@ public class SourceMapping {
      * read far more often than it is written, and {@code eventType: header:eventType} says
      * the whole thing on one line. The cost is a known limitation, recorded here rather
      * than hidden: a payload field named exactly {@code key} or {@code source}, or one
-     * whose name starts with {@code header:}, cannot be addressed. None has been seen in
+     * whose name starts with {@code header:} or {@code const:}, cannot be addressed. None has been seen in
      * practice, and the readability is worth that.
      */
     Optional<String> resolve(JsonNode payload, RawObservation observation, String path) {
@@ -371,6 +375,9 @@ public class SourceMapping {
         if (path.startsWith(HEADER_PREFIX)) {
             String name = path.substring(HEADER_PREFIX.length());
             return blankToEmpty(observation != null ? observation.header(name) : null);
+        }
+        if (path.startsWith(CONST_PREFIX)) {
+            return blankToEmpty(path.substring(CONST_PREFIX.length()));
         }
         return read(payload, path);
     }
