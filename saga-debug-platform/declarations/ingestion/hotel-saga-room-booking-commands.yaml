@@ -27,6 +27,8 @@ source:
   topicPattern: 'room-booking\.inbox\.events'
 
   fields:
+    # Nothing on the record names the publisher; each outbox topic has exactly one.
+    serviceName: const:reservation-service
     executionId: key
     eventId: header:id
     # The saga payload's own field, not the header: the header says REQUEST for both a
