@@ -1,14 +1,145 @@
-/* You can add global styles to this file, and also import other style files */
+/* Visual language follows the Issue Lens pilot (D:\viettel\semantic\pilot\static\app.css):
+   warm paper background with a faint grid, ink text, teal accents with lime highlights,
+   serif display type, and soft rounded panels. */
 
-html, body { height: 100%; }
-body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+:root {
+  --ink: #142a2a;
+  --muted: #617270;
+  --paper: #f4f1e9;
+  --panel: #fffdf8;
+  --field: #faf9f4;
+  --line: #d8d9ce;
+  --line-soft: #edf0e9;
+  --teal: #0a6660;
+  --teal-dark: #074b47;
+  --teal-soft: #eef7ef;
+  --lime: #d9ed77;
+  --lime-soft: #f5f7e9;
+  --amber: #e5a744;
+  --amber-ink: #9a6a12;
+  --amber-soft: #fff7e8;
+  --red: #b34c3c;
+  --red-soft: #fbeeea;
+  --green: #28613f;
+  --green-soft: #e0f2e3;
+  --serif: Constantia, Cambria, Georgia, serif;
+  --mono: "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+  --shadow: 0 24px 60px rgba(25, 48, 45, .09);
+  --radius: 18px;
+}
 
-/* Saga status badges, shared by the list and the detail view. They were defined in both
-   components with the same colours; one definition keeps them from drifting apart. */
-.status-badge { padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500; text-transform: uppercase; }
-.status-completed { background: #e8f5e9; color: #2e7d32; }
-.status-failed { background: #ffebee; color: #c62828; }
-.status-compensating { background: #fff3e0; color: #e65100; }
-.status-compensated { background: #fff8e1; color: #f57f17; }
-.status-in_progress { background: #e3f2fd; color: #1565c0; }
-.status-started { background: #f3e5f5; color: #6a1b9a; }
+* { box-sizing: border-box; }
+html { overflow-x: hidden; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 8% 12%, rgba(217, 237, 119, .24), transparent 26rem),
+    linear-gradient(90deg, rgba(20, 42, 42, .025) 1px, transparent 1px),
+    linear-gradient(rgba(20, 42, 42, .025) 1px, transparent 1px), var(--paper);
+  background-size: auto, 38px 38px, 38px 38px, auto;
+  background-attachment: fixed;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  overflow-x: hidden;
+}
+button, input, select, textarea { font: inherit; }
+code, pre { font-family: var(--mono); }
+button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* ---- Shared page building blocks ---- */
+.page { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding-bottom: 90px; }
+.eyebrow { color: var(--teal); font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.hero { padding: 56px 0 32px; max-width: 850px; }
+.hero h1 { font-family: var(--serif); font-size: clamp(40px, 5.4vw, 68px); line-height: 1; letter-spacing: -.045em; font-weight: 500; margin: 14px 0 18px; }
+.hero h1 em { color: var(--teal); font-weight: 500; }
+.hero > p { max-width: 670px; font-size: 17px; line-height: 1.65; color: var(--muted); margin: 0; }
+
+.panel { background: var(--panel); border: 1px solid rgba(20, 42, 42, .12); border-radius: var(--radius); box-shadow: var(--shadow); }
+.panel-pad { padding: clamp(18px, 3vw, 28px); }
+.panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.panel-head h2 { font-family: var(--serif); font-size: 27px; font-weight: 500; letter-spacing: -.01em; margin: 5px 0 0; display: flex; align-items: center; gap: 10px; }
+.panel-head .count { color: var(--muted); font-size: 18px; }
+.panel-head small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+.section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin: 52px 0 16px; }
+.section-head h2 { font-family: var(--serif); font-size: 36px; font-weight: 500; margin: 7px 0 0; }
+
+.primary-button {
+  border: 0; border-radius: 12px; background: var(--teal); color: white; font-weight: 750; font-size: 13px;
+  padding: 11px 15px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  box-shadow: 0 10px 24px rgba(10, 102, 96, .2); transition: .2s ease; white-space: nowrap;
+}
+.primary-button:hover { background: var(--teal-dark); transform: translateY(-1px); }
+.primary-button:disabled { opacity: .6; cursor: wait; transform: none; }
+.primary-button b { color: var(--lime); font-size: 17px; line-height: 1; }
+.primary-button .mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--lime); }
+
+.ghost-button {
+  border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--muted);
+  padding: 7px 11px; font-size: 12px; font-weight: 650; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.ghost-button:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-soft); }
+
+.text-link { color: var(--teal); font-weight: 750; text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; }
+.text-link:hover { text-decoration: underline; }
+
+.field-select {
+  border: 1px solid var(--line); border-radius: 9px; background: var(--field); color: var(--ink);
+  padding: 10px 12px; outline: 0; min-width: 180px;
+}
+.field-select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(10, 102, 96, .1); }
+.field-label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+
+.error-banner {
+  display: flex; align-items: center; gap: 12px; padding: 12px 15px; margin-bottom: 14px;
+  background: var(--red-soft); border: 1px solid rgba(179, 76, 60, .35); border-radius: 12px; color: var(--red); font-size: 13px;
+}
+.error-banner span { flex: 1; line-height: 1.5; }
+.error-banner .mat-icon { color: var(--red); }
+.error-banner button { border: 0; background: none; color: var(--red); cursor: pointer; display: grid; place-items: center; padding: 2px; }
+
+/* Saga status badges, shared by the list and the detail view. */
+.status-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; background: #ebeee9; color: #52615f; }
+.status-completed { background: var(--green-soft); color: var(--green); }
+.status-failed { background: var(--red-soft); color: var(--red); }
+.status-compensating { background: var(--amber-soft); color: var(--amber-ink); }
+.status-compensated { background: #fbf1d9; color: #8a5a00; }
+.status-in_progress { background: #e3efed; color: var(--teal-dark); }
+.status-started { background: var(--lime-soft); color: #55651a; }
+
+/* ---- Angular Material, re-skinned to the same palette ---- */
+.mat-icon { vertical-align: middle; }
+.mat-table { background: transparent; font-family: inherit; }
+.mat-header-cell { color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.mat-cell { color: var(--ink); font-size: 13px; }
+.mat-header-row, .mat-row { border-color: var(--line-soft); }
+mat-row, mat-header-row, mat-footer-row, th.mat-header-cell, td.mat-cell, td.mat-footer-cell { border-bottom-color: var(--line-soft); }
+.mat-paginator { background: transparent; color: var(--muted); font-family: inherit; }
+.mat-paginator-container { padding: 0 12px; }
+.mat-progress-bar-fill::after { background-color: var(--teal); }
+.mat-progress-bar-buffer { background-color: #d6e7e2; }
+.mat-progress-spinner circle, .mat-spinner circle { stroke: var(--teal); }
+.mat-select-value, .mat-option { font-family: inherit; }
+.mat-option.mat-selected:not(.mat-option-disabled) { color: var(--teal); }
+.mat-primary .mat-pseudo-checkbox-checked, .mat-pseudo-checkbox-checked { background: var(--teal); }
+
+.mat-expansion-panel { font-family: inherit; color: var(--ink); background: var(--panel); border: 1px solid rgba(20, 42, 42, .1); }
+.mat-expansion-panel:not([class*=mat-elevation-z]) { box-shadow: none; }
+.mat-accordion .mat-expansion-panel:first-of-type, .mat-accordion .mat-expansion-panel:last-of-type,
+.mat-expansion-panel { border-radius: 12px !important; }
+.mat-expansion-panel-header, .mat-expansion-panel-content { font-family: inherit; font-size: 14px; }
+.mat-expansion-panel-header-title { color: var(--ink); }
+.mat-expansion-panel-header-description, .mat-expansion-indicator::after { color: var(--muted); }
+.mat-expansion-panel .mat-expansion-panel-header.cdk-keyboard-focused:not([aria-disabled=true]),
+.mat-expansion-panel .mat-expansion-panel-header.cdk-program-focused:not([aria-disabled=true]),
+.mat-expansion-panel:not(.mat-expanded) .mat-expansion-panel-header:hover:not([aria-disabled=true]) { background: rgba(10, 102, 96, .04); }
+
+@media (max-width: 650px) {
+  .page { width: calc(100% - 32px); }
+  .hero { padding-top: 36px; }
+  .hero h1 { font-size: clamp(36px, 11vw, 48px); }
+  .hero > p { font-size: 15px; }
+  .section-head { display: block; }
+  .section-head .field-label { margin-top: 14px; }
+}
