@@ -207,8 +207,14 @@ public class RcaSelector {
 
 
     private void applyExclusions(List<CandidateAssessment> candidates) {
+        // EXT-FALLBACK: specific evidence is a candidate that says something about the
+        // observed system and was not itself ruled out. R14, about this platform's own read
+        // order, used to count -- so the same run kept or lost its source hypotheses depending
+        // on delivery order (SPM retest, reverse and last-first orders).
         boolean hasSpecificEvidence = candidates.stream()
-                .anyMatch(c -> !FALLBACK_RULES.contains(c.getRuleId()));
+                .anyMatch(c -> !FALLBACK_RULES.contains(c.getRuleId())
+                        && c.getSubject() == ClaimSubject.OBSERVED_SYSTEM
+                        && c.getStatus() != CandidateStatus.RULED_OUT);
         if (!hasSpecificEvidence) {
             return;
         }
