@@ -1045,20 +1045,7 @@ public class AnomalyDetectionService {
 
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            List<SagaEvent> compStartEvents = compensationEvents(
-                    workflow, events, WorkflowSpec.EventRole.Role.STARTED);
-            Set<String> acknowledgedSteps = stepIdsOf(workflow, compensationEvents(
-                    workflow, events, WorkflowSpec.EventRole.Role.COMPLETED));
-
-            // Only the steps whose declaration owes an acknowledgement, and has not given
-            // one. A step that declares no completion is dropped here, silently and on
-            // purpose: there is nothing to report about a promise that was never made.
-            List<SagaEvent> owed = compStartEvents.stream()
-                    .filter(event -> workflow.classifyEvent(event.getEventType())
-                            .map(role -> workflow.declaresCompletionEvent(role.stepId())
-                                    && !acknowledgedSteps.contains(role.stepId()))
-                            .orElse(false))
-                    .toList();
+            List<SagaEvent> owed = owedAcknowledgements(workflow, events);
 
             if (!owed.isEmpty()) {
                 String startedTypes = distinctTypes(owed);
@@ -1072,6 +1059,45 @@ public class AnomalyDetectionService {
                                 .evidenceEvents(owed)
                                 .measuredAt(Instant.now()));
             }
+        }
+    }
+
+    /**
+     * Compensation starts whose step declares a completion and has not reported one.
+     *
+     * <p>Only the steps whose declaration owes an acknowledgement, and has not given one. A
+     * step that declares no completion is dropped here, silently and on purpose: there is
+     * nothing to report about a promise that was never made.
+     */
+    private List<SagaEvent> owedAcknowledgements(WorkflowSpec workflow, List<SagaEvent> events) {
+        Set<String> acknowledgedSteps = stepIdsOf(workflow, compensationEvents(
+                workflow, events, WorkflowSpec.EventRole.Role.COMPLETED));
+        return compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.STARTED).stream()
+                .filter(event -> workflow.classifyEvent(event.getEventType())
+                        .map(role -> workflow.declaresCompletionEvent(role.stepId())
+                                && !acknowledgedSteps.contains(role.stepId()))
+                        .orElse(false))
+                .toList();
+    }
+
+    /**
+     * EXT-ACK: withdraws MISSING_COMPENSATION_ACK once the evidence holds every
+     * acknowledgement it said was missing.
+     *
+     * <p>An absence claim, withdrawn like the others when what it said was absent turns up.
+     * Only when nothing is still owed: one late acknowledgement does not answer for another
+     * compensation step that is still silent. The row is kept, with the reason, so the
+     * history of the run still shows that the acknowledgement was late.
+     */
+    public void withdrawAcknowledgedCompensation(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
+        if (workflow == null) return;
+        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_COMPENSATION_ACK)) return;
+        if (!owedAcknowledgements(workflow, events).isEmpty()) return;
+        int withdrawn = anomalyRepository.retractClaims(sagaId,
+                Set.of(AnomalyType.MISSING_COMPENSATION_ACK), Instant.now(),
+                "the compensation acknowledgement was observed after this finding was made");
+        if (withdrawn > 0) {
+            log.info("Withdrew MISSING_COMPENSATION_ACK against execution {}: acknowledged late", sagaId);
         }
     }
 

@@ -219,6 +219,7 @@ public class CorrelationService {
         // with every event -- including by acquiring the start event the finding says is
         // absent, which is what withdraws it.
         anomalyDetectionService.detectOrphanEvent(workflow, sagaId, sagaEvents);
+        anomalyDetectionService.withdrawAcknowledgedCompensation(workflow, sagaId, sagaEvents);
 
         judgeTransitions(workflow, sagaId, timeline);
     }
