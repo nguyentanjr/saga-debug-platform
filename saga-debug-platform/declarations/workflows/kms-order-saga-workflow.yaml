@@ -63,12 +63,14 @@ workflow:
         failed: PAYMENT_REJECTED
 
     # The Streams join. It emits its verdict onto t_order, which is the only observable
-    # trace that the join fired at all.
+    # trace that the join fired at all. The join fires on every outcome, so it is the join,
+    # not either arm, that ends the run: a rejected arm hands over to it like a successful one.
     - id: SETTLE_ORDER
       service: order-service
       timeout: 120s
       events:
         completed: ORDER_VERDICT_BROADCAST
+        failed: ORDER_REJECTED
 
   compensationSteps:
     # Requested by the same verdict message, distinguished by stockStatus=Rollback. No
@@ -91,27 +93,33 @@ workflow:
       to: TAKE_PAYMENT
       condition: SUCCESS
 
-    # Fan-in: the join cannot fire until both have answered.
+    # Fan-in: the join cannot fire until both have answered, whatever they answered.
     - from: RESERVE_STOCK
       to: SETTLE_ORDER
       condition: SUCCESS
     - from: TAKE_PAYMENT
       to: SETTLE_ORDER
       condition: SUCCESS
+    - from: RESERVE_STOCK
+      to: SETTLE_ORDER
+      condition: FAILED
+    - from: TAKE_PAYMENT
+      to: SETTLE_ORDER
+      condition: FAILED
 
     - from: SETTLE_ORDER
       to: COMPLETED
       condition: SUCCESS
 
-    # A stock reservation that was never taken needs no undoing, so this ends the run.
-    - from: RESERVE_STOCK
+    # Stock failed. When payment had succeeded the payment service rolls it back, but it
+    # publishes nothing when it does, so the run ends FAILED rather than claiming a
+    # compensation it cannot see. The order itself is persisted as failed.
+    - from: SETTLE_ORDER
       to: FAILED
       condition: FAILED
 
-    # A rejected payment leaves stock held, which does need undoing.
-    - from: TAKE_PAYMENT
-      to: COMPENSATING
-      condition: FAILED
+    # Payment failed and stock succeeded: the verdict asks stock to roll back (stockStatus=
+    # Rollback), which is ROLLBACK_STOCK starting -- see compensationSteps.
 
     - from: ROLLBACK_STOCK
       to: COMPENSATED
@@ -124,4 +132,5 @@ workflow:
     PAYMENT_ACCEPTED: TAKE_PAYMENT
     PAYMENT_REJECTED: TAKE_PAYMENT
     ORDER_VERDICT_BROADCAST: SETTLE_ORDER
+    ORDER_REJECTED: SETTLE_ORDER
     STOCK_ROLLBACK_REQUESTED: ROLLBACK_STOCK

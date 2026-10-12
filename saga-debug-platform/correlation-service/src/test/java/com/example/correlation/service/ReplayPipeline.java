@@ -38,6 +38,11 @@ final class ReplayPipeline {
     final RcaResultRepository rcaRepo;
 
     ReplayPipeline() {
+        this(null);
+    }
+
+    /** @param workflows the specifications to judge against; null loads the shipped ones */
+    ReplayPipeline(WorkflowRegistry workflows) {
         sagas = mock(SagaInstanceRepository.class);
         eventRepo = mock(SagaEventRepository.class);
         anomalyRepo = mock(AnomalyRepository.class);
@@ -107,7 +112,7 @@ final class ReplayPipeline {
         doAnswer(c -> instances.remove(((SagaInstance) c.getArgument(0)).getSagaId()))
                 .when(sagas).delete(any(SagaInstance.class));
 
-        WorkflowRegistry workflows = new WorkflowRegistry(); workflows.load();
+        if (workflows == null) { workflows = new WorkflowRegistry(); workflows.load(); }
         RuleRegistry rules = new RuleRegistry(); rules.load();
         DetectionProperties properties = new DetectionProperties();
         ExecutionProjectionService projection = new ExecutionProjectionService();

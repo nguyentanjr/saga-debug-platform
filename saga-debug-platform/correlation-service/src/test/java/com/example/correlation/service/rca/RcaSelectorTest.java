@@ -107,6 +107,39 @@ class RcaSelectorTest {
         assertThat(find(result, "R07").getStatus()).isEqualTo(CandidateStatus.STRONG_EVIDENCE);
     }
 
+    /**
+     * EXT-FALLBACK: SPM unknown-product retest. Reverse and last-first delivery added R14,
+     * about this platform's read order, and R20/R21 went from WEAK to RULED_OUT; forward
+     * and even-then-odd kept them. Only evidence about the observed system rules them out.
+     */
+    @Test
+    void evidenceAboutTheObservationProcessDoesNotRuleOutFallbacks() {
+        CandidateAssessment r20 = candidate("R20", "OBSERVABILITY_GAP",
+                CandidateStatus.WEAK_EVIDENCE, 20L);
+        CandidateAssessment r14 = candidate("R14", "OUT_OF_ORDER_DELIVERY",
+                CandidateStatus.STRONG_EVIDENCE, 14L);
+        r14.setSubject(ClaimSubject.OBSERVATION_PROCESS);
+
+        RcaSelector.SelectionResult result = selector.select(List.of(r20, r14),
+                List.of(anomaly(14L, AnomalyType.OUT_OF_ORDER)),
+                saga(SagaStatus.IN_PROGRESS));
+
+        assertThat(find(result, "R20").getStatus()).isEqualTo(CandidateStatus.WEAK_EVIDENCE);
+    }
+
+    @Test
+    void aRuledOutSpecificCandidateDoesNotRuleOutFallbacks() {
+        CandidateAssessment r20 = candidate("R20", "OBSERVABILITY_GAP",
+                CandidateStatus.WEAK_EVIDENCE, 20L);
+        CandidateAssessment r07 = candidate("R07", "DOWNSTREAM_TIMEOUT",
+                CandidateStatus.RULED_OUT, 7L);
+
+        RcaSelector.SelectionResult result = selector.select(List.of(r20, r07),
+                List.of(), saga(SagaStatus.IN_PROGRESS));
+
+        assertThat(find(result, "R20").getStatus()).isEqualTo(CandidateStatus.WEAK_EVIDENCE);
+    }
+
     @Test
     void sameTierSameEvidence_allGroupedAsEvidence() {
         CandidateAssessment first = candidate("R03", "MULTI_TERMINAL_CONFLICT",

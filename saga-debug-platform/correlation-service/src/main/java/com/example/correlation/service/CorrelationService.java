@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Optional;
 
@@ -219,6 +221,7 @@ public class CorrelationService {
         // with every event -- including by acquiring the start event the finding says is
         // absent, which is what withdraws it.
         anomalyDetectionService.detectOrphanEvent(workflow, sagaId, sagaEvents);
+        anomalyDetectionService.withdrawAcknowledgedCompensation(workflow, sagaId, sagaEvents);
 
         judgeTransitions(workflow, sagaId, timeline);
     }
@@ -241,6 +244,7 @@ public class CorrelationService {
         if (workflow == null) return;
 
         List<SagaEvent> inOrder = timeline.inBusinessOrder();
+        Set<String> invalid = new HashSet<>();
         for (int i = 1; i < inOrder.size(); i++) {
             SagaEvent previous = inOrder.get(i - 1);
             SagaEvent current = inOrder.get(i);
@@ -260,11 +264,17 @@ public class CorrelationService {
             // against the edge for whatever the *next* step reported -- SUCCESS -- which
             // APPROVED is not, so every healthy run of a workflow with named outcomes was
             // condemned for the transition it correctly made.
-            handoffCondition(workflow, previous.getEventType()).ifPresent(condition ->
-                    anomalyDetectionService.detectInvalidTransition(workflow,
-                            sagaId, previousStepName, currentStepName, condition,
-                            current.getEventId(), current.getTimestamp()));
+            handoffCondition(workflow, previous.getEventType()).ifPresent(condition -> {
+                if (anomalyDetectionService.detectInvalidTransition(workflow,
+                        sagaId, previousStepName, currentStepName, condition,
+                        current.getEventId(), current.getTimestamp())) {
+                    invalid.add(AnomalyDetectionService.transitionKey(
+                            AnomalyDetectionService.handoff(previousStepName, currentStepName, condition),
+                            current.getEventId()));
+                }
+            });
         }
+        anomalyDetectionService.withdrawUnjudgedTransitions(sagaId, invalid);
     }
 
     /**

@@ -119,11 +119,12 @@ public class AnomalyDetectionService {
      * because an operator looking at a quiet run is entitled to know which observations the
      * platform was waiting on.
      */
-    public void detectInvalidTransition(WorkflowSpec workflow, String sagaId, String previousStep,
+    /** @return whether the workflow forbids this handoff */
+    public boolean detectInvalidTransition(WorkflowSpec workflow, String sagaId, String previousStep,
             String currentStep, String condition, String eventId, Instant eventTimestamp) {
-        if (workflow == null || workflow.getTransitions() == null) return;
+        if (workflow == null || workflow.getTransitions() == null) return false;
 
-        if (previousStep == null) return;
+        if (previousStep == null) return false;
         WorkflowSpec.TransitionJudgment judgment =
                 workflow.explainTransition(previousStep, currentStep, condition);
         if (judgment.verdict() != WorkflowSpec.TransitionVerdict.INVALID) {
@@ -133,7 +134,7 @@ public class AnomalyDetectionService {
                         sagaId, previousStep, currentStep, condition,
                         judgment.stepsInBetween(), workflow.getName());
             }
-            return;
+            return false;
         }
 
         {
@@ -144,7 +145,7 @@ public class AnomalyDetectionService {
                     .anyMatch(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION
                             && observed.equals(a.getObservedValue())
                             && Objects.equals(a.getEvidenceEventIds(), details().evidenceEventIds(eventId).evidenceEventIds));
-            if (alreadyStanding) return;
+            if (alreadyStanding) return true;
 
             String expected = workflow.getTransitions().stream()
                     .filter(t -> t.getFrom().equals(previousStep))
@@ -162,6 +163,47 @@ public class AnomalyDetectionService {
                             .evidenceEventIds(eventId)
                             .measuredAt(eventTimestamp));
         }
+        return true;
+    }
+
+    /**
+     * EXT-I9: withdraws the invalid transitions the whole evidence no longer shows.
+     *
+     * <p>A handoff is judged between neighbours in business order, and on a partial
+     * timeline two observations can be neighbours that the full one separates -- reverse
+     * delivery of a KMS both-failed run left INVALID_TRANSITION standing that forward
+     * delivery never raised. The occurrence was never established; the pair it rested on
+     * was an artefact of what had arrived. Findings for handoffs the final timeline still
+     * judges invalid are kept.
+     *
+     * @param stillInvalid {@link #transitionKey} of every handoff judged invalid on the
+     *                     current evidence
+     */
+    public void withdrawUnjudgedTransitions(String sagaId, Set<String> stillInvalid) {
+        Instant now = Instant.now();
+        for (Anomaly anomaly : anomalyRepository.findStandingBySagaId(sagaId)) {
+            if (anomaly.getAnomalyType() != AnomalyType.INVALID_TRANSITION) continue;
+            List<String> cited = anomaly.getEvidenceEventIds();
+            String key = transitionKey(anomaly.getObservedValue(),
+                    cited == null || cited.isEmpty() ? null : cited.get(0));
+            if (stillInvalid.contains(key)) continue;
+            anomaly.setRetractedAt(now);
+            anomaly.setRetractionReason("the observations it paired are no longer adjacent "
+                    + "once the rest of the run is in hand");
+            anomalyRepository.save(anomaly);
+            log.info("Withdrew INVALID_TRANSITION {} against execution {}: the full timeline "
+                    + "does not contain that handoff", anomaly.getObservedValue(), sagaId);
+        }
+    }
+
+    /** Identifies one judged handoff: what was observed, and the event that made it. */
+    public static String transitionKey(String observedHandoff, String eventId) {
+        return observedHandoff + "|" + eventId;
+    }
+
+    /** The observed value an invalid transition is recorded under. */
+    public static String handoff(String previousStep, String currentStep, String condition) {
+        return String.format("%s -> %s on %s", previousStep, currentStep, condition);
     }
 
     public void detectRetryBurst(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
@@ -531,8 +573,21 @@ public class AnomalyDetectionService {
         }
     }
 
+    /** Every event some loaded workflow declares as its start. */
+    private Set<String> anyWorkflowStart() {
+        return workflowRegistry.workflowNames().stream()
+                .map(workflowRegistry::byType).flatMap(Optional::stream)
+                .flatMap(spec -> spec.startEventTypes().stream())
+                .collect(Collectors.toSet());
+    }
+
     public void detectOrphanEvent(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
-        Set<String> startEventTypes = workflow != null ? workflow.startEventTypes() : Set.of();
+        // EXT-RESOLVE: with no workflow resolved -- typically because two declarations both
+        // claim the start event -- the question is still whether any loaded workflow's start
+        // is in hand, as the finding's own wording says. Asking it of an empty set reported
+        // every unresolved run as orphaned, and R15 read that as a wrong correlation key on
+        // runs whose start record and key were both present.
+        Set<String> startEventTypes = workflow != null ? workflow.startEventTypes() : anyWorkflowStart();
 
         boolean startObserved = events.stream()
                 .anyMatch(e -> startEventTypes.contains(e.getEventType()));
@@ -541,8 +596,8 @@ public class AnomalyDetectionService {
             if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) {
                 int withdrawn = anomalyRepository.retractClaims(sagaId,
                         Set.of(AnomalyType.ORPHAN_EVENT), Instant.now(),
-                        "a start event of workflow " + workflow.getName()
-                                + " was observed after this finding was made");
+                        "a start event of " + (workflow != null ? "workflow " + workflow.getName()
+                                : "a loaded workflow") + " was observed after this finding was made");
                 if (withdrawn > 0) {
                     log.info("Withdrew the orphan finding against execution {}: its start "
                             + "event arrived after the rest of the run", sagaId);
@@ -556,7 +611,7 @@ public class AnomalyDetectionService {
         SagaEvent earliest = events.isEmpty() ? null : events.get(0);
         if (earliest == null) return;
 
-        String expected = startEventTypes.isEmpty()
+        String expected = workflow == null
                 ? "an event that some loaded workflow declares as a start"
                 : "one of " + startEventTypes + " to start " + workflow.getName();
         createAnomaly(sagaId, AnomalyType.ORPHAN_EVENT,
@@ -1045,20 +1100,7 @@ public class AnomalyDetectionService {
 
             List<SagaEvent> events = sagaEventRepository
                     .findBySagaIdOrderByTimestampAsc(saga.getSagaId());
-            List<SagaEvent> compStartEvents = compensationEvents(
-                    workflow, events, WorkflowSpec.EventRole.Role.STARTED);
-            Set<String> acknowledgedSteps = stepIdsOf(workflow, compensationEvents(
-                    workflow, events, WorkflowSpec.EventRole.Role.COMPLETED));
-
-            // Only the steps whose declaration owes an acknowledgement, and has not given
-            // one. A step that declares no completion is dropped here, silently and on
-            // purpose: there is nothing to report about a promise that was never made.
-            List<SagaEvent> owed = compStartEvents.stream()
-                    .filter(event -> workflow.classifyEvent(event.getEventType())
-                            .map(role -> workflow.declaresCompletionEvent(role.stepId())
-                                    && !acknowledgedSteps.contains(role.stepId()))
-                            .orElse(false))
-                    .toList();
+            List<SagaEvent> owed = owedAcknowledgements(workflow, events);
 
             if (!owed.isEmpty()) {
                 String startedTypes = distinctTypes(owed);
@@ -1072,6 +1114,45 @@ public class AnomalyDetectionService {
                                 .evidenceEvents(owed)
                                 .measuredAt(Instant.now()));
             }
+        }
+    }
+
+    /**
+     * Compensation starts whose step declares a completion and has not reported one.
+     *
+     * <p>Only the steps whose declaration owes an acknowledgement, and has not given one. A
+     * step that declares no completion is dropped here, silently and on purpose: there is
+     * nothing to report about a promise that was never made.
+     */
+    private List<SagaEvent> owedAcknowledgements(WorkflowSpec workflow, List<SagaEvent> events) {
+        Set<String> acknowledgedSteps = stepIdsOf(workflow, compensationEvents(
+                workflow, events, WorkflowSpec.EventRole.Role.COMPLETED));
+        return compensationEvents(workflow, events, WorkflowSpec.EventRole.Role.STARTED).stream()
+                .filter(event -> workflow.classifyEvent(event.getEventType())
+                        .map(role -> workflow.declaresCompletionEvent(role.stepId())
+                                && !acknowledgedSteps.contains(role.stepId()))
+                        .orElse(false))
+                .toList();
+    }
+
+    /**
+     * EXT-ACK: withdraws MISSING_COMPENSATION_ACK once the evidence holds every
+     * acknowledgement it said was missing.
+     *
+     * <p>An absence claim, withdrawn like the others when what it said was absent turns up.
+     * Only when nothing is still owed: one late acknowledgement does not answer for another
+     * compensation step that is still silent. The row is kept, with the reason, so the
+     * history of the run still shows that the acknowledgement was late.
+     */
+    public void withdrawAcknowledgedCompensation(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
+        if (workflow == null) return;
+        if (!anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.MISSING_COMPENSATION_ACK)) return;
+        if (!owedAcknowledgements(workflow, events).isEmpty()) return;
+        int withdrawn = anomalyRepository.retractClaims(sagaId,
+                Set.of(AnomalyType.MISSING_COMPENSATION_ACK), Instant.now(),
+                "the compensation acknowledgement was observed after this finding was made");
+        if (withdrawn > 0) {
+            log.info("Withdrew MISSING_COMPENSATION_ACK against execution {}: acknowledged late", sagaId);
         }
     }
 
