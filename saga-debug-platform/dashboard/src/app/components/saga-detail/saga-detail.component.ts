@@ -27,7 +27,8 @@ export interface CandidateGroup {
   candidates: RcaCandidate[];
 }
 
-const SERVICE_PALETTE = ['#3f51b5', '#4caf50', '#ff9800', '#9c27b0', '#00897b', '#e91e63', '#5d4037', '#1e88e5'];
+// Muted tones that sit on the paper background of the dashboard theme (styles.css).
+const SERVICE_PALETTE = ['#0a6660', '#c27a22', '#8d60b8', '#46607a', '#148a82', '#b34c3c', '#6b7a2a', '#7a5a3a'];
 
 /** Gaps between timeline rows at least this long are labelled, so a long wait is visible. */
 const GAP_LABEL_MIN_MS = 5000;

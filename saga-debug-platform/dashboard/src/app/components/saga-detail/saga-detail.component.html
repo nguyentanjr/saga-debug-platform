@@ -1,21 +1,26 @@
-<div class="detail-container" *ngIf="saga">
+<main class="page detail-container" *ngIf="saga">
   <!-- Header -->
   <div class="detail-header">
-    <button mat-icon-button routerLink="/sagas">
-      <mat-icon>arrow_back</mat-icon>
-    </button>
-    <h1>Saga Detail</h1>
-    <span class="status-badge" [ngClass]="getStatusClass(saga.status)">{{ saga.workflowConflicts?.length ? 'UNDETERMINED' : saga.status }}</span>
-    <a *ngFor="let tid of traceIds" class="trace-link" [href]="traceUrl(tid)" target="_blank" [title]="'Trace ' + tid">
-      <mat-icon>open_in_new</mat-icon><span>Open trace</span>
-    </a>
+    <a class="back-link" routerLink="/sagas"><span aria-hidden="true">←</span> All sagas</a>
+    <div class="detail-title">
+      <div>
+        <span class="eyebrow">Saga detail · {{ saga.workflowType || 'order-saga' }}</span>
+        <h1>Saga <em>{{ saga.sagaId | slice:0:8 }}</em></h1>
+      </div>
+      <div class="detail-actions">
+        <span class="status-badge" [ngClass]="getStatusClass(saga.status)">{{ saga.workflowConflicts?.length ? 'UNDETERMINED' : saga.status }}</span>
+        <a *ngFor="let tid of traceIds" class="trace-link" [href]="traceUrl(tid)" target="_blank" [title]="'Trace ' + tid">
+          <mat-icon>open_in_new</mat-icon><span>Open trace</span>
+        </a>
+      </div>
+    </div>
   </div>
 
   <!-- Error Banner -->
   <div class="error-banner" *ngIf="errorMessage">
     <mat-icon>error</mat-icon>
     <span>{{ errorMessage }}</span>
-    <button mat-icon-button (click)="errorMessage = ''">
+    <button type="button" title="Dismiss" (click)="errorMessage = ''">
       <mat-icon>close</mat-icon>
     </button>
   </div>
@@ -27,11 +32,11 @@
       inspection but must be re-evaluated after the declarations are corrected.</span>
   </div>
   <!-- Diagnosis: what went wrong, where, and how strong the evidence is -->
-  <mat-card class="diagnosis-card" [ngClass]="verdictClass()">
+  <section class="panel diagnosis-card" [ngClass]="verdictClass()">
     <div class="diagnosis-head">
       <mat-icon class="diagnosis-icon">{{ verdictClass() === 'verdict-ok' ? 'check_circle' : verdictClass() === 'verdict-problem' ? 'report' : 'help_outline' }}</mat-icon>
       <div>
-        <div class="diagnosis-kicker">Diagnosis</div>
+        <div class="eyebrow diagnosis-kicker">Diagnosis</div>
         <div class="diagnosis-verdict">{{ verdict() }}</div>
         <div class="diagnosis-sub" *ngIf="primaryCandidate">
           <span>Evidence: <strong>{{ tierLabel(primaryCandidate.status) }}</strong></span>
@@ -51,7 +56,7 @@
             {{ stepRoleLabel(step) }}
           </div>
         </div>
-        <mat-icon class="step-arrow" *ngIf="!last">arrow_forward</mat-icon>
+        <span class="step-arrow" *ngIf="!last" aria-hidden="true">→</span>
       </ng-container>
     </div>
 
@@ -66,266 +71,261 @@
     <ul class="diagnosis-evidence" *ngIf="latestRca && isInsufficient(latestRca) && getMissingEvidence(latestRca).length > 0">
       <li *ngFor="let m of getMissingEvidence(latestRca)"><span>Missing: {{ m }}</span></li>
     </ul>
-  </mat-card>
+  </section>
 
   <div class="summary-cards">
-    <mat-card>
-      <mat-card-header><mat-card-title>Saga ID</mat-card-title></mat-card-header>
-      <mat-card-content class="saga-id">
+    <div class="summary-card">
+      <span class="summary-label">Saga ID</span>
+      <div class="summary-value saga-id">
         <code [title]="saga.sagaId">{{ shortId(saga.sagaId) }}</code>
-        <button mat-icon-button class="copy-btn" type="button" title="Copy saga ID" (click)="copySagaId()">
+        <button class="copy-btn" type="button" title="Copy saga ID" (click)="copySagaId()">
           <mat-icon>{{ copied ? 'check' : 'content_copy' }}</mat-icon>
         </button>
-      </mat-card-content>
-    </mat-card>
-    <mat-card>
-      <mat-card-header><mat-card-title>Workflow</mat-card-title></mat-card-header>
-      <mat-card-content>{{ saga.workflowType || 'order-saga' }}</mat-card-content>
-    </mat-card>
-    <mat-card>
-      <mat-card-header><mat-card-title>Duration</mat-card-title></mat-card-header>
-      <mat-card-content [title]="saga.durationMs ? saga.durationMs + ' ms' : ''">{{ saga.workflowConflicts?.length ? 'Undetermined' : (saga.durationMs ? formatDuration(saga.durationMs) : 'In progress') }}</mat-card-content>
-    </mat-card>
-    <mat-card>
-      <mat-card-header><mat-card-title>Business events</mat-card-title></mat-card-header>
-      <mat-card-content>{{ saga.events.length }}</mat-card-content>
-    </mat-card>
+      </div>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Workflow</span>
+      <div class="summary-value">{{ saga.workflowType || 'order-saga' }}</div>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Duration</span>
+      <div class="summary-value" [title]="saga.durationMs ? saga.durationMs + ' ms' : ''">{{ saga.workflowConflicts?.length ? 'Undetermined' : (saga.durationMs ? formatDuration(saga.durationMs) : 'In progress') }}</div>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Business events</span>
+      <div class="summary-value">{{ saga.events.length }}</div>
+    </div>
   </div>
 
   <!-- Timeline -->
-  <mat-card class="section-card">
-    <mat-card-header>
-      <mat-card-title>
-        <mat-icon>timeline</mat-icon> Event Timeline
-        <span class="timeline-day" *ngIf="timelineDay">· {{ timelineDay | date:'mediumDate' }}</span>
-      </mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
-      <div class="timeline">
-        <ng-container *ngFor="let item of timeline; let k = index">
-        <div class="timeline-gap" *ngIf="gapLabel(k) as gap">{{ gap }}</div>
-        <div class="timeline-item lifecycle-item" *ngIf="item.kind === 'lifecycle'"
-             [class.lifecycle-down]="item.entry.state === 'DOWN'"
-             [class.lifecycle-probe]="item.entry.basis === 'PROBE'">
-          <div class="timeline-dot lifecycle-dot">
-            <mat-icon>{{ item.entry.state === 'DOWN' ? 'power_off' : 'power' }}</mat-icon>
-          </div>
-          <div class="timeline-content">
-            <div class="timeline-header">
-              <strong>{{ lifecycleLabel(item.entry) }}</strong>
-              <span class="lifecycle-tag">runtime · {{ item.entry.source }}</span>
-              <span class="lifecycle-tag probe" *ngIf="item.entry.basis === 'PROBE'">probe only</span>
-            </div>
-            <div class="timeline-meta">
-              <span>{{ item.entry.occurredAt | date:timeFormat }}</span>
-              <span class="separator" *ngIf="item.entry.detail">·</span>
-              <span *ngIf="item.entry.detail">{{ item.entry.detail }}</span>
-            </div>
-          </div>
-        </div>
-        <ng-container *ngIf="item.kind === 'event'">
-        <ng-container *ngTemplateOutlet="eventRow; context: { event: item.event, i: item.index }"></ng-container>
-        </ng-container>
-        </ng-container>
-        <ng-template #eventRow let-event="event" let-i="i">
-        <div class="timeline-item"
-             [attr.id]="event.eventId ? 'ev-' + event.eventId : null"
-             [class.is-evidence]="isEvidenceEvent(event)"
-             [class.is-focused]="event.eventId && event.eventId === highlightedEventId">
-          <div class="timeline-dot" [style.background-color]="serviceColor(event.serviceName)">
-            <mat-icon>{{ getEventIcon(event.eventType) }}</mat-icon>
-          </div>
-          <div class="timeline-content">
-            <div class="timeline-header">
-              <strong>{{ event.eventType }}</strong>
-              <span class="evidence-tag" *ngIf="isEvidenceEvent(event)">cited evidence</span>
-            </div>
-            <div class="timeline-meta">
-              <span>{{ event.timestamp | date:timeFormat }}</span>
-              <span class="separator">·</span>
-              <span>{{ event.serviceName }}</span>
-              <span class="separator">·</span>
-              <span>step {{ stepOf(event) }}</span>
-            </div>
-            <!-- Expandable details -->
-            <div class="payload-toggle" *ngIf="event.payload || event.eventId" (click)="togglePayload(i)">
-              <mat-icon>{{ expandedPayload === i ? 'expand_less' : 'expand_more' }}</mat-icon>
-              <span>{{ expandedPayload === i ? 'Hide' : 'Show' }} details</span>
-            </div>
-            <ng-container *ngIf="expandedPayload === i">
-              <div class="event-id-line" *ngIf="event.eventId">Event ID: <code>{{ event.eventId }}</code></div>
-              <pre class="payload-content" *ngIf="event.payload">{{ formatPayload(event.payload) }}</pre>
-            </ng-container>
-          </div>
-        </div>
-        </ng-template>
+  <section class="panel panel-pad section-card">
+    <div class="panel-head">
+      <div>
+        <span class="eyebrow">As observed<ng-container *ngIf="timelineDay"> · {{ timelineDay | date:'mediumDate' }}</ng-container></span>
+        <h2>Event timeline</h2>
       </div>
-    </mat-card-content>
-  </mat-card>
-
-  <!-- Anomalies -->
-  <mat-card class="section-card" *ngIf="saga.anomalies.length > 0">
-    <mat-card-header>
-      <mat-card-title>
-        <mat-icon color="warn">warning</mat-icon> Anomalies ({{ saga.anomalies.length }})
-      </mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
-      <div class="table-scroll">
-        <table class="anomaly-table">
-          <thead>
-            <tr>
-              <th>Finding</th>
-              <th>Summary</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <ng-container *ngFor="let anomaly of saga.anomalies; let a = index">
-            <tr class="anomaly-row" (click)="toggleAnomaly(a)">
-              <td><span class="anomaly-type-badge">{{ formatEnumLabel(anomaly.anomalyType) }}</span></td>
-              <td>{{ anomalySummary(anomaly) }}</td>
-              <td class="row-toggle"><mat-icon>{{ expandedAnomaly === a ? 'expand_less' : 'expand_more' }}</mat-icon></td>
-            </tr>
-            <tr class="anomaly-detail" *ngIf="expandedAnomaly === a">
-              <td colspan="3">
-                <dl>
-                  <ng-container *ngIf="anomaly.observedValue"><dt>Observed</dt><dd><code>{{ anomaly.observedValue }}</code></dd></ng-container>
-                  <ng-container *ngIf="anomaly.expectedValue"><dt>Expected</dt><dd><code>{{ anomaly.expectedValue }}</code></dd></ng-container>
-                  <ng-container *ngIf="anomaly.thresholdSource"><dt>Threshold source</dt><dd><span class="source-tag" [ngClass]="getSourceClass(anomaly.thresholdSource)">{{ anomaly.thresholdSource }}</span></dd></ng-container>
-                  <dt>Detected</dt><dd>{{ anomaly.detectedAt | date:'medium' }}</dd>
-                  <ng-container *ngIf="anomaly.description"><dt>Description</dt><dd>{{ anomaly.description }}</dd></ng-container>
-                </dl>
-              </td>
-            </tr>
-            </ng-container>
-          </tbody>
-        </table>
-      </div>
-    </mat-card-content>
-  </mat-card>
-
-  <!-- RCA Results -->
-  <mat-card class="section-card">
-    <mat-card-header>
-      <mat-card-title>
-        <mat-icon>search</mat-icon> Root Cause Analysis
-      </mat-card-title>
-      <button mat-raised-button color="primary" (click)="triggerRca()" [disabled]="rcaLoading">
-        <mat-icon>play_arrow</mat-icon>
-        {{ rcaLoading ? 'Analyzing...' : 'Run RCA' }}
-      </button>
-    </mat-card-header>
-    <mat-card-content>
-      <div *ngIf="saga.rcaResults.length === 0" class="no-data">
-        No RCA results yet. Click "Run RCA" to analyze.
-      </div>
-      <div *ngFor="let rca of saga.rcaResults" class="rca-result">
-        <div class="rca-status-banner" *ngIf="!isEvidenceAvailable(rca) || isLegacyOnly(rca)" [ngClass]="getRcaStatusClass(rca)">
-          <mat-icon>{{ getRcaStatusIcon(rca) }}</mat-icon>
-          <span class="status-text">{{ getDisplayStatus(rca) }}</span>
+    </div>
+    <div class="timeline">
+      <ng-container *ngFor="let item of timeline; let k = index">
+      <div class="timeline-gap" *ngIf="gapLabel(k) as gap">{{ gap }}</div>
+      <div class="timeline-item lifecycle-item" *ngIf="item.kind === 'lifecycle'"
+           [class.lifecycle-down]="item.entry.state === 'DOWN'"
+           [class.lifecycle-probe]="item.entry.basis === 'PROBE'">
+        <div class="timeline-dot lifecycle-dot">
+          <mat-icon>{{ item.entry.state === 'DOWN' ? 'power_off' : 'power' }}</mat-icon>
         </div>
-
-        <div *ngIf="isInsufficient(rca)" class="missing-evidence">
-          <h3>Why no diagnosis?</h3>
-          <p>System abstained because evidence is insufficient.</p>
-          <ul *ngIf="getMissingEvidence(rca).length > 0">
-            <li *ngFor="let item of getMissingEvidence(rca)">{{ item }}</li>
-          </ul>
-          <p *ngIf="getMissingEvidence(rca).length === 0" class="muted">No missing-evidence details were returned.</p>
-        </div>
-
-        <div *ngIf="isHealthy(rca)" class="no-diagnosis">
-          Saga completed healthily. No diagnosis needed.
-        </div>
-
-        <ng-template #candidateDetails let-candidate="candidate">
-          <div class="candidate-details">
-            <div class="candidate-meta">
-              <span class="muted">Rule {{ candidate.ruleId }}</span>
-              <span *ngIf="candidate.severity && candidate.severity !== 'NONE'"
-                    class="candidate-severity"
-                    [ngClass]="getSeverityClass(candidate.severity)">
-                {{ candidate.severity }}
-              </span>
-            </div>
-
-            <div class="candidate-evidence" *ngIf="getEvidence(candidate).length > 0">
-              <h4>Evidence</h4>
-              <ul class="evidence-list">
-                <li *ngFor="let evidence of getEvidence(candidate)" [title]="evidenceRaw(evidence)">{{ evidence.fact }}</li>
-              </ul>
-            </div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <strong>{{ lifecycleLabel(item.entry) }}</strong>
+            <span class="lifecycle-tag">runtime · {{ item.entry.source }}</span>
+            <span class="lifecycle-tag probe" *ngIf="item.entry.basis === 'PROBE'">probe only</span>
           </div>
-        </ng-template>
-
-        <!-- One candidate row; the group around it already says the tier -->
-        <ng-template #candidatePanel let-candidate="candidate" let-reason="reason" let-expanded="expanded">
-          <mat-expansion-panel class="candidate-item" [ngClass]="getCandidateClass(candidate.status)" [expanded]="expanded">
-            <mat-expansion-panel-header>
-              <mat-panel-title class="candidate-summary-main">
-                <span class="candidate-cause">{{ formatEnumLabel(candidate.rootCause) }}</span>
-              </mat-panel-title>
-              <mat-panel-description *ngIf="reason">
-                <span class="candidate-summary-reason">{{ reason }}</span>
-              </mat-panel-description>
-            </mat-expansion-panel-header>
-            <ng-container *ngTemplateOutlet="candidateDetails; context: { candidate: candidate }"></ng-container>
-          </mat-expansion-panel>
-        </ng-template>
-
-        <div *ngIf="hasCandidates(rca)" class="candidates-panel">
-          <div *ngIf="hasStrongEvidenceCandidates(rca)" class="candidate-tier">
-            <div class="tier-title"><span class="candidate-status-badge cstatus-strong_evidence">Strong evidence</span></div>
-            <mat-accordion class="candidate-list" multi>
-              <ng-container *ngFor="let candidate of getStrongEvidenceCandidates(rca)">
-                <ng-container *ngTemplateOutlet="candidatePanel; context: { candidate: candidate, reason: getCandidateReason(candidate), expanded: getStrongEvidenceCandidates(rca).length === 1 }"></ng-container>
-              </ng-container>
-            </mat-accordion>
+          <div class="timeline-meta">
+            <span>{{ item.entry.occurredAt | date:timeFormat }}</span>
+            <span class="separator" *ngIf="item.entry.detail">·</span>
+            <span *ngIf="item.entry.detail">{{ item.entry.detail }}</span>
           </div>
-
-          <ng-container *ngFor="let group of collapsedGroups(rca); trackBy: trackGroup">
-            <mat-expansion-panel class="candidate-group" [ngClass]="group.cssClass">
-              <mat-expansion-panel-header>
-                <mat-panel-title>
-                  <mat-icon>{{ group.icon }}</mat-icon> {{ group.title }} ({{ group.candidates.length }})
-                </mat-panel-title>
-              </mat-expansion-panel-header>
-              <p class="group-note" *ngIf="sharedReason(group.candidates) as shared">{{ shared }}</p>
-              <mat-accordion class="candidate-list">
-                <ng-container *ngFor="let candidate of group.candidates">
-                  <ng-container *ngTemplateOutlet="candidatePanel; context: { candidate: candidate, reason: sharedReason(group.candidates) ? null : getCandidateReason(candidate), expanded: false }"></ng-container>
-                </ng-container>
-              </mat-accordion>
-            </mat-expansion-panel>
+        </div>
+      </div>
+      <ng-container *ngIf="item.kind === 'event'">
+      <ng-container *ngTemplateOutlet="eventRow; context: { event: item.event, i: item.index }"></ng-container>
+      </ng-container>
+      </ng-container>
+      <ng-template #eventRow let-event="event" let-i="i">
+      <div class="timeline-item"
+           [attr.id]="event.eventId ? 'ev-' + event.eventId : null"
+           [class.is-evidence]="isEvidenceEvent(event)"
+           [class.is-focused]="event.eventId && event.eventId === highlightedEventId">
+        <div class="timeline-dot" [style.background-color]="serviceColor(event.serviceName)">
+          <mat-icon>{{ getEventIcon(event.eventType) }}</mat-icon>
+        </div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <strong>{{ event.eventType }}</strong>
+            <span class="evidence-tag" *ngIf="isEvidenceEvent(event)">cited evidence</span>
+          </div>
+          <div class="timeline-meta">
+            <span>{{ event.timestamp | date:timeFormat }}</span>
+            <span class="separator">·</span>
+            <span>{{ event.serviceName }}</span>
+            <span class="separator">·</span>
+            <span>step {{ stepOf(event) }}</span>
+          </div>
+          <!-- Expandable details -->
+          <button type="button" class="payload-toggle" *ngIf="event.payload || event.eventId" (click)="togglePayload(i)">
+            <mat-icon>{{ expandedPayload === i ? 'expand_less' : 'expand_more' }}</mat-icon>
+            <span>{{ expandedPayload === i ? 'Hide' : 'Show' }} details</span>
+          </button>
+          <ng-container *ngIf="expandedPayload === i">
+            <div class="event-id-line" *ngIf="event.eventId">Event ID: <code>{{ event.eventId }}</code></div>
+            <pre class="payload-content" *ngIf="event.payload">{{ formatPayload(event.payload) }}</pre>
           </ng-container>
         </div>
+      </div>
+      </ng-template>
+    </div>
+  </section>
 
-        <div *ngIf="isLegacyOnly(rca)" class="legacy-rca">
-          <div class="rca-header">
-            <span class="root-cause">{{ rca.rootCause }}</span>
-            <span class="severity-badge" [ngClass]="getSeverityClass(rca.severity)">{{ rca.severity }}</span>
+  <!-- Anomalies -->
+  <section class="panel panel-pad section-card" *ngIf="saga.anomalies.length > 0">
+    <div class="panel-head">
+      <div>
+        <span class="eyebrow warn">Detected</span>
+        <h2>Anomalies <span class="count">{{ saga.anomalies.length }}</span></h2>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="anomaly-table">
+        <thead>
+          <tr>
+            <th>Finding</th>
+            <th>Summary</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngFor="let anomaly of saga.anomalies; let a = index">
+          <tr class="anomaly-row" (click)="toggleAnomaly(a)">
+            <td><span class="anomaly-type-badge">{{ formatEnumLabel(anomaly.anomalyType) }}</span></td>
+            <td>{{ anomalySummary(anomaly) }}</td>
+            <td class="row-toggle"><mat-icon>{{ expandedAnomaly === a ? 'expand_less' : 'expand_more' }}</mat-icon></td>
+          </tr>
+          <tr class="anomaly-detail" *ngIf="expandedAnomaly === a">
+            <td colspan="3">
+              <dl>
+                <ng-container *ngIf="anomaly.observedValue"><dt>Observed</dt><dd><code>{{ anomaly.observedValue }}</code></dd></ng-container>
+                <ng-container *ngIf="anomaly.expectedValue"><dt>Expected</dt><dd><code>{{ anomaly.expectedValue }}</code></dd></ng-container>
+                <ng-container *ngIf="anomaly.thresholdSource"><dt>Threshold source</dt><dd><span class="source-tag" [ngClass]="getSourceClass(anomaly.thresholdSource)">{{ anomaly.thresholdSource }}</span></dd></ng-container>
+                <dt>Detected</dt><dd>{{ anomaly.detectedAt | date:'medium' }}</dd>
+                <ng-container *ngIf="anomaly.description"><dt>Description</dt><dd>{{ anomaly.description }}</dd></ng-container>
+              </dl>
+            </td>
+          </tr>
+          </ng-container>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RCA Results -->
+  <section class="panel panel-pad section-card">
+    <div class="panel-head">
+      <div>
+        <span class="eyebrow">Evidence-backed</span>
+        <h2>Root cause analysis</h2>
+      </div>
+      <button type="button" class="primary-button" (click)="triggerRca()" [disabled]="rcaLoading">
+        <span>{{ rcaLoading ? 'Analyzing...' : 'Run RCA' }}</span><b aria-hidden="true">→</b>
+      </button>
+    </div>
+    <div *ngIf="saga.rcaResults.length === 0" class="no-data">
+      No RCA results yet. Click "Run RCA" to analyze.
+    </div>
+    <div *ngFor="let rca of saga.rcaResults" class="rca-result">
+      <div class="rca-status-banner" *ngIf="!isEvidenceAvailable(rca) || isLegacyOnly(rca)" [ngClass]="getRcaStatusClass(rca)">
+        <mat-icon>{{ getRcaStatusIcon(rca) }}</mat-icon>
+        <span class="status-text">{{ getDisplayStatus(rca) }}</span>
+      </div>
+
+      <div *ngIf="isInsufficient(rca)" class="missing-evidence">
+        <h3>Why no diagnosis?</h3>
+        <p>System abstained because evidence is insufficient.</p>
+        <ul *ngIf="getMissingEvidence(rca).length > 0">
+          <li *ngFor="let item of getMissingEvidence(rca)">{{ item }}</li>
+        </ul>
+        <p *ngIf="getMissingEvidence(rca).length === 0" class="muted">No missing-evidence details were returned.</p>
+      </div>
+
+      <div *ngIf="isHealthy(rca)" class="no-diagnosis">
+        Saga completed healthily. No diagnosis needed.
+      </div>
+
+      <ng-template #candidateDetails let-candidate="candidate">
+        <div class="candidate-details">
+          <div class="candidate-meta">
+            <span class="muted">Rule {{ candidate.ruleId }}</span>
+            <span *ngIf="candidate.severity && candidate.severity !== 'NONE'"
+                  class="candidate-severity"
+                  [ngClass]="getSeverityClass(candidate.severity)">
+              {{ candidate.severity }}
+            </span>
           </div>
-          <div class="rca-section">
-            <h4>Evidence (legacy)</h4>
-            <ul>
-              <li *ngFor="let e of parseJson(rca.evidence)">{{ e }}</li>
+
+          <div class="candidate-evidence" *ngIf="getEvidence(candidate).length > 0">
+            <h4>Evidence</h4>
+            <ul class="evidence-list">
+              <li *ngFor="let evidence of getEvidence(candidate)" [title]="evidenceRaw(evidence)">{{ evidence.fact }}</li>
             </ul>
           </div>
         </div>
+      </ng-template>
 
-        <div class="rca-section" *ngIf="suggestions(rca).length > 0">
-          <h4>Suggestions</h4>
+      <!-- One candidate row; the group around it already says the tier -->
+      <ng-template #candidatePanel let-candidate="candidate" let-reason="reason" let-expanded="expanded">
+        <mat-expansion-panel class="candidate-item" [ngClass]="getCandidateClass(candidate.status)" [expanded]="expanded">
+          <mat-expansion-panel-header>
+            <mat-panel-title class="candidate-summary-main">
+              <span class="candidate-cause">{{ formatEnumLabel(candidate.rootCause) }}</span>
+            </mat-panel-title>
+            <mat-panel-description *ngIf="reason">
+              <span class="candidate-summary-reason">{{ reason }}</span>
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+          <ng-container *ngTemplateOutlet="candidateDetails; context: { candidate: candidate }"></ng-container>
+        </mat-expansion-panel>
+      </ng-template>
+
+      <div *ngIf="hasCandidates(rca)" class="candidates-panel">
+        <div *ngIf="hasStrongEvidenceCandidates(rca)" class="candidate-tier">
+          <div class="tier-title"><span class="candidate-status-badge cstatus-strong_evidence">Strong evidence</span></div>
+          <mat-accordion class="candidate-list" multi>
+            <ng-container *ngFor="let candidate of getStrongEvidenceCandidates(rca)">
+              <ng-container *ngTemplateOutlet="candidatePanel; context: { candidate: candidate, reason: getCandidateReason(candidate), expanded: getStrongEvidenceCandidates(rca).length === 1 }"></ng-container>
+            </ng-container>
+          </mat-accordion>
+        </div>
+
+        <ng-container *ngFor="let group of collapsedGroups(rca); trackBy: trackGroup">
+          <mat-expansion-panel class="candidate-group" [ngClass]="group.cssClass">
+            <mat-expansion-panel-header>
+              <mat-panel-title>
+                <mat-icon>{{ group.icon }}</mat-icon> {{ group.title }} ({{ group.candidates.length }})
+              </mat-panel-title>
+            </mat-expansion-panel-header>
+            <p class="group-note" *ngIf="sharedReason(group.candidates) as shared">{{ shared }}</p>
+            <mat-accordion class="candidate-list">
+              <ng-container *ngFor="let candidate of group.candidates">
+                <ng-container *ngTemplateOutlet="candidatePanel; context: { candidate: candidate, reason: sharedReason(group.candidates) ? null : getCandidateReason(candidate), expanded: false }"></ng-container>
+              </ng-container>
+            </mat-accordion>
+          </mat-expansion-panel>
+        </ng-container>
+      </div>
+
+      <div *ngIf="isLegacyOnly(rca)" class="legacy-rca">
+        <div class="rca-header">
+          <span class="root-cause">{{ rca.rootCause }}</span>
+          <span class="severity-badge" [ngClass]="getSeverityClass(rca.severity)">{{ rca.severity }}</span>
+        </div>
+        <div class="rca-section">
+          <h4>Evidence (legacy)</h4>
           <ul>
-            <li *ngFor="let s of suggestions(rca)">{{ s }}</li>
+            <li *ngFor="let e of parseJson(rca.evidence)">{{ e }}</li>
           </ul>
         </div>
-        <div class="rca-timestamp">{{ rca.createdAt | date:'medium' }}</div>
       </div>
-    </mat-card-content>
-  </mat-card>
-</div>
+
+      <div class="rca-section suggestions" *ngIf="suggestions(rca).length > 0">
+        <h4>Suggestions</h4>
+        <ul>
+          <li *ngFor="let s of suggestions(rca)">{{ s }}</li>
+        </ul>
+      </div>
+      <div class="rca-timestamp">{{ rca.createdAt | date:'medium' }}</div>
+    </div>
+  </section>
+</main>
 
 <div *ngIf="loading" class="loading-container">
-  <mat-spinner></mat-spinner>
+  <mat-spinner diameter="48"></mat-spinner>
 </div>
