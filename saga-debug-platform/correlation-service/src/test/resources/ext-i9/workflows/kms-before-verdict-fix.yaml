@@ -1,0 +1,127 @@
+# The saga implemented by sylleryum/kafka-microservices-with-saga, written as a
+# specification this platform can check executions against.
+#
+# Read out of OrderApplication.kstreamOrder, StockApplication/PaymentApplication listeners,
+# stock and payment OrderManagementService, and common/util/OrderStatus -- not from the
+# README, whose diagrams describe an orchestrator that the code does not have.
+#
+# THE SHAPE, AS THE CODE ACTUALLY RUNS IT
+#
+#                        ┌─► RESERVE_STOCK ─┐
+#   ORDER_CREATED ───────┤                  ├──► SETTLE_ORDER ──► COMPLETED
+#     (t_order, New)     └─► TAKE_PAYMENT  ─┘     (Streams join)
+#
+# Stock and payment are GENUINELY PARALLEL: both services subscribe to t_order and neither
+# waits for the other. The step this platform calls SETTLE_ORDER is the Kafka Streams inner
+# join in the order service -- t_stock ⋈ t_payment over a 120s window -- whose verdict is
+# republished to t_order. Modelling it as a fan-in step is not a convenience: the join
+# genuinely cannot run until both arms have answered, and its 120s window is the real
+# deadline for the whole run.
+#
+# COMPENSATION, AND WHAT CANNOT BE SEEN OF IT
+#
+# When payment fails, OrderManagementService.processOrder sets stockStatus=Rollback and the
+# stream republishes to t_order; the stock service reads it and puts the quantities back.
+#
+# It then returns WITHOUT PUBLISHING ANYTHING (StockOrderManagementService.rollbackOrder
+# calls no producer, and PaymentService.rollbackPayment likewise). So ROLLBACK_STOCK below
+# declares a `started` event and no `completed` one -- not an omission, but the honest
+# shape of a system that never says its compensation finished. An execution here settles at
+# COMPENSATING rather than COMPENSATED, and that is a true statement about the evidence.
+#
+# TIMEOUTS come from kafka.join.window.duration.ms = 120000 in common/shared.properties.
+
+workflow:
+  name: KMS_ORDER_SAGA
+  version: "1.0"
+  sources: [kms-order-saga]
+
+  steps:
+    # The request the order service publishes after persisting the order. Its `started` and
+    # `completed` are the same event because publishing IS the whole step -- the same idiom
+    # CREATE_ORDER uses in the packaged ORDER_SAGA.
+    - id: RECEIVE_ORDER
+      service: order-service
+      timeout: 30s
+      events:
+        started: ORDER_CREATED
+        completed: ORDER_CREATED
+
+    - id: RESERVE_STOCK
+      service: stock-service
+      timeout: 120s
+      compensation: ROLLBACK_STOCK
+      events:
+        completed: STOCK_RESERVED
+        failed: STOCK_REJECTED
+
+    - id: TAKE_PAYMENT
+      service: payment-service
+      timeout: 120s
+      events:
+        completed: PAYMENT_ACCEPTED
+        failed: PAYMENT_REJECTED
+
+    # The Streams join. It emits its verdict onto t_order, which is the only observable
+    # trace that the join fired at all.
+    - id: SETTLE_ORDER
+      service: order-service
+      timeout: 120s
+      events:
+        completed: ORDER_VERDICT_BROADCAST
+
+  compensationSteps:
+    # Requested by the same verdict message, distinguished by stockStatus=Rollback. No
+    # `completed`: see the note above.
+    - id: ROLLBACK_STOCK
+      service: stock-service
+      timeout: 120s
+      events:
+        started: STOCK_ROLLBACK_REQUESTED
+
+  transitions:
+    - from: STARTED
+      to: RECEIVE_ORDER
+
+    # Fan-out: one request event, two services acting on it independently.
+    - from: RECEIVE_ORDER
+      to: RESERVE_STOCK
+      condition: SUCCESS
+    - from: RECEIVE_ORDER
+      to: TAKE_PAYMENT
+      condition: SUCCESS
+
+    # Fan-in: the join cannot fire until both have answered.
+    - from: RESERVE_STOCK
+      to: SETTLE_ORDER
+      condition: SUCCESS
+    - from: TAKE_PAYMENT
+      to: SETTLE_ORDER
+      condition: SUCCESS
+
+    - from: SETTLE_ORDER
+      to: COMPLETED
+      condition: SUCCESS
+
+    # A stock reservation that was never taken needs no undoing, so this ends the run.
+    - from: RESERVE_STOCK
+      to: FAILED
+      condition: FAILED
+
+    # A rejected payment leaves stock held, which does need undoing.
+    - from: TAKE_PAYMENT
+      to: COMPENSATING
+      condition: FAILED
+
+    - from: ROLLBACK_STOCK
+      to: COMPENSATED
+      condition: SUCCESS
+
+  validEventTypes:
+    ORDER_CREATED: RECEIVE_ORDER
+    STOCK_RESERVED: RESERVE_STOCK
+    STOCK_REJECTED: RESERVE_STOCK
+    PAYMENT_ACCEPTED: TAKE_PAYMENT
+    PAYMENT_REJECTED: TAKE_PAYMENT
+    ORDER_VERDICT_BROADCAST: SETTLE_ORDER
+    STOCK_ROLLBACK_REQUESTED: ROLLBACK_STOCK

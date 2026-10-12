@@ -119,11 +119,12 @@ public class AnomalyDetectionService {
      * because an operator looking at a quiet run is entitled to know which observations the
      * platform was waiting on.
      */
-    public void detectInvalidTransition(WorkflowSpec workflow, String sagaId, String previousStep,
+    /** @return whether the workflow forbids this handoff */
+    public boolean detectInvalidTransition(WorkflowSpec workflow, String sagaId, String previousStep,
             String currentStep, String condition, String eventId, Instant eventTimestamp) {
-        if (workflow == null || workflow.getTransitions() == null) return;
+        if (workflow == null || workflow.getTransitions() == null) return false;
 
-        if (previousStep == null) return;
+        if (previousStep == null) return false;
         WorkflowSpec.TransitionJudgment judgment =
                 workflow.explainTransition(previousStep, currentStep, condition);
         if (judgment.verdict() != WorkflowSpec.TransitionVerdict.INVALID) {
@@ -133,7 +134,7 @@ public class AnomalyDetectionService {
                         sagaId, previousStep, currentStep, condition,
                         judgment.stepsInBetween(), workflow.getName());
             }
-            return;
+            return false;
         }
 
         {
@@ -144,7 +145,7 @@ public class AnomalyDetectionService {
                     .anyMatch(a -> a.getAnomalyType() == AnomalyType.INVALID_TRANSITION
                             && observed.equals(a.getObservedValue())
                             && Objects.equals(a.getEvidenceEventIds(), details().evidenceEventIds(eventId).evidenceEventIds));
-            if (alreadyStanding) return;
+            if (alreadyStanding) return true;
 
             String expected = workflow.getTransitions().stream()
                     .filter(t -> t.getFrom().equals(previousStep))
@@ -162,6 +163,47 @@ public class AnomalyDetectionService {
                             .evidenceEventIds(eventId)
                             .measuredAt(eventTimestamp));
         }
+        return true;
+    }
+
+    /**
+     * EXT-I9: withdraws the invalid transitions the whole evidence no longer shows.
+     *
+     * <p>A handoff is judged between neighbours in business order, and on a partial
+     * timeline two observations can be neighbours that the full one separates -- reverse
+     * delivery of a KMS both-failed run left INVALID_TRANSITION standing that forward
+     * delivery never raised. The occurrence was never established; the pair it rested on
+     * was an artefact of what had arrived. Findings for handoffs the final timeline still
+     * judges invalid are kept.
+     *
+     * @param stillInvalid {@link #transitionKey} of every handoff judged invalid on the
+     *                     current evidence
+     */
+    public void withdrawUnjudgedTransitions(String sagaId, Set<String> stillInvalid) {
+        Instant now = Instant.now();
+        for (Anomaly anomaly : anomalyRepository.findStandingBySagaId(sagaId)) {
+            if (anomaly.getAnomalyType() != AnomalyType.INVALID_TRANSITION) continue;
+            List<String> cited = anomaly.getEvidenceEventIds();
+            String key = transitionKey(anomaly.getObservedValue(),
+                    cited == null || cited.isEmpty() ? null : cited.get(0));
+            if (stillInvalid.contains(key)) continue;
+            anomaly.setRetractedAt(now);
+            anomaly.setRetractionReason("the observations it paired are no longer adjacent "
+                    + "once the rest of the run is in hand");
+            anomalyRepository.save(anomaly);
+            log.info("Withdrew INVALID_TRANSITION {} against execution {}: the full timeline "
+                    + "does not contain that handoff", anomaly.getObservedValue(), sagaId);
+        }
+    }
+
+    /** Identifies one judged handoff: what was observed, and the event that made it. */
+    public static String transitionKey(String observedHandoff, String eventId) {
+        return observedHandoff + "|" + eventId;
+    }
+
+    /** The observed value an invalid transition is recorded under. */
+    public static String handoff(String previousStep, String currentStep, String condition) {
+        return String.format("%s -> %s on %s", previousStep, currentStep, condition);
     }
 
     public void detectRetryBurst(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
