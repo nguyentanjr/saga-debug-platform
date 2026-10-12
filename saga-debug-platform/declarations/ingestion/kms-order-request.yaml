@@ -53,12 +53,18 @@ source:
     # separates them:
     #   New      -- the request the order service publishes; stock and payment both read it
     #   Rollback -- the verdict, telling stock to give the reservation back
-    #   Success/
-    #   Failed   -- the verdict when the stock leg needs no undoing
+    #   Success  -- the verdict that the order went through
+    #   Failed   -- the verdict that the order was rejected because stock failed. Payment
+    #               may have failed too, or succeeded and been told to roll back
+    #               (paymentStatus=Rollback); this field cannot tell those apart, and the
+    #               payment service publishes nothing when it rolls back.
+    #
+    # Success and Failed used to be one event type. The workflow reads that type as the
+    # join completing successfully, so every rejected order was reported COMPLETED.
     eventType: stockStatus
 
   eventTypes:
     "New": ORDER_CREATED
     "Rollback": STOCK_ROLLBACK_REQUESTED
     "Success": ORDER_VERDICT_BROADCAST
-    "Failed": ORDER_VERDICT_BROADCAST
+    "Failed": ORDER_REJECTED
