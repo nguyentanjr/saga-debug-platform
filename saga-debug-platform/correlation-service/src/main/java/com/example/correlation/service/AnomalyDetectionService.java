@@ -531,8 +531,21 @@ public class AnomalyDetectionService {
         }
     }
 
+    /** Every event some loaded workflow declares as its start. */
+    private Set<String> anyWorkflowStart() {
+        return workflowRegistry.workflowNames().stream()
+                .map(workflowRegistry::byType).flatMap(Optional::stream)
+                .flatMap(spec -> spec.startEventTypes().stream())
+                .collect(Collectors.toSet());
+    }
+
     public void detectOrphanEvent(WorkflowSpec workflow, String sagaId, List<SagaEvent> events) {
-        Set<String> startEventTypes = workflow != null ? workflow.startEventTypes() : Set.of();
+        // EXT-RESOLVE: with no workflow resolved -- typically because two declarations both
+        // claim the start event -- the question is still whether any loaded workflow's start
+        // is in hand, as the finding's own wording says. Asking it of an empty set reported
+        // every unresolved run as orphaned, and R15 read that as a wrong correlation key on
+        // runs whose start record and key were both present.
+        Set<String> startEventTypes = workflow != null ? workflow.startEventTypes() : anyWorkflowStart();
 
         boolean startObserved = events.stream()
                 .anyMatch(e -> startEventTypes.contains(e.getEventType()));
@@ -541,8 +554,8 @@ public class AnomalyDetectionService {
             if (anomalyRepository.existsBySagaIdAndAnomalyType(sagaId, AnomalyType.ORPHAN_EVENT)) {
                 int withdrawn = anomalyRepository.retractClaims(sagaId,
                         Set.of(AnomalyType.ORPHAN_EVENT), Instant.now(),
-                        "a start event of workflow " + workflow.getName()
-                                + " was observed after this finding was made");
+                        "a start event of " + (workflow != null ? "workflow " + workflow.getName()
+                                : "a loaded workflow") + " was observed after this finding was made");
                 if (withdrawn > 0) {
                     log.info("Withdrew the orphan finding against execution {}: its start "
                             + "event arrived after the rest of the run", sagaId);
@@ -556,7 +569,7 @@ public class AnomalyDetectionService {
         SagaEvent earliest = events.isEmpty() ? null : events.get(0);
         if (earliest == null) return;
 
-        String expected = startEventTypes.isEmpty()
+        String expected = workflow == null
                 ? "an event that some loaded workflow declares as a start"
                 : "one of " + startEventTypes + " to start " + workflow.getName();
         createAnomaly(sagaId, AnomalyType.ORPHAN_EVENT,
