@@ -1,0 +1,17 @@
+source:
+  name: eventuate-customer-events
+  system: eventuate-customers-orders
+  workflow: EVENTUATE_CREATE_ORDER
+  topicPattern: 'io\.eventuate\.examples\.tram\.ordersandcustomers\.customers\.domain\.Customer'
+  fields:
+    # Customer aggregate id is NOT an execution key: one customer has many orders.
+    executionId: payload.orderId
+    eventId: headers.ID
+    eventType: headers.event-type
+    serviceName: const:customer-service
+  eventTypes:
+    'io.eventuate.examples.tram.ordersandcustomers.customers.domain.CustomerCreditReservedEvent': CREDIT_RESERVED
+    'io.eventuate.examples.tram.ordersandcustomers.customers.domain.CustomerCreditReservationFailedEvent': CREDIT_REJECTED
+    'io.eventuate.examples.tram.ordersandcustomers.customers.domain.CustomerValidationFailedEvent': CUSTOMER_UNKNOWN
+
+

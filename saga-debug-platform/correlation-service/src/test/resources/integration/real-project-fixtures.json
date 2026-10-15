@@ -1,0 +1,1370 @@
+[
+ {
+  "fixture": "hotel-approved-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "plan: approved, payment accepted",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "30741c15-0920-4346-9991-f2d1783f232f",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:10:03.179Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "10024f07-ff29-42ec-b4ed-510b08b99c1e",
+    "eventType": "ROOM_BOOKED",
+    "timestamp": "2026-10-11T16:10:03.301Z",
+    "serviceName": "hotel-service"
+   },
+   {
+    "eventId": "d7377203-51cf-4e50-ac3f-c7106fc0cdad",
+    "eventType": "TAKE_PAYMENT_REQUESTED",
+    "timestamp": "2026-10-11T16:10:03.393Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "d64f3139-bbdd-4056-b1ad-11435ae40a5d",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:10:03.486Z",
+    "serviceName": "payment-service"
+   }
+  ]
+ },
+ {
+  "fixture": "hotel-compensation-delay-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "COMPENSATED",
+  "labelBasis": "plan: payment rejected, source emitted ROOM_CANCELLED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "b2397c24-d8db-4452-9c3c-9a7fdb7374f8",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:14:06.297Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "4360aef5-075e-4a89-a441-a9d4783e6536",
+    "eventType": "ROOM_BOOKED",
+    "timestamp": "2026-10-11T16:14:06.491Z",
+    "serviceName": "hotel-service"
+   },
+   {
+    "eventId": "1357dfd7-e034-4085-a3a4-7e14a8578ff8",
+    "eventType": "TAKE_PAYMENT_REQUESTED",
+    "timestamp": "2026-10-11T16:14:06.62Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "8d173eea-4ca2-4d87-ba68-3c523abd1430",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:14:08.916Z",
+    "serviceName": "payment-service"
+   },
+   {
+    "eventId": "ab44f063-a54a-411c-b7a1-052d30172124",
+    "eventType": "RELEASE_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:14:09.078Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "31773ee2-28a9-4c3a-845a-2bc7e0072af5",
+    "eventType": "ROOM_CANCELLED",
+    "timestamp": "2026-10-11T16:15:30.079Z",
+    "serviceName": "hotel-service"
+   }
+  ]
+ },
+ {
+  "fixture": "hotel-hotel-crash-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "FAILED",
+  "labelBasis": "plan: room rejected by hotel-service",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "614f9a76-cf04-40ea-8818-9b3bef895e7e",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:10:20.326Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "c466d828-5228-4b0d-ac4f-3f0722ab2457",
+    "eventType": "ROOM_REJECTED",
+    "timestamp": "2026-10-11T16:11:22.6Z",
+    "serviceName": "hotel-service"
+   }
+  ]
+ },
+ {
+  "fixture": "hotel-payment-pause-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "COMPENSATED",
+  "labelBasis": "plan: payment rejected, source emitted ROOM_CANCELLED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "9a39e6f9-c658-48ad-a6a1-399d0bb45fd9",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:11:53.899Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "15331b88-ab40-45ed-a73f-720d05508e13",
+    "eventType": "ROOM_BOOKED",
+    "timestamp": "2026-10-11T16:11:54.034Z",
+    "serviceName": "hotel-service"
+   },
+   {
+    "eventId": "3838b493-4119-4584-afae-5e56c14ae65f",
+    "eventType": "TAKE_PAYMENT_REQUESTED",
+    "timestamp": "2026-10-11T16:11:54.219Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "d31a312b-6dd8-4de0-8daa-8ac0054d9b33",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:12:43.197Z",
+    "serviceName": "payment-service"
+   },
+   {
+    "eventId": "bca897c1-6c68-4041-9fa4-16eb9c1ddb0c",
+    "eventType": "RELEASE_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:12:43.394Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "39c95f1e-b795-4992-a6d3-c672c1694b72",
+    "eventType": "ROOM_CANCELLED",
+    "timestamp": "2026-10-11T16:12:43.606Z",
+    "serviceName": "hotel-service"
+   }
+  ]
+ },
+ {
+  "fixture": "hotel-payment-rejected-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "COMPENSATED",
+  "labelBasis": "plan: payment rejected, source emitted ROOM_CANCELLED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "f55b16f4-7195-48f7-88c4-b85e9cedebfa",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:10:01.578Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "edea553f-3424-47cb-9de9-43c8004a7bae",
+    "eventType": "ROOM_BOOKED",
+    "timestamp": "2026-10-11T16:10:01.691Z",
+    "serviceName": "hotel-service"
+   },
+   {
+    "eventId": "27512cf5-1c33-4f7b-b213-f54b96f5482e",
+    "eventType": "TAKE_PAYMENT_REQUESTED",
+    "timestamp": "2026-10-11T16:10:01.792Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "af75e201-e900-420e-86b9-d4a10aaf2471",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:10:02.199Z",
+    "serviceName": "payment-service"
+   },
+   {
+    "eventId": "10b2777e-69d8-4e8e-9733-fe5ad3899803",
+    "eventType": "RELEASE_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:10:02.326Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "a08ffd68-8f34-4846-89b8-a167bef2dfd9",
+    "eventType": "ROOM_CANCELLED",
+    "timestamp": "2026-10-11T16:10:02.551Z",
+    "serviceName": "hotel-service"
+   }
+  ]
+ },
+ {
+  "fixture": "hotel-room-missing-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "FAILED",
+  "labelBasis": "plan: room rejected by hotel-service",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "d473aedd-0100-42ba-9f6f-ce7d928b15bd",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:09:59.748Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "6a4f53f6-d88a-4ae1-8748-831b2c0df558",
+    "eventType": "ROOM_REJECTED",
+    "timestamp": "2026-10-11T16:09:59.863Z",
+    "serviceName": "hotel-service"
+   }
+  ]
+ },
+ {
+  "fixture": "hotel-room-unavailable-id-settled",
+  "system": "hotel",
+  "workflow": "ROOM_RESERVATION",
+  "expectedStatus": "FAILED",
+  "labelBasis": "plan: room rejected by hotel-service",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "1c4b64e6-74c0-490f-8428-de95a4f900d9",
+    "eventType": "BOOK_ROOM_REQUESTED",
+    "timestamp": "2026-10-11T16:10:00.722Z",
+    "serviceName": "reservation-service"
+   },
+   {
+    "eventId": "506fb97c-353c-4e60-8745-e151365103ad",
+    "eventType": "ROOM_REJECTED",
+    "timestamp": "2026-10-11T16:10:00.84Z",
+    "serviceName": "hotel-service"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-approved-67e744fe-24db-4f7d-8d95-a8da31c2f47f",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native stock=Success payment=Success",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-1-2",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:19:32.744Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-1-1",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:19:32.763Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-1-3",
+    "eventType": "ORDER_VERDICT_BROADCAST",
+    "timestamp": "2026-10-11T16:19:32.788Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-1-1",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:19:32.788Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-approved-bc4ee853-1b0e-4c49-b974-b5aeb6ccda73",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native stock=Success payment=Success",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-0-2",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:19:32.742Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-0-1",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:19:32.758Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-0-3",
+    "eventType": "ORDER_VERDICT_BROADCAST",
+    "timestamp": "2026-10-11T16:19:32.777Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-0-1",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:19:32.777Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-both-rejected-4a6e4dad-4cc3-4c49-9d9b-c34f9eba4930",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native stock=Failed payment=Failed (payment rollback, if any, is unobservable)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-0-6",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:24:17.679Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-0-3",
+    "eventType": "STOCK_REJECTED",
+    "timestamp": "2026-10-11T16:24:17.691Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-0-7",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:24:18.222Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-0-3",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:24:18.222Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-both-rejected-bbd68da8-3f78-4063-a0ca-0b531e00c475",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native stock=Failed payment=Failed (payment rollback, if any, is unobservable)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-1-6",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:24:17.68Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-1-3",
+    "eventType": "STOCK_REJECTED",
+    "timestamp": "2026-10-11T16:24:17.7Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-1-7",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:24:18.297Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-1-3",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:24:18.297Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-payment-pause-recovered-14572721-c90a-483d-8fa1-9310c1223fae",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native stock=New payment=New",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-1-8",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:29:15.576Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-1-4",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:29:15.587Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-1-4",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:31:51.87Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-1-5",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:31:52.923Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-payment-pause-waiting-14572721-c90a-483d-8fa1-9310c1223fae",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native stock=New payment=New",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-1-8",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:29:15.576Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-1-4",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:29:15.587Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-payment-rejected-5a43d99d-7a48-4950-8e53-a9dd78100aff",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "COMPENSATING",
+  "labelBasis": "native stock=Rollback payment=Failed (stock rollback emits no ack)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-2-2",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:20:27.345Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-2-1",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:20:27.373Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-2-3",
+    "eventType": "STOCK_ROLLBACK_REQUESTED",
+    "timestamp": "2026-10-11T16:20:28.767Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-2-1",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:20:28.767Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-payment-rejected-de4612a7-664a-4aba-a583-631d79ba1b8c",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "COMPENSATING",
+  "labelBasis": "native stock=Rollback payment=Failed (stock rollback emits no ack)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-0-4",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:20:27.343Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-0-2",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:20:27.363Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-0-5",
+    "eventType": "STOCK_ROLLBACK_REQUESTED",
+    "timestamp": "2026-10-11T16:20:28.539Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-0-2",
+    "eventType": "PAYMENT_REJECTED",
+    "timestamp": "2026-10-11T16:20:28.539Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-stock-crash-recovered-1bf4c120-fa06-42e2-b2c8-aeb865aa8bfb",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native stock=New payment=New",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-0-8",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:25:36.067Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-0-4",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:25:36.793Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-0-4",
+    "eventType": "STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:28:25.231Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-stock-rejected-38b7ecda-70f5-4318-9e08-9a2adf20d8ae",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native stock=Failed payment=Rollback (payment rollback, if any, is unobservable)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-1-4",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:23:09.796Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-1-2",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:23:10.462Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-1-5",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:23:10.654Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-1-2",
+    "eventType": "STOCK_REJECTED",
+    "timestamp": "2026-10-11T16:23:10.654Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "kms-stock-rejected-b8f14e57-d649-48ac-8768-9daca35313e0",
+  "system": "kms",
+  "workflow": "KMS_ORDER_SAGA",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native stock=Failed payment=Rollback (payment rollback, if any, is unobservable)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "t_order-2-4",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:23:09.835Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_payment-2-2",
+    "eventType": "PAYMENT_ACCEPTED",
+    "timestamp": "2026-10-11T16:23:10.542Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_order-2-5",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:23:10.732Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "t_stock-2-2",
+    "eventType": "STOCK_REJECTED",
+    "timestamp": "2026-10-11T16:23:10.732Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-approved-8144fdc3-d505-4d50-aa50-96b21a4dd43e",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native order status=COMPLETED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "ad5aa302-3c4e-404d-b98e-4fc62d4c8040",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:33:00.681Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "76058de4-33c8-4955-b303-28a65e7854aa",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:33:02.415Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "a8044cb8-5e45-41d4-98b2-e69f0c901e37",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:33:03.22Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "ded17268-43d4-49a7-abc8-e9bcb6d93d85",
+    "eventType": "PRODUCT_STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:33:04.161Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-balance-rejected-cd2c0cb2-4cf0-40b6-a4d3-f3f771d73b3d",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native order status=CANCELED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "9f852aab-90fe-4b86-8403-17b55e1c2c78",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:33:03.729Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "da5a0b52-79cb-46db-a730-79462811509f",
+    "eventType": "CUSTOMER_BALANCE_REJECTED",
+    "timestamp": "2026-10-11T16:33:04.445Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-concurrent-75a10a59-2c62-4cb8-9173-04e0111e8529",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native order status=COMPLETED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "05d41e49-061c-4fbd-9bad-da30cdb73c31",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:35:45.278Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "21382014-b9df-4b3f-8151-5f1e6bcf68ac",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:35:45.818Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "12f416fb-b119-4869-a21c-924f684b2202",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:35:46.293Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "c4a43048-523e-4d49-9e44-0c59681d5088",
+    "eventType": "PRODUCT_STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:35:46.797Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-concurrent-e5f2041c-2c90-4b20-943e-9aa981f6e088",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native order status=COMPLETED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "e9d5efd7-5452-469b-bc9b-79a382bde6d5",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:35:45.277Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "2cafadfd-68a1-4057-888a-143fbfb6d891",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:35:45.816Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "ea532d3b-59ea-4e93-87fb-0c3bec4cc549",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:35:46.292Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "9c359cb1-9c91-47b0-b17e-d885bba381c8",
+    "eventType": "PRODUCT_STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:35:46.796Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-customer-pause-recovered-2b063c60-f9be-41a6-a86e-d45239968c22",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native order status=COMPLETED",
+  "expectedFindings": [
+   "FORBIDDEN_POST_TERMINAL"
+  ],
+  "defectBasis": "source reprocessed after resume: balance 100->98, stock 5->3 (expected 99/4)",
+  "events": [
+   {
+    "eventId": "456ae774-7abf-45d8-9396-08927fa3f4aa",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:36:21.016Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "7c32f50b-0b2b-4826-b236-e2ea6593561b",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:37:44.016Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "31219de9-ca89-4c86-875d-05d44302d96b",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:37:44.54Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "2872bf6b-f60b-4851-9480-afdb5d9dc5aa",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:37:46.445Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "7c48ecb3-7c2d-41fe-bcea-dc9d086de810",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:37:46.446Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "7757127d-38c4-42d7-90df-788f3cf9ebbe",
+    "eventType": "PRODUCT_STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:37:48.312Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "3443a7f7-c535-40c1-ba7b-730af3c07468",
+    "eventType": "PRODUCT_STOCK_RESERVED",
+    "timestamp": "2026-10-11T16:37:48.314Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-customer-pause-waiting-2b063c60-f9be-41a6-a86e-d45239968c22",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native order status=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "456ae774-7abf-45d8-9396-08927fa3f4aa",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:36:21.016Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-inventory-crash-down-486ed998-8822-4a69-b9a5-5965ab008aaf",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native order status=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "b7e29d40-e21c-4bb0-86ff-503d8f09d11a",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:38:20.371Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "4a7f14ca-5f9a-410e-911b-e135a2b654f3",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:38:20.99Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "45a0c73d-3839-4f42-9870-f6c0a883a883",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:38:21.893Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-inventory-crash-recovered-486ed998-8822-4a69-b9a5-5965ab008aaf",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native order status=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "b7e29d40-e21c-4bb0-86ff-503d8f09d11a",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:38:20.371Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "4a7f14ca-5f9a-410e-911b-e135a2b654f3",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:38:20.99Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "45a0c73d-3839-4f42-9870-f6c0a883a883",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:38:21.893Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-stock-rejected-6e75f553-211f-4377-aa68-26582cf31faf",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "COMPENSATING",
+  "labelBasis": "native order status=CANCELED (refund requested, no ack)",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "5d6084c2-aa43-490d-86ea-aedc53977bee",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:33:06.266Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "64850f6b-52a4-4847-aee3-0d2d4b33e4e1",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:33:06.981Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "b558dd37-60d5-4e23-95d0-14f7544f9821",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:33:07.878Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "15182527-2889-400a-883b-28ee3f117504",
+    "eventType": "PRODUCT_STOCK_REJECTED",
+    "timestamp": "2026-10-11T16:33:08.219Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "dc242f09-4b2a-4a89-bf9c-c384661af37f",
+    "eventType": "CUSTOMER_REFUND_REQUESTED",
+    "timestamp": "2026-10-11T16:33:08.894Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-unknown-customer-7d292f19-2deb-423c-a97f-28fc44643c79",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native order status=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "39c70830-cb76-41ad-8b65-b47bc175cea0",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:33:08.386Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "spm-unknown-product-4717db38-795a-4691-a9ba-23d9f0312ae3",
+  "system": "spm",
+  "workflow": "SPM_ORDER_SAGA",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native order status=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "af6225d5-983d-4155-b1d4-3a932072c47b",
+    "eventType": "ORDER_PLACED",
+    "timestamp": "2026-10-11T16:33:10.712Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "bd1dd139-f016-43f2-825b-ed715f2fb114",
+    "eventType": "CUSTOMER_BALANCE_RESERVED",
+    "timestamp": "2026-10-11T16:33:11.333Z",
+    "serviceName": "unknown"
+   },
+   {
+    "eventId": "87cd2acb-0cab-49c4-a96f-df8c08043589",
+    "eventType": "STOCK_RESERVATION_REQUESTED",
+    "timestamp": "2026-10-11T16:33:11.727Z",
+    "serviceName": "unknown"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-approved-11",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd48b6c-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:38:32.581Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd48e9a-02bddd57c2580000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:38:33.115Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd48fb3-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:38:33.636Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-approved-17",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd972b7-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:53.638Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd974a7-76f926712d230000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:43:54.331Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd97682-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:43:54.856Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-customer-crash-down-22",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native orderState=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd98953-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:59.598Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-customer-crash-final-16",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd49a6f-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:38:36.206Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd6afc1-76f926712d230000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:40:52.869Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd6b1de-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:40:53.398Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-customer-crash-recovered-22",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd98953-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:59.598Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bdb5112-96b11adf56ac0000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:45:56.182Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bdb5281-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:45:56.699Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-customer-pause-recovered-23",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bdbdef1-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:46:32.188Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bdd0f18-96b11adf56ac0000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:47:50.536Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bdd1112-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:47:51.043Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-customer-pause-waiting-23",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "IN_PROGRESS",
+  "labelBasis": "native orderState=PENDING",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bdbdef1-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:46:32.188Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-insufficient-credit-12",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native orderState=REJECTED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd48bfa-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:38:32.601Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd48ecb-02bddd57c2580000",
+    "eventType": "CREDIT_REJECTED",
+    "timestamp": "2026-10-11T16:38:33.119Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd48fd4-4a6a37058f2f0000",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:38:33.64Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-insufficient-credit-18",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native orderState=REJECTED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd974c2-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:54.332Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd9767b-76f926712d230000",
+    "eventType": "CREDIT_REJECTED",
+    "timestamp": "2026-10-11T16:43:54.852Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd97893-4a6a37058f2f0000",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:43:55.416Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-parallel-order-a-14",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd48c32-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:38:32.602Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd48ee0-02bddd57c2580000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:38:33.119Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd48fe8-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:38:33.64Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-parallel-order-a-21",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd9753f-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:54.337Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd9769d-76f926712d230000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:43:54.875Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd978f9-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:43:55.43Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-parallel-order-b-15",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd48c35-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:38:32.602Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd48eea-02bddd57c2580000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:38:33.119Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd48ff1-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:38:33.64Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-parallel-order-b-20",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "COMPLETED",
+  "labelBasis": "native orderState=APPROVED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd9753f-4a6a37058f2f0001",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:54.338Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd976ae-76f926712d230000",
+    "eventType": "CREDIT_RESERVED",
+    "timestamp": "2026-10-11T16:43:54.875Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd9793e-4a6a37058f2f0000",
+    "eventType": "ORDER_APPROVED",
+    "timestamp": "2026-10-11T16:43:55.43Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-unknown-customer-13",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native orderState=REJECTED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd48c16-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:38:32.602Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd48ed5-02bddd57c2580000",
+    "eventType": "CUSTOMER_UNKNOWN",
+    "timestamp": "2026-10-11T16:38:33.119Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd48fde-4a6a37058f2f0000",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:38:33.64Z",
+    "serviceName": "order-service"
+   }
+  ]
+ },
+ {
+  "fixture": "eventuate-unknown-customer-19",
+  "system": "eventuate",
+  "workflow": "EVENTUATE_CREATE_ORDER",
+  "expectedStatus": "FAILED",
+  "labelBasis": "native orderState=REJECTED",
+  "expectedFindings": [],
+  "defectBasis": null,
+  "events": [
+   {
+    "eventId": "000001a12bd974da-4a6a37058f2f0000",
+    "eventType": "ORDER_CREATED",
+    "timestamp": "2026-10-11T16:43:54.337Z",
+    "serviceName": "order-service"
+   },
+   {
+    "eventId": "000001a12bd97692-76f926712d230000",
+    "eventType": "CUSTOMER_UNKNOWN",
+    "timestamp": "2026-10-11T16:43:54.875Z",
+    "serviceName": "customer-service"
+   },
+   {
+    "eventId": "000001a12bd978bb-4a6a37058f2f0000",
+    "eventType": "ORDER_REJECTED",
+    "timestamp": "2026-10-11T16:43:55.43Z",
+    "serviceName": "order-service"
+   }
+  ]
+ }
+]

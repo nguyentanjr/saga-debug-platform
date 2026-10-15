@@ -1,0 +1,16 @@
+source:
+  name: eventuate-order-events
+  system: eventuate-customers-orders
+  workflow: EVENTUATE_CREATE_ORDER
+  topicPattern: 'io\.eventuate\.examples\.tram\.ordersandcustomers\.orders\.domain\.Order'
+  fields:
+    executionId: headers.event-aggregate-id
+    eventId: headers.ID
+    eventType: headers.event-type
+    serviceName: const:order-service
+  eventTypes:
+    'io.eventuate.examples.tram.ordersandcustomers.orders.domain.OrderCreatedEvent': ORDER_CREATED
+    'io.eventuate.examples.tram.ordersandcustomers.orders.domain.OrderApprovedEvent': ORDER_APPROVED
+    'io.eventuate.examples.tram.ordersandcustomers.orders.domain.OrderRejectedEvent': ORDER_REJECTED
+
+
