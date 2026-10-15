@@ -103,8 +103,18 @@ workflow:
     - from: RESERVE_STOCK
       to: SETTLE_ORDER
       condition: FAILED
+    # A rejected payment goes on to the join AND, when stock was taken, to a stock rollback.
+    # Which one ends the run depends on the other arm, so the rejection itself implies no
+    # status (WorkflowSpec.statusAfter needs its targets to agree): the join's verdict does --
+    # ORDER_REJECTED when stock failed too, STOCK_ROLLBACK_REQUESTED when it had succeeded.
+    # Either single edge was wrong on real runs (real-project suite, 2026-10-15): to the join
+    # alone, payment-rejected runs read IN_PROGRESS; to COMPENSATING alone, both-rejected
+    # runs carried INVALID_TRANSITION for the join they really ran.
     - from: TAKE_PAYMENT
       to: SETTLE_ORDER
+      condition: FAILED
+    - from: TAKE_PAYMENT
+      to: COMPENSATING
       condition: FAILED
 
     - from: SETTLE_ORDER
