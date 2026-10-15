@@ -492,9 +492,15 @@ public final class EvidenceTimeline {
     }
 
     public Optional<PostTerminal> postTerminal() {
+        // EXT-UNMAPPED-POST-TERMINAL: only an observation the workflow can place says the run
+        // did something after it ended. One it cannot place has no meaning here -- ewallet's
+        // result topic republishes W2N_Holding_Success, deliberately unmapped, after the
+        // unholding that ended the run -- and reporting it blamed the source for the
+        // platform not knowing what the event was.
         return bearings.stream()
                 .filter(bearing -> bearing.status().isTerminal())
                 .flatMap(ended -> ordered.stream()
+                        .filter(late -> spec.classifyEvent(late.getEventType()).isPresent())
                         .filter(late -> relate(spec, causality, ended.event(), late) == Relation.BEFORE)
                         .findFirst()
                         .map(late -> new PostTerminal(ended.event(), ended.status(), late))
