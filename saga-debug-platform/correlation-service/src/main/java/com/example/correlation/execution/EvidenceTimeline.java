@@ -491,6 +491,34 @@ public final class EvidenceTimeline {
                 .anyMatch(ended -> relate(spec, causality, ended.event(), event) == Relation.BEFORE);
     }
 
+    /**
+     * The same ending reported again by a different channel, which confirms it.
+     *
+     * <p>ewallet publishes a release or unholding on its business topic and again on its
+     * result topic; both map to the event that ended the run, and the second was reported
+     * as activity after the ending. A source that processes the step twice repeats it on
+     * the same channel -- SPM after resume, which charged the customer twice -- and that is
+     * still a finding. Channels are told apart by the topic in the transport position
+     * (topic-partition-offset, SagaEventConsumer); a source name cannot, being the system's
+     * namespace shared by all its mappings. Without a transport position on either side
+     * nothing can be told, and the observation is judged as before.
+     */
+    private static boolean corroborates(SagaEvent ending, SagaEvent late) {
+        if (!Objects.equals(ending.getEventType(), late.getEventType())) return false;
+        String endingChannel = channelOf(ending.getTransportRef());
+        String lateChannel = channelOf(late.getTransportRef());
+        return endingChannel != null && lateChannel != null && !endingChannel.equals(lateChannel);
+    }
+
+    /** The topic of a {@code topic-partition-offset} position; topic names may contain '-'. */
+    static String channelOf(String transportRef) {
+        if (transportRef == null) return null;
+        int offsetDash = transportRef.lastIndexOf('-');
+        if (offsetDash <= 0) return null;
+        int partitionDash = transportRef.lastIndexOf('-', offsetDash - 1);
+        return partitionDash <= 0 ? null : transportRef.substring(0, partitionDash);
+    }
+
     public Optional<PostTerminal> postTerminal() {
         // EXT-UNMAPPED-POST-TERMINAL: only an observation the workflow can place says the run
         // did something after it ended. One it cannot place has no meaning here -- ewallet's
@@ -501,6 +529,7 @@ public final class EvidenceTimeline {
                 .filter(bearing -> bearing.status().isTerminal())
                 .flatMap(ended -> ordered.stream()
                         .filter(late -> spec.classifyEvent(late.getEventType()).isPresent())
+                        .filter(late -> !corroborates(ended.event(), late))
                         .filter(late -> relate(spec, causality, ended.event(), late) == Relation.BEFORE)
                         .findFirst()
                         .map(late -> new PostTerminal(ended.event(), ended.status(), late))
