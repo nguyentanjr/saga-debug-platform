@@ -737,12 +737,17 @@ public class AnomalyDetectionService {
                     .orElse(null);
             if (lastEvent == null) continue;
 
+            // EXT-STUCK-TIMEOUT: silence is measured against the step the run is waiting on.
+            // That used to be the step of whatever event came last -- the step that had just
+            // finished, or, for an event the workflow does not know (ewallet COMMISSION_REQUESTED),
+            // the 60s default -- so every W2N transfer waiting its declared 15m for release was
+            // reported stuck after a minute. The clock still starts at the last thing heard.
             int timeoutSeconds = detectionProperties.getDefaultStepTimeoutSeconds();
-            if (workflow != null) {
-                String stepName = workflow.getExpectedStepForEvent(lastEvent.getEventType());
-                if (stepName != null) {
-                    timeoutSeconds = workflow.getStepTimeoutSeconds(stepName);
-                }
+            String timeoutSource = "config:anomaly.detection.default-step-timeout-seconds";
+            List<String> awaited = awaitedSteps(workflow, saga.getSagaId());
+            if (!awaited.isEmpty()) {
+                timeoutSeconds = awaited.stream().mapToInt(workflow::getStepTimeoutSeconds).max().orElse(timeoutSeconds);
+                timeoutSource = "workflow:" + String.join("|", awaited) + ".timeout";
             }
 
             Instant lastHeardAt = lastHeardAt(lastEvent);
@@ -761,7 +766,7 @@ public class AnomalyDetectionService {
                                     .observedValue(String.format("nothing heard since %s, after %s",
                                             lastHeardAt, lastEvent.getEventType()))
                                     .expectedValue(String.format("next event within %ds", timeoutSeconds))
-                                    .thresholdSource(timeoutSource(workflow, lastEvent.getEventType()))
+                                    .thresholdSource(timeoutSource)
                                     .evidenceEvents(lastEvent)
                                     .measuredAt(now));
                 }
@@ -769,6 +774,25 @@ public class AnomalyDetectionService {
         }
     }
 
+
+    /**
+     * The steps the run waits on after its latest observation the workflow can place.
+     * Observations it cannot place say nothing about which step is in progress. Falls back
+     * to that observation's own step when its outcome leads to no further step.
+     */
+    private List<String> awaitedSteps(WorkflowSpec workflow, String sagaId) {
+        if (workflow == null) return List.of();
+        List<SagaEvent> inOrder = EvidenceTimeline.of(workflow,
+                sagaEventRepository.findBySagaIdOrderByTimestampAsc(sagaId)).inBusinessOrder();
+        for (int i = inOrder.size() - 1; i >= 0; i--) {
+            String type = inOrder.get(i).getEventType();
+            String step = workflow.getExpectedStepForEvent(type);
+            if (step == null) continue;
+            List<String> next = workflow.stepsAwaitedAfter(type);
+            return next.isEmpty() ? List.of(step) : next;
+        }
+        return List.of();
+    }
 
     public void detectStepTimeouts() {
 
@@ -1322,13 +1346,6 @@ public class AnomalyDetectionService {
     private static Instant lastTimestamp(List<SagaEvent> events) {
         if (events == null || events.isEmpty()) return null;
         return events.get(events.size() - 1).getTimestamp();
-    }
-
-    private static String timeoutSource(WorkflowSpec workflow, String eventType) {
-        if (workflow == null) return "config:anomaly.detection.default-step-timeout-seconds";
-        String stepName = workflow.getExpectedStepForEvent(eventType);
-        if (stepName == null) return "config:anomaly.detection.default-step-timeout-seconds";
-        return "workflow:" + stepName + ".timeout";
     }
 
     private static class AnomalyDetails {

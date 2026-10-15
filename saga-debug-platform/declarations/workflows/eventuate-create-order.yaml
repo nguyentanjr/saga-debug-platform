@@ -1,0 +1,35 @@
+# Scope: create-order saga only; subsequent order cancellation is a separate operation.
+# Credit rejection does not undo a completed forward step in this implementation.
+workflow:
+  name: EVENTUATE_CREATE_ORDER
+  version: 'e7ec5b7153bdf7d3d941792d9b92ebf13b53452a'
+  sources: [eventuate-customers-orders]
+  runtimeScope: eventuate-eval
+  steps:
+    - id: RESERVE_CREDIT
+      service: customer-service
+      timeout: 30s
+      events:
+        started: ORDER_CREATED
+      outcomes:
+        RESERVED: CREDIT_RESERVED
+        INSUFFICIENT_CREDIT: CREDIT_REJECTED
+        UNKNOWN_CUSTOMER: CUSTOMER_UNKNOWN
+    - id: APPROVE_ORDER
+      service: order-service
+      timeout: 30s
+      events:
+        completed: ORDER_APPROVED
+    - id: REJECT_ORDER
+      service: order-service
+      timeout: 30s
+      outcomes:
+        REJECTED: ORDER_REJECTED
+  transitions:
+    - {from: STARTED, to: RESERVE_CREDIT}
+    - {from: RESERVE_CREDIT, to: APPROVE_ORDER, condition: RESERVED}
+    - {from: RESERVE_CREDIT, to: REJECT_ORDER, condition: INSUFFICIENT_CREDIT}
+    - {from: RESERVE_CREDIT, to: REJECT_ORDER, condition: UNKNOWN_CUSTOMER}
+    - {from: APPROVE_ORDER, to: COMPLETED, condition: SUCCESS}
+    - {from: REJECT_ORDER, to: FAILED, condition: REJECTED}
+

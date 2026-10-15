@@ -898,6 +898,28 @@ public class WorkflowSpec {
     }
 
 
+    /**
+     * The steps a run is waiting on once this observation has happened.
+     *
+     * <p>A step that has started or is retrying is still the one in progress. A step that
+     * has reported an outcome hands over to the steps its transitions name for that
+     * outcome; the run is now waiting on those, not on the one that just finished. Empty
+     * when the outcome leads only to a terminal marker, or the event is not this
+     * workflow's.
+     */
+    public List<String> stepsAwaitedAfter(String eventType) {
+        Optional<EventRole> role = classifyEvent(eventType);
+        if (role.isEmpty()) return List.of();
+        EventRole r = role.get();
+        if (r.role() == EventRole.Role.STARTED || r.role() == EventRole.Role.RETRY) {
+            return List.of(r.stepId());
+        }
+        String condition = r.outcome() != null ? r.outcome()
+                : r.role() == EventRole.Role.FAILED ? "FAILED" : SUCCESS_OUTCOME;
+        Set<String> stepIds = allSteps().stream().map(StepSpec::getId).collect(Collectors.toSet());
+        return outgoingTargets(r.stepId(), condition).stream().filter(stepIds::contains).toList();
+    }
+
     private List<String> outgoingTargets(String stepId, String condition) {
         if (transitions == null) return List.of();
         return transitions.stream()

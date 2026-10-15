@@ -1,0 +1,29 @@
+# Shape of EWALLET_W2N_TRANSFER as declared for Vi 3.0 core transfer v2 (live staging
+# run 2026-10-15): hold, then release within 15m, or unhold to compensate.
+workflow:
+  name: EWALLET_W2N_TRANSFER
+  version: "0.2"
+  steps:
+    - id: HOLD_MONEY
+      timeout: 30s
+      compensation: UNHOLD_MONEY
+      events:
+        completed: HOLD_SUCCEEDED
+        failed: HOLD_FAILED
+    - id: RELEASE_MONEY
+      timeout: 15m
+      events:
+        completed: RELEASE_SUCCEEDED
+        failed: RELEASE_FAILED
+  compensationSteps:
+    - id: UNHOLD_MONEY
+      timeout: 15m
+      events:
+        completed: UNHOLD_SUCCEEDED
+  transitions:
+    - {from: STARTED, to: HOLD_MONEY}
+    - {from: HOLD_MONEY, to: RELEASE_MONEY, condition: SUCCESS}
+    - {from: HOLD_MONEY, to: FAILED, condition: FAILED}
+    - {from: RELEASE_MONEY, to: COMPLETED, condition: SUCCESS}
+    - {from: RELEASE_MONEY, to: COMPENSATING, condition: FAILED}
+    - {from: UNHOLD_MONEY, to: COMPENSATED, condition: SUCCESS}
